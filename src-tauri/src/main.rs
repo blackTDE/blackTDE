@@ -3,11 +3,12 @@ mod process;
 mod event_bus;
 mod file_manager;
 mod git_runner;
+mod provider;
 
 use std::io::Write;
 use tauri::Manager;
 use tauri::State;
-use sqlx::SqlitePool;
+use sqlx::{SqlitePool, Row};
 
 #[tauri::command]
 async fn spawn_session(
@@ -18,6 +19,7 @@ async fn spawn_session(
     cwd: String,
     rows: u16,
     cols: u16,
+    provider: String,
     pool: State<'_, SqlitePool>,
     manager: State<'_, process::ProcessManager>,
     app_handle: tauri::AppHandle,
@@ -33,7 +35,29 @@ async fn spawn_session(
     .await
     .map_err(|e| e.to_string())?;
 
-    // 2. Insert session record to DB
+    // 2. Query provider credentials from database for environment injection
+    let mut envs = Vec::new();
+    if !provider.is_empty() && provider != "none" {
+        let key_row = sqlx::query("SELECT api_key FROM provider_keys WHERE provider = $1")
+            .bind(&provider)
+            .fetch_optional(&*pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if let Some(row) = key_row {
+            let api_key: String = row.get("api_key");
+            let env_key = match provider.as_str() {
+                "anthropic" => "ANTHROPIC_API_KEY",
+                "openai" => "OPENAI_API_KEY",
+                "gemini" => "GEMINI_API_KEY",
+                "deepseek" => "DEEPSEEK_API_KEY",
+                _ => "API_KEY",
+            };
+            envs.push((env_key.to_string(), api_key));
+        }
+    }
+
+    // 3. Insert session record to DB
     sqlx::query(
         "INSERT INTO sessions (id, workspace_id, agent_type, cwd, status) VALUES ($1, $2, $3, $4, 'active')"
     )
@@ -45,19 +69,19 @@ async fn spawn_session(
     .await
     .map_err(|e| e.to_string())?;
 
-    // 3. Spawn PTY process
-    let active_process = process::spawn_pty_process(&command, args, &cwd, rows, cols)
+    // 4. Spawn PTY process with injected credentials
+    let active_process = process::spawn_pty_process(&command, args, &cwd, rows, cols, envs)
         .map_err(|e| e.to_string())?;
 
     let master_clone = active_process.master.clone();
 
-    // 4. Register active session in process manager
+    // 5. Register active session in process manager
     {
         let mut active_sessions = manager.active_sessions.lock().map_err(|e| e.to_string())?;
         active_sessions.insert(id.clone(), active_process);
     }
 
-    // 5. Start stdout reader loop
+    // 6. Start stdout reader loop
     event_bus::start_stdout_reader(id, master_clone, pool.inner().clone(), app_handle);
 
     Ok(())
@@ -149,7 +173,9 @@ fn main() {
             git_runner::git_stage_file,
             git_runner::git_unstage_file,
             git_runner::git_commit_changes,
-            git_runner::get_git_branch
+            git_runner::get_git_branch,
+            provider::save_provider_key,
+            provider::get_provider_keys
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

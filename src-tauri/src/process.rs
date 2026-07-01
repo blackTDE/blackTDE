@@ -21,6 +21,7 @@ pub fn spawn_pty_process(
     cwd: &str,
     rows: u16,
     cols: u16,
+    envs: Vec<(String, String)>,
 ) -> Result<ActiveProcess, Box<dyn std::error::Error>> {
     // 1. Get PTY system
     let pty_system = native_pty_system();
@@ -37,6 +38,9 @@ pub fn spawn_pty_process(
     let mut cmd = CommandBuilder::new(command);
     cmd.args(args);
     cmd.cwd(std::path::Path::new(cwd));
+    for (k, v) in envs {
+        cmd.env(k, v);
+    }
 
     // 4. Spawn command
     let child = pair.slave.spawn_command(cmd)?;
@@ -57,7 +61,7 @@ mod tests {
 
     #[test]
     fn test_spawn_pty_process() {
-        let proc = spawn_pty_process("echo", vec!["hello-pty".to_string()], ".", 24, 80).unwrap();
+        let proc = spawn_pty_process("echo", vec!["hello-pty".to_string()], ".", 24, 80, Vec::new()).unwrap();
         let mut reader = proc.master.lock().unwrap().try_clone_reader().unwrap();
         let mut buf = [0u8; 1024];
         let mut total_output = String::new();
