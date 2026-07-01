@@ -1,6 +1,8 @@
 mod db;
 mod process;
 mod event_bus;
+mod file_manager;
+mod git_runner;
 
 use std::io::Write;
 use tauri::Manager;
@@ -138,7 +140,16 @@ fn main() {
             spawn_session,
             write_to_session,
             resize_session,
-            terminate_session
+            terminate_session,
+            file_manager::list_directory,
+            file_manager::read_file_content,
+            file_manager::write_file_content,
+            git_runner::get_git_status,
+            git_runner::get_git_diff,
+            git_runner::git_stage_file,
+            git_runner::git_unstage_file,
+            git_runner::git_commit_changes,
+            git_runner::get_git_branch
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
