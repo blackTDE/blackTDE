@@ -49,11 +49,13 @@ graph TD
 ## Features Implemented
 
 * **PTY Process Execution**: Runs shells and interactive CLI tools within a cross-platform pseudo-terminal (PTY) using `portable-pty` in Rust.
-* **Tauri v2 Shell Integration**: High-performance, low-overhead desktop window host binding React to native system commands.
-* **SQLite Database Layer**: Handles local configuration, workspace directories, session states, and persists raw binary terminal streams (with full ANSI escapes preserved) using `sqlx`.
-* **Auto-Migrations**: Automatically establishes and migrates the database schema (`migrations/`) inside the user's OS App Data directory on startup.
-* **Frontend Web Terminal**: Renders real-time stream logs using `xterm.js` and propagates resizing events natively to adjust the PTY bounds.
-* **Zustand State Store**: Synchronizes layouts, active workspace contexts, and concurrent session tracking.
+* **Credentials Vault (API Keys)**: Securely stores credentials for multiple AI models (Anthropic, OpenAI, Google Gemini, DeepSeek) in the local SQLite database.
+* **Environment Variable Injection**: Pre-injects provider API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) automatically when spawning processes.
+* **Workspace File Explorer**: Recursive, dynamic tree browsing of directories in the active workspace.
+* **Embedded Code Editor**: Hosts Microsoft's Monaco Editor (`@monaco-editor/react`) for code editing with auto syntax detection and diff rendering.
+* **Visual Git Operations**: Displays porcelain status, renders unified diff patches, stages/unstages changed files, and commits directly.
+* **SQLite Database & Auto-Migrations**: Manages workspaces, session states, and persists raw binary terminal streams (ANSI style code compliant) using `sqlx` and dynamic SQLite connection pool.
+* **xterm.js Console View**: Renders real-time stream logs with canvas acceleration and forwards keyboard input/dimensions to PTY processes.
 
 ---
 
@@ -71,17 +73,24 @@ black_tde/
 │   ├── tauri.conf.json       # Tauri v2 window and security settings
 │   ├── build.rs              # Build scripts
 │   ├── capabilities/         # Default application permissions
-│   ├── migrations/           # SQLite database schema migration script
+│   ├── migrations/           # SQLite database schema migration scripts
 │   └── src/
 │       ├── main.rs           # Tauri entrypoint and IPC router
 │       ├── db.rs             # SQLite pool initialization
 │       ├── process.rs        # PTY spawn controller
-│       └── event_bus.rs      # Stdout read thread & DB broadcaster
+│       ├── event_bus.rs      # Stdout read thread & DB broadcaster
+│       ├── file_manager.rs   # Directory listing and read/write file commands
+│       ├── git_runner.rs     # Git diff, porcelain status, and commit commands
+│       └── provider.rs       # Credentials vault save/list commands
 ├── src/                      # Vite + React + TypeScript frontend
 │   ├── main.tsx              # React mounting root
 │   ├── App.tsx               # Cockpit layout interface
 │   ├── components/
-│   │   └── TerminalPane.tsx  # xterm.js terminal mount
+│   │   ├── TerminalPane.tsx  # xterm.js terminal panel mount
+│   │   ├── FileTree.tsx      # Folder navigation tree
+│   │   ├── EditorPane.tsx    # Monaco Editor text editor
+│   │   ├── GitPanel.tsx      # Staged changes diff viewer
+│   │   └── ProviderVault.tsx # Credentials vault editor
 │   ├── store/
 │   │   └── workspaceStore.ts # Zustand global state manager
 │   └── index.css             # Tailwind base styling
@@ -133,6 +142,6 @@ cargo test
 
 ## Future Roadmap
 
-* **Phase 2**: Visual Project Explorer, Git status inspection panel, and inline file diff editor.
-* **Phase 3**: Provider settings vault (storing API keys for Anthropic, OpenAI, Gemini) and proxy routing.
 * **Phase 4**: Agent adapter scripts to run Claude Code, Aider, and custom CLI agents with pre-execution safety filters.
+* **Phase 5**: Agent Orchestration dashboard (swarms, delegation panels) and mobile/web remote control.
+
