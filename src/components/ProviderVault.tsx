@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { KeyRound, ShieldAlert, CheckCircle, HelpCircle, Save } from 'lucide-react';
-import { useWorkspaceStore } from '../store/workspaceStore';
 
 interface ProviderKeyEntry {
   provider: string;
@@ -28,7 +27,6 @@ const PROVIDER_METADATA: Record<string, { name: string; desc: string }> = {
 };
 
 export const ProviderVault: React.FC = () => {
-  const { providerStatus, setGitFiles } = useWorkspaceStore(); // using store fields
   const [configuredProviders, setConfiguredProviders] = useState<Record<string, boolean>>({});
   const [selectedProvider, setSelectedProvider] = useState('anthropic');
   const [keyInput, setKeyInput] = useState('');
