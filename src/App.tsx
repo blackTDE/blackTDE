@@ -261,19 +261,25 @@ function App() {
 
   const handleSelectSession = (ws: any, sessionId: string) => {
     handleSelectProject(ws);
+    
+    // Read the updated state synchronously to avoid React closure batching issues
+    const state = useWorkspaceStore.getState();
+    const currentPaneLayout = state.paneLayout;
+
     setActiveSession(sessionId);
+    setActiveFileTab(null); // Auto open the terminal sessions view!
 
     // Auto-focus this session in PTY split cell if not focused
-    const isVisibleInPane = paneLayout.panes.some(p => p === sessionId);
+    const isVisibleInPane = currentPaneLayout.panes.some(p => p === sessionId);
     if (!isVisibleInPane) {
       // Find the first empty pane, or use the active pane if all are occupied
-      const emptyIndex = paneLayout.panes.indexOf(null);
-      const targetIndex = emptyIndex !== -1 ? emptyIndex : paneLayout.activePaneIndex;
+      const emptyIndex = currentPaneLayout.panes.indexOf(null);
+      const targetIndex = emptyIndex !== -1 ? emptyIndex : currentPaneLayout.activePaneIndex;
       setPaneSessionId(targetIndex, sessionId);
       setActivePaneIndex(targetIndex);
     } else {
       // Focus the pane that already holds this session
-      const paneIndex = paneLayout.panes.findIndex(p => p === sessionId);
+      const paneIndex = currentPaneLayout.panes.findIndex(p => p === sessionId);
       if (paneIndex !== -1) {
         setActivePaneIndex(paneIndex);
       }
