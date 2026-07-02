@@ -532,53 +532,89 @@ function App() {
             })}
           </div>
 
-          {/* Level 2: Child Tabs (Terminal named [Project Name] and Open Files) */}
-          <div className="shrink-0 flex items-center border-b border-surface-2 bg-surface-1 overflow-x-auto select-none">
-            {/* Terminal Tab named with active workspace name */}
-            <button
-              onClick={() => setActiveFileTab(null)}
-              className={`flex items-center space-x-1.5 px-4 py-2.5 text-xs font-medium border-b-2 transition ${
-                activeFileTab === null
-                  ? 'border-brand text-zinc-100 bg-surface/40'
-                  : 'border-transparent text-zinc-500 hover:text-zinc-350'
-              }`}
-            >
-              <SquareTerminal size={13} className={activeFileTab === null ? 'text-brand-light' : 'text-zinc-500'} />
-              <span className="font-mono font-bold">{activeWorkspace?.name || 'Terminal'}</span>
-            </button>
+          {/* Level 2: Child Tabs (sessions, open files, settings) */}
+          <div className="shrink-0 flex items-center justify-between border-b border-surface-2 bg-[#0b0f19] pr-3 select-none">
+            <div className="flex-1 flex items-center overflow-x-auto scrollbar-none relative">
+              {/* Sessions Tab - sticky to the left */}
+              <button
+                onClick={() => setActiveFileTab(null)}
+                className={`sticky left-0 z-10 flex items-center space-x-1.5 px-4 py-2.5 text-xs font-semibold border-r border-surface-2 transition bg-[#0b0f19] shrink-0 border-b-2 ${
+                  activeFileTab === null
+                    ? 'border-b-brand text-zinc-100'
+                    : 'border-b-transparent text-zinc-500 hover:text-zinc-350'
+                }`}
+              >
+                <SquareTerminal size={13} className={activeFileTab === null ? 'text-brand-light' : 'text-zinc-500'} />
+                <span className="font-mono">sessions</span>
+              </button>
 
-            {/* Opened File Tabs */}
-            {openFiles.map(f => {
-              const isGitDiff = f.path.startsWith('git-diff:');
-              const displayName = isGitDiff ? `Diff: ${f.name}` : f.name;
-              return (
+              {/* Opened File Tabs */}
+              {openFiles.map(f => {
+                const isGitDiff = f.path.startsWith('git-diff:');
+                const displayName = isGitDiff ? `Diff: ${f.name}` : f.name;
+                return (
+                  <div
+                    key={f.path}
+                    className={`flex items-center space-x-1 border-r border-surface-2 border-b-2 transition shrink-0 ${
+                      activeFileTab === f.path
+                        ? 'border-brand text-zinc-100 bg-surface/40'
+                        : 'border-transparent text-zinc-550 hover:text-zinc-350 hover:bg-surface-2/10'
+                    }`}
+                  >
+                    <button
+                      onClick={() => setActiveFileTab(f.path)}
+                      className="px-3 py-2 text-xs font-mono font-medium truncate max-w-[150px]"
+                      title={displayName}
+                    >
+                      {displayName}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeFile(f.path);
+                      }}
+                      className="pr-2.5 text-zinc-650 hover:text-rose-450 transition cursor-pointer"
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                );
+              })}
+
+              {/* Settings Tab (Conditional) */}
+              {activeFileTab === 'settings' && (
                 <div
-                  key={f.path}
-                  className={`flex items-center space-x-1 border-r border-surface-2 border-b-2 transition shrink-0 ${
-                    activeFileTab === f.path
-                      ? 'border-brand text-zinc-100 bg-surface/40'
-                      : 'border-transparent text-zinc-550 hover:text-zinc-350 hover:bg-surface-2/10'
-                  }`}
+                  className="flex items-center space-x-1 border-r border-surface-2 border-b-2 border-brand text-zinc-100 bg-surface/40 transition shrink-0"
                 >
                   <button
-                    onClick={() => setActiveFileTab(f.path)}
-                    className="px-3 py-2 text-xs font-mono font-medium truncate max-w-[150px]"
-                    title={displayName}
+                    onClick={() => setActiveFileTab('settings')}
+                    className="px-3 py-2 text-xs font-mono font-medium"
                   >
-                    {displayName}
+                    settings
                   </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      closeFile(f.path);
+                      setActiveFileTab(null);
                     }}
                     className="pr-2.5 text-zinc-650 hover:text-rose-450 transition cursor-pointer"
                   >
                     <X size={10} />
                   </button>
                 </div>
-              );
-            })}
+              )}
+            </div>
+
+            {/* Standalone Settings Gear Icon Button (Right Top of Center main panel) */}
+            <button
+              onClick={() => setActiveFileTab('settings')}
+              className={`p-1.5 rounded transition cursor-pointer ${
+                activeFileTab === 'settings' ? 'text-brand-light bg-brand/10' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+              title="Open Settings Dashboard"
+            >
+              <Settings size={14} />
+            </button>
           </div>
 
           {/* Tab content area */}
@@ -597,7 +633,7 @@ function App() {
                         className={`flex items-center space-x-1 px-2.5 py-0.5 rounded text-[10px] font-mono border transition shrink-0 cursor-pointer ${
                           activeSessionId === session.id
                             ? 'bg-brand/10 border-brand/40 text-brand-light font-bold'
-                            : 'bg-surface-3/30 border-surface-3 text-zinc-400 hover:text-zinc-200'
+                            : 'bg-surface-3/30 border-surface-3 text-zinc-450 hover:text-zinc-200'
                         }`}
                       >
                         <span>{session.agentType}</span>
@@ -636,6 +672,10 @@ function App() {
                 <div className="flex-grow min-h-0 p-0 bg-[#070b12] overflow-hidden">
                   <TerminalGrid />
                 </div>
+              </div>
+            ) : activeFileTab === 'settings' ? (
+              <div className="w-full h-full bg-[#070b12]">
+                <SettingsPanel />
               </div>
             ) : activeFileTab.startsWith('git-diff:') ? (
               <div className="w-full h-full">
@@ -677,17 +717,6 @@ function App() {
                 <span>Git</span>
               </button>
               <button
-                onClick={() => setActiveRightPanel('settings')}
-                className={`flex-1 flex items-center justify-center space-x-1.5 py-2.5 text-xs font-semibold border-b-2 transition ${
-                  activeRightPanel === 'settings'
-                    ? 'border-brand text-zinc-100 bg-surface/30'
-                    : 'border-transparent text-zinc-500 hover:text-zinc-300'
-                }`}
-              >
-                <Settings size={13} />
-                <span>Settings</span>
-              </button>
-              <button
                 onClick={() => setIsRightPaneExpanded(false)}
                 className="px-3 text-zinc-500 hover:text-zinc-300 transition cursor-pointer"
                 title="Collapse Panel"
@@ -707,8 +736,6 @@ function App() {
                 </div>
               ) : activeRightPanel === 'git' ? (
                 <GitPanel />
-              ) : activeRightPanel === 'settings' ? (
-                <SettingsPanel />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center text-zinc-500 font-mono text-[10px]">
                   <Sparkles size={20} className="mb-1.5 text-zinc-600" />
