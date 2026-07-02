@@ -48,6 +48,9 @@ graph TD
 
 ## Features Implemented
 
+* **Terminal splits cockpit (up to 4 screens)**: Supports layouts matching 1x1, 1x2, 2x1, and 2x2 grid cell divisions in the frontend with focus tracking.
+* **Session Auto-Capture & Resumption**: Backend scans stdout logs on the fly to capture remote session ID tokens (e.g. from Claude Code stream-json output) and auto-injects `--resume <session_id>` flag to recover conversations.
+* **Advanced Settings Panel**: Full configurations UI managing Model Context Protocol (MCP) server inputs, local LLM proxies (Ollama, LM Studio overrides), credentials vault keys, and CLI version checkers.
 * **PTY Process Execution**: Runs shells and interactive CLI tools within a cross-platform pseudo-terminal (PTY) using `portable-pty` in Rust.
 * **Credentials Vault (API Keys)**: Securely stores credentials for multiple AI models (Anthropic, OpenAI, Google Gemini, DeepSeek) in the local SQLite database.
 * **Environment Variable Injection**: Pre-injects provider API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) automatically when spawning processes.
