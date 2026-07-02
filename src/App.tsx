@@ -520,18 +520,36 @@ function App() {
 
         {/* Center Panel (Swappable Workbench) */}
         <div className="flex-grow flex flex-col min-w-0 bg-surface">
-          {/* Level 1: Father Tabs (Projects/Workspaces list) */}
+          {/* Level 1: Father Tabs (Projects/Workspaces list + Settings Tab) */}
           <div className="shrink-0 flex items-center border-b border-surface-2 bg-surface-2/20 overflow-x-auto select-none">
+            {/* Settings button on the far left of Level 1 */}
+            <button
+              onClick={() => {
+                setIsSettingsFatherTabOpen(true);
+                setActiveFatherTabId('settings');
+              }}
+              className={`flex items-center justify-center px-3 py-3 border-r border-surface-2 hover:bg-surface-2/15 transition cursor-pointer text-zinc-500 hover:text-zinc-200 shrink-0 ${
+                activeFatherTabId === 'settings' ? 'bg-surface-1/40 text-brand-light' : ''
+              }`}
+              title="Open Settings Tab"
+            >
+              <Settings size={13} />
+            </button>
+
+            {/* Project tabs */}
             {workspaces.map((ws) => {
-              const isActive = activeWorkspace?.id === ws.id;
+              const isActive = activeFatherTabId === ws.id;
               return (
                 <button
                   key={ws.id}
-                  onClick={() => handleSelectProject(ws)}
-                  className={`flex items-center space-x-1.5 px-4 py-2 text-xs font-semibold border-b-2 transition ${
+                  onClick={() => {
+                    handleSelectProject(ws);
+                    setActiveFatherTabId(ws.id);
+                  }}
+                  className={`flex items-center space-x-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition shrink-0 ${
                     isActive
                       ? 'border-brand text-brand-light bg-surface-1/40'
-                      : 'border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-surface-2/5'
+                      : 'border-transparent text-zinc-500 hover:text-zinc-350 hover:bg-surface-2/5'
                   }`}
                 >
                   <Folder size={12} className={isActive ? 'text-brand-light' : 'text-zinc-650'} />
@@ -539,163 +557,167 @@ function App() {
                 </button>
               );
             })}
-          </div>
 
-          {/* Level 2: Child Tabs (sessions, open files, settings) */}
-          <div className="shrink-0 flex items-center justify-between border-b border-surface-2 bg-[#0b0f19] pr-3 select-none">
-            <div className="flex-1 flex items-center overflow-x-auto scrollbar-none relative">
-              {/* Sessions Tab - sticky to the left */}
-              <button
-                onClick={() => setActiveFileTab(null)}
-                className={`sticky left-0 z-10 flex items-center space-x-1.5 px-4 py-2.5 text-xs font-semibold border-r border-surface-2 transition bg-[#0b0f19] shrink-0 border-b-2 ${
-                  activeFileTab === null
-                    ? 'border-b-brand text-zinc-100'
-                    : 'border-b-transparent text-zinc-500 hover:text-zinc-350'
+            {/* Settings father tab (conditional) */}
+            {isSettingsFatherTabOpen && (
+              <div
+                className={`flex items-center space-x-1 border-r border-surface-2 border-b-2 transition shrink-0 ${
+                  activeFatherTabId === 'settings'
+                    ? 'border-brand text-brand-light bg-surface-1/40'
+                    : 'border-transparent text-zinc-500 hover:text-zinc-350 hover:bg-surface-2/5'
                 }`}
               >
-                <SquareTerminal size={13} className={activeFileTab === null ? 'text-brand-light' : 'text-zinc-500'} />
-                <span className="font-mono">sessions</span>
-              </button>
-
-              {/* Opened File Tabs */}
-              {openFiles.map(f => {
-                const isGitDiff = f.path.startsWith('git-diff:');
-                const displayName = isGitDiff ? `Diff: ${f.name}` : f.name;
-                return (
-                  <div
-                    key={f.path}
-                    className={`flex items-center space-x-1 border-r border-surface-2 border-b-2 transition shrink-0 ${
-                      activeFileTab === f.path
-                        ? 'border-brand text-zinc-100 bg-surface/40'
-                        : 'border-transparent text-zinc-550 hover:text-zinc-350 hover:bg-surface-2/10'
-                    }`}
-                  >
-                    <button
-                      onClick={() => setActiveFileTab(f.path)}
-                      className="px-3 py-2 text-xs font-mono font-medium truncate max-w-[150px]"
-                      title={displayName}
-                    >
-                      {displayName}
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        closeFile(f.path);
-                      }}
-                      className="pr-2.5 text-zinc-650 hover:text-rose-450 transition cursor-pointer"
-                    >
-                      <X size={10} />
-                    </button>
-                  </div>
-                );
-              })}
-
-              {/* Settings Tab (Conditional) */}
-              {activeFileTab === 'settings' && (
-                <div
-                  className="flex items-center space-x-1 border-r border-surface-2 border-b-2 border-brand text-zinc-100 bg-surface/40 transition shrink-0"
+                <button
+                  onClick={() => setActiveFatherTabId('settings')}
+                  className="flex items-center space-x-1.5 px-3 py-2.5"
                 >
-                  <button
-                    onClick={() => setActiveFileTab('settings')}
-                    className="px-3 py-2 text-xs font-mono font-medium"
-                  >
-                    settings
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveFileTab(null);
-                    }}
-                    className="pr-2.5 text-zinc-650 hover:text-rose-450 transition cursor-pointer"
-                  >
-                    <X size={10} />
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Standalone Settings Gear Icon Button (Right Top of Center main panel) */}
-            <button
-              onClick={() => setActiveFileTab('settings')}
-              className={`p-1.5 rounded transition cursor-pointer ${
-                activeFileTab === 'settings' ? 'text-brand-light bg-brand/10' : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-              title="Open Settings Dashboard"
-            >
-              <Settings size={14} />
-            </button>
-          </div>
-
-          {/* Tab content area */}
-          <div className={`flex-grow min-h-0 overflow-hidden ${activeFileTab === null ? 'p-0' : 'p-4'}`}>
-            {activeFileTab === null ? (
-              <div className="w-full h-full flex flex-col bg-[#070b12] overflow-hidden">
-                {/* Clean Terminal Toolbar */}
-                <div className="shrink-0 bg-surface-1 border-b border-surface-2 px-4 py-2 flex items-center justify-between select-none overflow-x-auto">
-                  <div className="flex items-center space-x-2 overflow-x-auto">
-                    <SquareTerminal size={14} className="text-brand-light shrink-0" />
-                    <span className="text-[10px] text-zinc-450 font-mono uppercase tracking-wider font-semibold mr-1.5 shrink-0">PTY Sessions:</span>
-                    {activeProjectSessions.map((session) => (
-                      <button
-                        key={session.id}
-                        onClick={() => handleSelectSession(activeWorkspace, session.id)}
-                        className={`flex items-center space-x-1 px-2.5 py-0.5 rounded text-[10px] font-mono border transition shrink-0 cursor-pointer ${
-                          activeSessionId === session.id
-                            ? 'bg-brand/10 border-brand/40 text-brand-light font-bold'
-                            : 'bg-surface-3/30 border-surface-3 text-zinc-450 hover:text-zinc-200'
-                        }`}
-                      >
-                        <span>{session.agentType}</span>
-                        <span className="text-[8px] text-zinc-500 font-normal">({session.id.substring(8, 12)})</span>
-                      </button>
-                    ))}
-                    
-                    {/* Spawn Session Trigger Button */}
-                    {activeWorkspace && (
-                      <button
-                        onClick={(e) => openNewSessionModal(activeWorkspace, e)}
-                        title="Spawn Session"
-                        className="flex items-center justify-center p-1 bg-surface-3 border border-surface-3 rounded hover:bg-surface-2 hover:text-brand-light text-zinc-400 transition cursor-pointer shrink-0"
-                      >
-                        <Plus size={11} />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Splits layout toolbar in same row for space optimization */}
-                  <div className="flex items-center space-x-1 bg-surface-2/70 p-0.5 rounded border border-surface-3 font-mono text-[8px] text-zinc-450 ml-4 shrink-0">
-                    <span className="px-1 font-bold">SPLIT:</span>
-                    {['1x1', '1x2', '2x1', '2x2'].map((type) => (
-                      <button
-                        key={type}
-                        onClick={() => setPaneLayoutType(type as any)}
-                        className={`px-1.5 py-0.5 rounded transition cursor-pointer ${paneLayout.type === type ? 'bg-brand text-white font-bold' : 'hover:text-zinc-200 bg-surface-3/50'}`}
-                      >
-                        {type}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Terminal Grid */}
-                <div className="flex-grow min-h-0 p-0 bg-[#070b12] overflow-hidden">
-                  <TerminalGrid />
-                </div>
-              </div>
-            ) : activeFileTab === 'settings' ? (
-              <div className="w-full h-full bg-[#070b12]">
-                <SettingsPanel />
-              </div>
-            ) : activeFileTab.startsWith('git-diff:') ? (
-              <div className="w-full h-full">
-                <GitDiffCompare tabPath={activeFileTab} />
-              </div>
-            ) : (
-              <div className="w-full h-full">
-                <FilePreview />
+                  <Settings size={12} className={activeFatherTabId === 'settings' ? 'text-brand-light' : 'text-zinc-650'} />
+                  <span>Settings</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsSettingsFatherTabOpen(false);
+                    if (activeFatherTabId === 'settings') {
+                      setActiveFatherTabId(activeWorkspace?.id || '');
+                    }
+                  }}
+                  className="pr-2 text-zinc-600 hover:text-rose-450 transition cursor-pointer"
+                  title="Close Settings Tab"
+                >
+                  <X size={10} />
+                </button>
               </div>
             )}
           </div>
+
+          {activeFatherTabId === 'settings' ? (
+            /* Render full page Settings Dashboard */
+            <div className="flex-grow min-h-0 bg-[#070b12] overflow-hidden">
+              <SettingsPanel />
+            </div>
+          ) : (
+            /* Render Workspace Content */
+            <>
+              {/* Level 2: Child Tabs (sessions and open files) */}
+              <div className="shrink-0 flex items-center justify-between border-b border-surface-2 bg-[#0b0f19] select-none">
+                <div className="flex-1 flex items-center overflow-x-auto scrollbar-none relative">
+                  {/* Sessions Tab - sticky to the left */}
+                  <button
+                    onClick={() => setActiveFileTab(null)}
+                    className={`sticky left-0 z-10 flex items-center space-x-1.5 px-4 py-2.5 text-xs font-semibold border-r border-surface-2 transition bg-[#0b0f19] shrink-0 border-b-2 ${
+                      activeFileTab === null
+                        ? 'border-b-brand text-zinc-100'
+                        : 'border-b-transparent text-zinc-500 hover:text-zinc-350'
+                    }`}
+                  >
+                    <SquareTerminal size={13} className={activeFileTab === null ? 'text-brand-light' : 'text-zinc-500'} />
+                    <span className="font-mono">sessions</span>
+                  </button>
+
+                  {/* Opened File Tabs */}
+                  {openFiles.map(f => {
+                    const isGitDiff = f.path.startsWith('git-diff:');
+                    const displayName = isGitDiff ? `Diff: ${f.name}` : f.name;
+                    return (
+                      <div
+                        key={f.path}
+                        className={`flex items-center space-x-1 border-r border-surface-2 border-b-2 transition shrink-0 ${
+                          activeFileTab === f.path
+                            ? 'border-brand text-zinc-100 bg-surface/40'
+                            : 'border-transparent text-zinc-550 hover:text-zinc-350 hover:bg-surface-2/10'
+                        }`}
+                      >
+                        <button
+                          onClick={() => setActiveFileTab(f.path)}
+                          className="px-3 py-2 text-xs font-mono font-medium truncate max-w-[150px]"
+                          title={displayName}
+                        >
+                          {displayName}
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            closeFile(f.path);
+                          }}
+                          className="pr-2.5 text-zinc-650 hover:text-rose-450 transition cursor-pointer"
+                        >
+                          <X size={10} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Tab content area */}
+              <div className={`flex-grow min-h-0 overflow-hidden ${activeFileTab === null ? 'p-0' : 'p-4'}`}>
+                {activeFileTab === null ? (
+                  <div className="w-full h-full flex flex-col bg-[#070b12] overflow-hidden">
+                    {/* Clean Terminal Toolbar */}
+                    <div className="shrink-0 bg-surface-1 border-b border-surface-2 px-4 py-2 flex items-center justify-between select-none overflow-x-auto">
+                      <div className="flex items-center space-x-2 overflow-x-auto">
+                        <SquareTerminal size={14} className="text-brand-light shrink-0" />
+                        <span className="text-[10px] text-zinc-450 font-mono uppercase tracking-wider font-semibold mr-1.5 shrink-0">PTY Sessions:</span>
+                        {activeProjectSessions.map((session) => (
+                          <button
+                            key={session.id}
+                            onClick={() => handleSelectSession(activeWorkspace, session.id)}
+                            className={`flex items-center space-x-1 px-2.5 py-0.5 rounded text-[10px] font-mono border transition shrink-0 cursor-pointer ${
+                              activeSessionId === session.id
+                                ? 'bg-brand/10 border-brand/40 text-brand-light font-bold'
+                                : 'bg-surface-3/30 border-surface-3 text-zinc-450 hover:text-zinc-200'
+                            }`}
+                          >
+                            <span>{session.agentType}</span>
+                            <span className="text-[8px] text-zinc-500 font-normal">({session.id.substring(8, 12)})</span>
+                          </button>
+                        ))}
+                        
+                        {/* Spawn Session Trigger Button */}
+                        {activeWorkspace && (
+                          <button
+                            onClick={(e) => openNewSessionModal(activeWorkspace, e)}
+                            title="Spawn Session"
+                            className="flex items-center justify-center p-1 bg-surface-3 border border-surface-3 rounded hover:bg-surface-2 hover:text-brand-light text-zinc-400 transition cursor-pointer shrink-0"
+                          >
+                            <Plus size={11} />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Splits layout toolbar in same row for space optimization */}
+                      <div className="flex items-center space-x-1 bg-surface-2/70 p-0.5 rounded border border-surface-3 font-mono text-[8px] text-zinc-450 ml-4 shrink-0">
+                        <span className="px-1 font-bold">SPLIT:</span>
+                        {['1x1', '1x2', '2x1', '2x2'].map((type) => (
+                          <button
+                            key={type}
+                            onClick={() => setPaneLayoutType(type as any)}
+                            className={`px-1.5 py-0.5 rounded transition cursor-pointer ${paneLayout.type === type ? 'bg-brand text-white font-bold' : 'hover:text-zinc-200 bg-surface-3/50'}`}
+                          >
+                            {type}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Terminal Grid */}
+                    <div className="flex-grow min-h-0 p-0 bg-[#070b12] overflow-hidden">
+                      <TerminalGrid />
+                    </div>
+                  </div>
+                ) : activeFileTab.startsWith('git-diff:') ? (
+                  <div className="w-full h-full">
+                    <GitDiffCompare tabPath={activeFileTab} />
+                  </div>
+                ) : (
+                  <div className="w-full h-full">
+                    <FilePreview />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Right Panel (Inspector tabs) */}
