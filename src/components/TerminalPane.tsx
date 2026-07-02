@@ -113,13 +113,15 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
     const resizeObserver = new ResizeObserver(() => {
       try {
         currentFitAddon.fit();
-        invoke('resize_session', {
-          id: sessionId,
-          rows: currentTerm.rows,
-          cols: currentTerm.cols,
-        }).catch((err) => {
-          console.error('Failed to resize terminal:', err);
-        });
+        if (currentTerm.rows > 2 && currentTerm.cols > 2) {
+          invoke('resize_session', {
+            id: sessionId,
+            rows: currentTerm.rows,
+            cols: currentTerm.cols,
+          }).catch((err) => {
+            console.error('Failed to resize terminal:', err);
+          });
+        }
       } catch (err) {
         console.error(err);
       }
@@ -131,11 +133,13 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
     const resizeTimeout = setTimeout(() => {
       try {
         currentFitAddon.fit();
-        invoke('resize_session', {
-          id: sessionId,
-          rows: currentTerm.rows,
-          cols: currentTerm.cols,
-        }).catch((err) => console.error(err));
+        if (currentTerm.rows > 2 && currentTerm.cols > 2) {
+          invoke('resize_session', {
+            id: sessionId,
+            rows: currentTerm.rows,
+            cols: currentTerm.cols,
+          }).catch((err) => console.error(err));
+        }
       } catch (e) {
         console.error(e);
       }
