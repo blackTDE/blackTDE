@@ -249,7 +249,9 @@ function App() {
         id: newSessionId,
         agentType: cmdInput.split('/').pop() || cmdInput,
         cwd: targetCwd,
-        status: 'active',
+        provider: spawnProvider,
+        cmd: cmdInput,
+        args: args,
       });
 
       setPaneSessionId(paneLayout.activePaneIndex, newSessionId);
