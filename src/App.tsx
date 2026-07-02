@@ -21,7 +21,8 @@ import {
   ChevronDown,
   ChevronRight,
   PlusCircle,
-  PlayCircle
+  PlayCircle,
+  FolderOpen
 } from 'lucide-react';
 
 function App() {
@@ -119,9 +120,25 @@ function App() {
       });
   };
 
+  const handleSelectDirectory = async () => {
+    try {
+      const selected = await invoke<string | null>('select_directory');
+      if (selected) {
+        setNewProjectPath(selected);
+        // Extract base folder name
+        const parts = selected.split(/[/\\]/).filter(Boolean);
+        if (parts.length > 0) {
+          setNewProjectName(parts[parts.length - 1]);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to select folder:', err);
+    }
+  };
+
   const handleCreateProject = async () => {
     if (!newProjectPath.trim()) {
-      alert('Please enter a directory path.');
+      alert('Please enter or select a directory path.');
       return;
     }
     const finalName = newProjectName.trim() || 'unnamed_project';
@@ -238,12 +255,30 @@ function App() {
     handleSelectProject(ws);
     setActiveSession(sessionId);
     setActiveFileTab(null);
+
+    // Auto-focus this session in PTY split cell if not focused
+    const isVisibleInPane = paneLayout.panes.some(p => p === sessionId);
+    if (!isVisibleInPane) {
+      // Load it into the active grid cell
+      setPaneSessionId(paneLayout.activePaneIndex, sessionId);
+    } else {
+      // Find which pane index holds this session, and focus that cell
+      const paneIndex = paneLayout.panes.findIndex(p => p === sessionId);
+      if (paneIndex !== -1) {
+        useWorkspaceStore.setState((state) => ({
+          paneLayout: { ...state.paneLayout, activePaneIndex: paneIndex }
+        }));
+      }
+    }
   };
 
   // Filters past sessions to target workspace path
   const getFilteredPastSessions = (projectPath: string) => {
     return pastSessions.filter(s => s.cwd === projectPath);
   };
+
+  // Filter active sessions belonging to the active project path
+  const activeProjectSessions = Object.values(sessions).filter(s => s.cwd === (activeWorkspace?.path || ''));
 
   return (
     <div className="flex h-screen w-screen bg-surface text-zinc-100 overflow-hidden font-sans flex-col select-none relative">
@@ -252,7 +287,7 @@ function App() {
       <div className="flex flex-1 min-h-0 w-full overflow-hidden">
         
         {/* Left Sidebar Panel (Projects Tree Viewer) */}
-        <div className="w-80 border-r border-surface-2 bg-surface-1 flex flex-col select-none overflow-hidden">
+        <div className="w-80 border-r border-surface-2 bg-surface-1 flex flex-col select-none overflow-hidden font-sans">
           {/* Header */}
           <div className="p-4 border-b border-surface-2 flex items-center justify-between">
             <div className="flex items-center space-x-2">
@@ -288,21 +323,30 @@ function App() {
               <div className="p-3.5 bg-surface border border-surface-3 rounded-lg space-y-3 text-xs shadow-md">
                 <div>
                   <label className="block text-[10px] text-zinc-500 font-semibold font-mono mb-1">LOCAL PATH</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. /Users/ray/my-project"
-                    value={newProjectPath}
-                    onChange={(e) => {
-                      const path = e.target.value;
-                      setNewProjectPath(path);
-                      // Auto-extract last path segment as the default project name
-                      const parts = path.split(/[/\\]/).filter(Boolean);
-                      if (parts.length > 0) {
-                        setNewProjectName(parts[parts.length - 1]);
-                      }
-                    }}
-                    className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-brand/70 font-mono"
-                  />
+                  <div className="flex space-x-1">
+                    <input
+                      type="text"
+                      placeholder="e.g. /Users/ray/my-project"
+                      value={newProjectPath}
+                      onChange={(e) => {
+                        const path = e.target.value;
+                        setNewProjectPath(path);
+                        // Auto-extract last path segment as the default project name
+                        const parts = path.split(/[/\\]/).filter(Boolean);
+                        if (parts.length > 0) {
+                          setNewProjectName(parts[parts.length - 1]);
+                        }
+                      }}
+                      className="flex-1 min-w-0 bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-brand/70 font-mono"
+                    />
+                    <button
+                      onClick={handleSelectDirectory}
+                      title="Select Local Directory"
+                      className="px-2.5 bg-surface-3 border border-surface-3 rounded hover:bg-surface-2 hover:text-brand-light text-zinc-400 transition cursor-pointer flex items-center justify-center shrink-0"
+                    >
+                      <FolderOpen size={14} />
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-[10px] text-zinc-500 font-semibold font-mono mb-1">PROJECT NAME</label>
@@ -399,7 +443,7 @@ function App() {
                             }`}
                           >
                             <div className="flex items-center space-x-2 truncate">
-                              <SquareTerminal size={12} className={activeSessionId === session.id ? 'text-brand-light animate-none' : 'text-zinc-500'} />
+                              <SquareTerminal size={12} className={activeSessionId === session.id ? 'text-brand-light' : 'text-zinc-500'} />
                               <div className="truncate font-mono">
                                 <span>{session.agentType}</span>
                                 <span className="text-[9px] text-zinc-650 ml-1.5">({session.id.substring(8, 14)})</span>
@@ -438,9 +482,9 @@ function App() {
 
         {/* Center Panel (Swappable Workbench) */}
         <div className="flex-grow flex flex-col min-w-0 bg-surface">
-          {/* Tabs header bar */}
+          {/* Father Tabs Header Bar */}
           <div className="shrink-0 flex items-center border-b border-surface-2 bg-surface-1 overflow-x-auto select-none">
-            {/* Terminal Tab */}
+            {/* Terminal cockpit Father Tab */}
             <button
               onClick={() => setActiveFileTab(null)}
               className={`flex items-center space-x-1.5 px-4 py-2.5 text-xs font-medium border-b-2 transition ${
@@ -450,7 +494,7 @@ function App() {
               }`}
             >
               <SquareTerminal size={13} className={activeFileTab === null ? 'text-brand-light' : 'text-zinc-500'} />
-              <span className="font-mono">Terminal cockpit</span>
+              <span className="font-mono font-bold">Terminal cockpit</span>
             </button>
 
             {/* Opened File Tabs */}
@@ -474,7 +518,7 @@ function App() {
                     e.stopPropagation();
                     closeFile(f.path);
                   }}
-                  className="pr-2.5 text-zinc-650 hover:text-rose-450 transition"
+                  className="pr-2.5 text-zinc-650 hover:text-rose-450 transition cursor-pointer"
                 >
                   <X size={10} />
                 </button>
@@ -482,44 +526,59 @@ function App() {
             ))}
           </div>
 
+          {/* Sub Tabs Row (Only visible when active tab is the 'Terminal cockpit' father tab) */}
+          {activeFileTab === null && (
+            <div className="shrink-0 bg-surface-2/40 border-b border-surface-2 px-4 py-1.5 flex items-center justify-between select-none overflow-x-auto">
+              <div className="flex items-center space-x-2 overflow-x-auto">
+                <span className="text-[10px] text-zinc-500 font-mono uppercase tracking-wider font-semibold mr-1.5 shrink-0">PTY SESSIONS:</span>
+                {activeProjectSessions.map((session) => (
+                  <button
+                    key={session.id}
+                    onClick={() => handleSelectSession(activeWorkspace, session.id)}
+                    className={`flex items-center space-x-1 px-2.5 py-0.5 rounded text-[10px] font-mono border transition shrink-0 cursor-pointer ${
+                      activeSessionId === session.id
+                        ? 'bg-brand/10 border-brand/40 text-brand-light font-bold'
+                        : 'bg-surface-3/30 border-surface-3 text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    <span>{session.agentType}</span>
+                    <span className="text-[8px] text-zinc-500 font-normal">({session.id.substring(8, 12)})</span>
+                  </button>
+                ))}
+                
+                {/* Spawn Session Trigger Button in sub-tabs row */}
+                {activeWorkspace && (
+                  <button
+                    onClick={(e) => openNewSessionModal(activeWorkspace, e)}
+                    title="Spawn Session"
+                    className="flex items-center justify-center p-1 bg-surface-3 border border-surface-3 rounded hover:bg-surface-2 hover:text-brand-light text-zinc-400 transition cursor-pointer shrink-0"
+                  >
+                    <Plus size={11} />
+                  </button>
+                )}
+              </div>
+
+              {/* Splits layout toolbar in same row for space optimization */}
+              <div className="flex items-center space-x-1 bg-surface-2/70 p-0.5 rounded border border-surface-3 font-mono text-[8px] text-zinc-450 ml-4 shrink-0">
+                <span className="px-1 font-bold">SPLIT:</span>
+                {['1x1', '1x2', '2x1', '2x2'].map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setPaneLayoutType(type as any)}
+                    className={`px-1.5 py-0.5 rounded transition cursor-pointer ${paneLayout.type === type ? 'bg-brand text-white font-bold' : 'hover:text-zinc-200 bg-surface-3/50'}`}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Tab content area - terminal full spreads center panel, files have custom margins */}
           <div className={`flex-grow min-h-0 overflow-hidden ${activeFileTab === null ? 'p-0' : 'p-4'}`}>
             {activeFileTab === null ? (
-              <div className="w-full h-full flex flex-col">
-                {/* Splits Layout controls - floating top right layout */}
-                <div className="flex items-center justify-between px-4 py-2 bg-surface-1 border-b border-surface-2 select-none shrink-0">
-                  <h2 className="text-xs font-bold font-mono text-zinc-400">Terminal splits cockpit</h2>
-                  <div className="flex items-center space-x-2 bg-surface-2/60 p-0.5 rounded border border-surface-3 font-mono text-[9px] text-zinc-450">
-                    <span className="px-1.5 font-bold">SPLIT:</span>
-                    <button
-                      onClick={() => setPaneLayoutType('1x1')}
-                      className={`px-2 py-0.5 rounded transition cursor-pointer ${paneLayout.type === '1x1' ? 'bg-brand text-white font-bold' : 'hover:text-zinc-200 bg-surface-3/50'}`}
-                    >
-                      1x1
-                    </button>
-                    <button
-                      onClick={() => setPaneLayoutType('1x2')}
-                      className={`px-2 py-0.5 rounded transition cursor-pointer ${paneLayout.type === '1x2' ? 'bg-brand text-white font-bold' : 'hover:text-zinc-200 bg-surface-3/50'}`}
-                    >
-                      1x2
-                    </button>
-                    <button
-                      onClick={() => setPaneLayoutType('2x1')}
-                      className={`px-2 py-0.5 rounded transition cursor-pointer ${paneLayout.type === '2x1' ? 'bg-brand text-white font-bold' : 'hover:text-zinc-200 bg-surface-3/50'}`}
-                    >
-                      2x1
-                    </button>
-                    <button
-                      onClick={() => setPaneLayoutType('2x2')}
-                      className={`px-2 py-0.5 rounded transition cursor-pointer ${paneLayout.type === '2x2' ? 'bg-brand text-white font-bold' : 'hover:text-zinc-200 bg-surface-3/50'}`}
-                    >
-                      2x2
-                    </button>
-                  </div>
-                </div>
-                <div className="flex-grow min-h-0 bg-[#070b12] overflow-hidden">
-                  <TerminalGrid />
-                </div>
+              <div className="w-full h-full bg-[#070b12] overflow-hidden">
+                <TerminalGrid />
               </div>
             ) : (
               <div className="w-full h-full">
@@ -569,7 +628,7 @@ function App() {
               </button>
               <button
                 onClick={() => setIsRightPaneExpanded(false)}
-                className="px-3 text-zinc-500 hover:text-zinc-300 transition"
+                className="px-3 text-zinc-500 hover:text-zinc-300 transition cursor-pointer"
                 title="Collapse Panel"
               >
                 <Minimize2 size={13} />
@@ -577,7 +636,7 @@ function App() {
             </div>
 
             {/* Tab content area */}
-            <div className="flex-grow overflow-y-auto p-4 min-h-0 bg-surface-1/60">
+            <div className="flex-grow overflow-y-auto p-4 min-h-0 bg-surface-1/60 font-sans">
               {activeRightPanel === 'files' ? (
                 <div className="h-full flex flex-col">
                   <h3 className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-2 font-mono">Workspace Files</h3>
@@ -620,7 +679,7 @@ function App() {
       {/* Spawn New Session Modal Dialog Overlay */}
       {showNewSessionModal && (
         <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-surface border border-surface-3 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
+          <div className="w-full max-w-md bg-surface border border-surface-3 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150 font-sans">
             {/* Modal Header */}
             <div className="bg-surface-1 px-4 py-3 border-b border-surface-2 flex items-center justify-between">
               <div className="flex items-center space-x-2 text-brand-light">
@@ -629,7 +688,7 @@ function App() {
               </div>
               <button
                 onClick={() => setShowNewSessionModal(false)}
-                className="text-zinc-500 hover:text-zinc-350 transition p-1 rounded hover:bg-surface-2 cursor-pointer"
+                className="text-zinc-500 hover:text-zinc-355 transition p-1 rounded hover:bg-surface-2 cursor-pointer"
               >
                 <X size={14} />
               </button>
