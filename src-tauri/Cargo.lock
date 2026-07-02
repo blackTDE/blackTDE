@@ -162,6 +162,7 @@ dependencies = [
 name = "black_tde"
 version = "0.1.0"
 dependencies = [
+ "base64 0.21.7",
  "portable-pty",
  "serde",
  "serde_json",
