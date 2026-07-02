@@ -37,53 +37,80 @@ async fn spawn_session(
     .await
     .map_err(|e| e.to_string())?;
 
-    // 2. Query active proxy configuration
-    let proxy_row = sqlx::query("SELECT provider, base_url FROM local_proxies WHERE active = 1")
+    // 2. Resolve provider details via virtual models mapping or default provider
+    let clean_cmd = command.split(/[/\\]/).last().unwrap_or(&command).to_lowercase();
+    let virtual_model_row = sqlx::query(
+        "SELECT provider, model FROM proxy_virtual_models WHERE name = $1"
+    )
+    .bind(&clean_cmd)
+    .fetch_optional(&*pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut provider_name = None;
+    let mut model_override = None;
+
+    if let Some(row) = virtual_model_row {
+        provider_name = Some(row.get::<String, _>("provider"));
+        model_override = Some(row.get::<String, _>("model"));
+    } else {
+        // Fallback to default provider
+        let default_prov_row = sqlx::query(
+            "SELECT name, default_model FROM proxy_providers WHERE is_default = 1"
+        )
         .fetch_optional(&*pool)
         .await
         .map_err(|e| e.to_string())?;
 
+        if let Some(row) = default_prov_row {
+            provider_name = Some(row.get::<String, _>("name"));
+            model_override = Some(row.get::<String, _>("default_model"));
+        }
+    }
+
     let mut envs = Vec::new();
 
-    if let Some(row) = proxy_row {
-        let proxy_provider: String = row.get("provider");
-        let proxy_url: String = row.get("base_url");
-        
-        // If local proxy is active, pre-inject overrides for base URL envs
-        if provider == "anthropic" || command == "claude" || proxy_provider == "ollama" || proxy_provider == "lm-studio" {
-            envs.push(("ANTHROPIC_BASE_URL".to_string(), format!("{}/anthropic", proxy_url.trim_end_matches('/'))));
-            envs.push(("OPENAI_BASE_URL".to_string(), format!("{}/v1", proxy_url.trim_end_matches('/'))));
-        }
-    }
+    if let Some(p_name) = provider_name {
+        let provider_row = sqlx::query(
+            "SELECT type, base_url, api_key FROM proxy_providers WHERE name = $1"
+        )
+        .bind(&p_name)
+        .fetch_optional(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
 
-    // 3. Query provider credentials from database for environment injection
-    if !provider.is_empty() && provider != "none" {
-        let key_row = sqlx::query("SELECT api_key FROM provider_keys WHERE provider = $1")
-            .bind(&provider)
-            .fetch_optional(&*pool)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        if let Some(row) = key_row {
+        if let Some(row) = provider_row {
+            let p_type: String = row.get("type");
+            let base_url: String = row.get("base_url");
             let api_key: String = row.get("api_key");
-            let env_key = match provider.as_str() {
-                "anthropic" => "ANTHROPIC_API_KEY",
-                "openai" => "OPENAI_API_KEY",
-                "gemini" => "GEMINI_API_KEY",
-                "deepseek" => "DEEPSEEK_API_KEY",
-                _ => "API_KEY",
-            };
-            envs.push((env_key.to_string(), api_key));
+
+            if p_type == "openai" {
+                envs.push(("OPENAI_BASE_URL".to_string(), base_url.clone()));
+                envs.push(("OPENAI_API_KEY".to_string(), if api_key.is_empty() { "dummy-proxy-key".to_string() } else { api_key.clone() }));
+                
+                // If it's Claude CLI, direct it to the openai proxy endpoint but using anthropic paths
+                if clean_cmd == "claude" {
+                    envs.push(("ANTHROPIC_BASE_URL".to_string(), format!("{}/anthropic", base_url.trim_end_matches('/'))));
+                    envs.push(("ANTHROPIC_API_KEY".to_string(), if api_key.is_empty() { "dummy-proxy-key".to_string() } else { api_key.clone() }));
+                }
+            } else if p_type == "anthropic" {
+                envs.push(("ANTHROPIC_BASE_URL".to_string(), base_url.clone()));
+                envs.push(("ANTHROPIC_API_KEY".to_string(), if api_key.is_empty() { "dummy-proxy-key".to_string() } else { api_key.clone() }));
+                
+                // Also set OpenAI compatibility envs if Aider/other clients need it
+                envs.push(("OPENAI_BASE_URL".to_string(), base_url.clone()));
+                envs.push(("OPENAI_API_KEY".to_string(), if api_key.is_empty() { "dummy-proxy-key".to_string() } else { api_key.clone() }));
+            }
         }
     }
 
-    // Inject dummy fallback keys if missing, to prevent CLI crashes when routing to local LLMs
+    // Ensure fallback dummy keys are injected if envs are empty (to prevent startup validation errors)
     let has_anthropic_key = envs.iter().any(|(k, _)| k == "ANTHROPIC_API_KEY");
-    if !has_anthropic_key && (provider == "anthropic" || command == "claude") {
+    if !has_anthropic_key && (provider == "anthropic" || clean_cmd == "claude") {
         envs.push(("ANTHROPIC_API_KEY".to_string(), "dummy-proxy-key".to_string()));
     }
     let has_openai_key = envs.iter().any(|(k, _)| k == "OPENAI_API_KEY");
-    if !has_openai_key && (provider == "openai" || command == "aider") {
+    if !has_openai_key && (provider == "openai" || clean_cmd == "aider") {
         envs.push(("OPENAI_API_KEY".to_string(), "dummy-proxy-key".to_string()));
     }
 
