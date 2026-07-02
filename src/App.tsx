@@ -37,10 +37,19 @@ function App() {
     openFiles,
     activeFileTab,
     closeFile,
-    setActiveFileTab
+    setActiveFileTab,
+    activeWorkspace,
+    workspaces,
+    setWorkspace,
+    setWorkspaces
   } = useWorkspaceStore();
 
   const [isRightPaneExpanded, setIsRightPaneExpanded] = useState(true);
+
+  // New Project Form parameters
+  const [showNewProjectForm, setShowNewProjectForm] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectPath, setNewProjectPath] = useState('');
 
   // Spawning process parameters
   const [cmdInput, setCmdInput] = useState('/bin/zsh');
@@ -61,26 +70,91 @@ function App() {
     }
   };
 
-  // Load Git Branch name on load
-  const loadGitBranch = async () => {
+  const loadWorkspaces = async () => {
     try {
-      const branchName = await invoke<string>('get_git_branch', { cwd: workspacePath });
-      setGitBranch(branchName);
-    } catch (e) {
-      console.error(e);
+      let list = await invoke<any[]>('list_workspaces');
+      if (list.length === 0) {
+        // Create default workspace entry pointing to this repository
+        await invoke('create_workspace', {
+          id: 'project_default',
+          name: 'black_tde',
+          path: workspacePath
+        });
+        list = await invoke<any[]>('list_workspaces');
+      }
+      setWorkspaces(list);
+
+      // Default select the first project if no project is active yet
+      if (!activeWorkspace && list.length > 0) {
+        handleSelectProject(list[0]);
+      }
+    } catch (err) {
+      console.error('Failed to load workspaces:', err);
+    }
+  };
+
+  const handleSelectProject = (ws: any) => {
+    setWorkspace(ws);
+    setCwdInput(ws.path);
+    
+    // Reload git branch for the selected project
+    invoke<string>('get_git_branch', { cwd: ws.path })
+      .then(setGitBranch)
+      .catch((err) => {
+        console.error(err);
+        setGitBranch('no-git');
+      });
+  };
+
+  const handleCreateProject = async () => {
+    if (!newProjectName.trim() || !newProjectPath.trim()) {
+      alert('Please fill out both Project Name and absolute Path fields.');
+      return;
+    }
+    const id = 'project_' + Math.random().toString(36).substring(2, 11);
+    try {
+      await invoke('create_workspace', {
+        id,
+        name: newProjectName.trim(),
+        path: newProjectPath.trim()
+      });
+      setNewProjectName('');
+      setNewProjectPath('');
+      setShowNewProjectForm(false);
+      await loadWorkspaces();
+
+      // Automatically select the newly created project
+      const list = await invoke<any[]>('list_workspaces');
+      const newlyCreated = list.find(w => w.id === id);
+      if (newlyCreated) {
+        handleSelectProject(newlyCreated);
+      }
+    } catch (error) {
+      alert('Failed to create project: ' + error);
+    }
+  };
+
+  const handleDeleteProject = async (id: string) => {
+    try {
+      await invoke('delete_workspace', { id });
+      await loadWorkspaces();
+      if (activeWorkspace?.id === id) {
+        setWorkspace(null);
+      }
+    } catch (error) {
+      alert('Failed to delete project: ' + error);
     }
   };
 
   useEffect(() => {
-    loadGitBranch();
+    loadWorkspaces();
     loadPastSessions();
-    // Default right panel to files tree list
     setActiveRightPanel('files');
   }, []);
 
   const handleCreateSession = async () => {
     const newSessionId = 'session_' + Math.random().toString(36).substring(2, 11);
-    const mockWorkspaceId = 'default_workspace';
+    const mockWorkspaceId = activeWorkspace?.id || 'project_default';
     const args = argsInput.trim() ? argsInput.split(/\s+/) : [];
 
     try {
@@ -106,7 +180,6 @@ function App() {
       setPaneSessionId(paneLayout.activePaneIndex, newSessionId);
       setResumeSessionId('');
       loadPastSessions();
-      // Auto-switch to terminal splits tab when launching process
       setActiveFileTab(null);
     } catch (error) {
       alert('Failed to spawn session: ' + error);
@@ -123,12 +196,16 @@ function App() {
     }
   };
 
+  // Filters sessions list & past sessions to those matching active workspace path
+  const filteredPastSessions = pastSessions.filter(s => s.cwd === activeWorkspace?.path);
+  const filteredActiveSessions = Object.values(sessions).filter(s => s.cwd === activeWorkspace?.path);
+
   return (
     <div className="flex h-screen w-screen bg-surface text-zinc-100 overflow-hidden font-sans flex-col select-none">
       {/* Main Container */}
       <div className="flex flex-1 min-h-0 w-full overflow-hidden">
         
-        {/* Left Sidebar Panel */}
+        {/* Left Sidebar Panel (Projects & Session Launchers) */}
         <div className="w-80 border-r border-surface-2 bg-surface-1 flex flex-col select-none overflow-hidden">
           {/* Header */}
           <div className="p-4 border-b border-surface-2 flex items-center justify-between">
@@ -147,143 +224,227 @@ function App() {
             </div>
           </div>
 
-          {/* Left panel forms and sessions */}
+          {/* Left panel body: Projects List & Active Project Session Spawner */}
           <div className="flex-grow overflow-y-auto flex flex-col divide-y divide-surface-2 min-h-0">
             
-            {/* Spawn Process Form */}
-            <div className="p-4 flex flex-col space-y-3 bg-surface/30">
-              <h2 className="text-[10px] font-bold tracking-wider text-zinc-400 uppercase font-mono">Spawn Agent CLI</h2>
-              <div className="space-y-2.5 text-xs">
-                <div>
-                  <label className="block text-zinc-400 font-mono mb-1 font-semibold">COMMAND</label>
-                  <input
-                    type="text"
-                    value={cmdInput}
-                    onChange={(e) => setCmdInput(e.target.value)}
-                    className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-zinc-400 font-mono mb-1 font-semibold">ARGS</label>
-                  <input
-                    type="text"
-                    value={argsInput}
-                    onChange={(e) => setArgsInput(e.target.value)}
-                    placeholder="e.g. -l"
-                    className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-zinc-400 font-mono mb-1 font-semibold">DIRECTORY</label>
-                  <input
-                    type="text"
-                    value={cwdInput}
-                    onChange={(e) => setCwdInput(e.target.value)}
-                    className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-zinc-400 font-mono mb-1 font-bold">RESUME PAST CONVERSATION</label>
-                  <select
-                    value={resumeSessionId}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setResumeSessionId(val);
-                      if (val) {
-                        const selected = pastSessions.find(s => s.remote_session_id === val);
-                        if (selected) {
-                          setCmdInput(selected.agent_type);
-                          setCwdInput(selected.cwd);
-                          if (selected.agent_type === 'claude') {
-                            setSpawnProvider('anthropic');
-                          } else if (selected.agent_type === 'aider') {
-                            setSpawnProvider('openai');
-                          }
-                        }
-                      }
-                    }}
-                    className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono cursor-pointer"
-                  >
-                    <option value="">Start Fresh (No Resume)</option>
-                    {pastSessions.map(s => (
-                      <option key={s.id} value={s.remote_session_id}>
-                        {s.agent_type} - {s.remote_session_id.substring(0, 8)}... ({s.cwd.split('/').pop()})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-zinc-400 font-mono mb-1 font-bold">PROVIDER (ENV KEY)</label>
-                  <select
-                    value={spawnProvider}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSpawnProvider(val);
-                      if (val === 'anthropic') {
-                        setCmdInput('claude');
-                      } else if (val === 'openai') {
-                        setCmdInput('aider');
-                      } else if (val === 'none') {
-                        setCmdInput('/bin/zsh');
-                      }
-                    }}
-                    className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono cursor-pointer"
-                  >
-                    <option value="none">None (Shell)</option>
-                    <option value="anthropic">Anthropic (Claude)</option>
-                    <option value="openai">OpenAI (Aider)</option>
-                    <option value="gemini">Google Gemini</option>
-                    <option value="deepseek">DeepSeek API</option>
-                  </select>
-                </div>
+            {/* Project List Section */}
+            <div className="flex-[4] p-4 flex flex-col min-h-0 overflow-y-auto space-y-2">
+              <div className="flex items-center justify-between">
+                <h2 className="text-[10px] font-bold tracking-wider text-zinc-400 uppercase font-mono">Projects (Workspaces)</h2>
                 <button
-                  onClick={handleCreateSession}
-                  className="w-full flex items-center justify-center space-x-1.5 bg-brand hover:bg-brand/90 active:bg-brand text-white font-semibold py-2 px-3 rounded shadow shadow-brand/20 transition text-xs cursor-pointer"
+                  onClick={() => setShowNewProjectForm(!showNewProjectForm)}
+                  className="text-zinc-500 hover:text-brand-light p-1 transition cursor-pointer"
+                  title="Create New Project"
                 >
-                  <Plus size={13} />
-                  <span>Spawn Session</span>
+                  <Plus size={14} />
                 </button>
               </div>
-            </div>
 
-            {/* Session list */}
-            <div className="p-4 space-y-2 flex-grow overflow-y-auto min-h-0 bg-surface-1/40">
-              <h2 className="text-[10px] font-bold tracking-wider text-zinc-400 uppercase mb-2 font-mono">Sessions List</h2>
-              {Object.keys(sessions).length === 0 ? (
-                <div className="text-xs text-zinc-500 italic p-3 text-center bg-surface-2/20 rounded border border-surface-3/30 font-mono">
-                  No active sessions. Spawn one above!
+              {/* Inline Create Project Form */}
+              {showNewProjectForm && (
+                <div className="p-3 bg-surface border border-surface-3 rounded space-y-2.5 text-xs">
+                  <div>
+                    <label className="block text-[10px] text-zinc-500 font-mono mb-1">PROJECT NAME</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. My Website"
+                      value={newProjectName}
+                      onChange={(e) => setNewProjectName(e.target.value)}
+                      className="w-full bg-surface-2 border border-surface-3 rounded px-2 py-1 text-zinc-200 focus:outline-none focus:border-brand/70 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-zinc-500 font-mono mb-1">ABSOLUTE DIRECTORY PATH</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. /Users/ray/projects/site"
+                      value={newProjectPath}
+                      onChange={(e) => setNewProjectPath(e.target.value)}
+                      className="w-full bg-surface-2 border border-surface-3 rounded px-2 py-1 text-zinc-200 focus:outline-none focus:border-brand/70 font-mono"
+                    />
+                  </div>
+                  <div className="flex space-x-2 pt-1">
+                    <button
+                      onClick={handleCreateProject}
+                      className="flex-1 bg-brand text-white font-semibold py-1 rounded text-[11px] hover:bg-brand/90 cursor-pointer"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => setShowNewProjectForm(false)}
+                      className="flex-1 bg-surface-3 text-zinc-400 font-semibold py-1 rounded text-[11px] hover:bg-surface-2 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
-              ) : (
-                Object.values(sessions).map((session) => (
+              )}
+
+              {/* Projects List view */}
+              <div className="space-y-1.5 overflow-y-auto">
+                {workspaces.map((ws) => (
                   <div
-                    key={session.id}
-                    onClick={() => setActiveSession(session.id)}
-                    className={`flex items-center justify-between p-2 rounded cursor-pointer transition border ${
-                      activeSessionId === session.id
+                    key={ws.id}
+                    onClick={() => handleSelectProject(ws)}
+                    className={`group flex items-center justify-between p-2 rounded-lg border transition cursor-pointer ${
+                      activeWorkspace?.id === ws.id
                         ? 'bg-brand/10 border-brand/40 text-brand-light font-semibold'
-                        : 'bg-surface-2/30 border-transparent hover:bg-surface-2 text-zinc-300'
+                        : 'bg-surface-2/30 border-transparent hover:bg-surface-2/60 text-zinc-300'
                     }`}
                   >
                     <div className="flex items-center space-x-2 truncate">
-                      <SquareTerminal size={13} className={activeSessionId === session.id ? 'text-brand-light' : 'text-zinc-500'} />
+                      <Folder size={14} className={activeWorkspace?.id === ws.id ? 'text-brand-light' : 'text-zinc-500'} />
                       <div className="truncate">
-                        <p className="text-xs font-mono truncate font-medium">{session.agentType}</p>
-                        <p className="text-[9px] text-zinc-500 font-mono truncate">{session.id}</p>
+                        <p className="text-xs truncate font-mono">{ws.name}</p>
+                        <p className="text-[9px] text-zinc-500 font-mono truncate">{ws.path}</p>
                       </div>
                     </div>
+                    {ws.id !== 'project_default' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteProject(ws.id);
+                        }}
+                        className="p-1 opacity-0 group-hover:opacity-100 hover:text-error text-zinc-500 rounded transition cursor-pointer"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Active Workspace details and spawn section */}
+            <div className="flex-[6] p-4 flex flex-col min-h-0 overflow-y-auto space-y-3 bg-surface/20">
+              <div className="border-b border-surface-3 pb-1">
+                <h3 className="text-[10px] font-bold text-zinc-400 font-mono uppercase tracking-wider">
+                  Active Project: <span className="text-brand-light">{activeWorkspace?.name || 'NoneSelected'}</span>
+                </h3>
+              </div>
+
+              {activeWorkspace ? (
+                <>
+                  {/* Spawn Agent form */}
+                  <div className="space-y-2.5 text-xs">
+                    <div>
+                      <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-semibold">AGENT CLI COMMAND</label>
+                      <input
+                        type="text"
+                        value={cmdInput}
+                        onChange={(e) => setCmdInput(e.target.value)}
+                        className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-semibold">ARGS</label>
+                        <input
+                          type="text"
+                          value={argsInput}
+                          onChange={(e) => setArgsInput(e.target.value)}
+                          placeholder="e.g. -l"
+                          className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-semibold">PROVIDER</label>
+                        <select
+                          value={spawnProvider}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setSpawnProvider(val);
+                            if (val === 'anthropic') {
+                              setCmdInput('claude');
+                            } else if (val === 'openai') {
+                              setCmdInput('aider');
+                            } else if (val === 'none') {
+                              setCmdInput('/bin/zsh');
+                            }
+                          }}
+                          className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono cursor-pointer"
+                        >
+                          <option value="none">None (Shell)</option>
+                          <option value="anthropic">Anthropic (Claude)</option>
+                          <option value="openai">OpenAI (Aider)</option>
+                          <option value="gemini">Google Gemini</option>
+                          <option value="deepseek">DeepSeek API</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Resume Conversation */}
+                    <div>
+                      <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-bold">RESUME CONVERSATION</label>
+                      <select
+                        value={resumeSessionId}
+                        onChange={(e) => setResumeSessionId(e.target.value)}
+                        className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono cursor-pointer"
+                      >
+                        <option value="">Start Fresh (No Resume)</option>
+                        {filteredPastSessions.map(s => (
+                          <option key={s.id} value={s.remote_session_id}>
+                            {s.agent_type} - {s.remote_session_id.substring(0, 8)}...
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleTerminateSession(session.id);
-                      }}
-                      className="p-1 hover:bg-error/25 hover:text-error text-zinc-500 rounded transition cursor-pointer"
+                      onClick={handleCreateSession}
+                      className="w-full flex items-center justify-center space-x-1.5 bg-brand hover:bg-brand/90 active:bg-brand text-white font-semibold py-2 px-3 rounded shadow shadow-brand/20 transition text-xs cursor-pointer"
                     >
-                      <Trash2 size={12} />
+                      <Plus size={13} />
+                      <span>Spawn Session</span>
                     </button>
                   </div>
-                ))
+
+                  {/* Sessions List */}
+                  <div className="pt-2 flex-grow overflow-y-auto min-h-0 space-y-1.5">
+                    <h4 className="text-[10px] font-bold tracking-wider text-zinc-400 uppercase font-mono">Active Project Sessions</h4>
+                    {filteredActiveSessions.length === 0 ? (
+                      <div className="text-[11px] text-zinc-500 italic p-3 text-center bg-surface-2/20 rounded border border-surface-3/30 font-mono">
+                        No active sessions. Spawn one above!
+                      </div>
+                    ) : (
+                      filteredActiveSessions.map((session) => (
+                        <div
+                          key={session.id}
+                          onClick={() => setActiveSession(session.id)}
+                          className={`flex items-center justify-between p-2.5 rounded border transition cursor-pointer ${
+                            activeSessionId === session.id
+                              ? 'bg-brand/10 border-brand/40 text-brand-light font-semibold'
+                              : 'bg-surface-2/30 border-transparent hover:bg-surface-2 text-zinc-300'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2 truncate">
+                            <SquareTerminal size={13} className={activeSessionId === session.id ? 'text-brand-light' : 'text-zinc-500'} />
+                            <div className="truncate">
+                              <p className="text-xs font-mono truncate font-medium">{session.agentType}</p>
+                              <p className="text-[9px] text-zinc-500 font-mono truncate">{session.id}</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleTerminateSession(session.id);
+                            }}
+                            className="p-1 hover:bg-error/25 hover:text-error text-zinc-500 rounded transition cursor-pointer"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="text-xs text-zinc-500 italic p-4 text-center">
+                  Select a project workspace on top to spawn sessions.
+                </div>
               )}
             </div>
+
           </div>
         </div>
 
@@ -433,7 +594,8 @@ function App() {
                 <div className="h-full flex flex-col">
                   <h3 className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-2 font-mono">Workspace Files</h3>
                   <div className="flex-grow overflow-y-auto">
-                    <FileTree rootPath={workspacePath} />
+                    {/* Rebind root path dynamically to active project/workspace */}
+                    <FileTree rootPath={activeWorkspace?.path || workspacePath} />
                   </div>
                 </div>
               ) : activeRightPanel === 'git' ? (
@@ -473,7 +635,7 @@ function App() {
         <div className="flex items-center space-x-4">
           <span className="flex items-center space-x-1">
             <HardDrive size={10} className="text-brand-light" />
-            <span>Workspace: <strong className="text-zinc-300">black_tde</strong></span>
+            <span>Workspace: <strong className="text-zinc-300">{activeWorkspace?.name || 'None'}</strong></span>
           </span>
           <span className="flex items-center space-x-1">
             <GitBranch size={10} className="text-brand-light" />
