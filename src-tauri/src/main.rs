@@ -190,6 +190,42 @@ async fn terminate_session(
     Ok(())
 }
 
+#[derive(serde::Serialize)]
+pub struct PastSession {
+    pub id: String,
+    pub agent_type: String,
+    pub cwd: String,
+    pub remote_session_id: Option<String>,
+    pub status: String,
+}
+
+#[tauri::command]
+async fn list_past_sessions(
+    pool: State<'_, SqlitePool>,
+) -> Result<Vec<PastSession>, String> {
+    let rows = sqlx::query("SELECT id, agent_type, cwd, remote_session_id, status FROM sessions ORDER BY id DESC")
+        .fetch_all(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut entries = Vec::new();
+    for row in rows {
+        let id: String = row.get("id");
+        let agent_type: String = row.get("agent_type");
+        let cwd: String = row.get("cwd");
+        let remote_session_id: Option<String> = row.get("remote_session_id");
+        let status: String = row.get("status");
+        entries.push(PastSession {
+            id,
+            agent_type,
+            cwd,
+            remote_session_id,
+            status,
+        });
+    }
+    Ok(entries)
+}
+
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -229,7 +265,8 @@ fn main() {
             settings::get_local_proxies,
             settings::save_mcp_server,
             settings::get_mcp_servers,
-            settings::check_cli_version
+            settings::check_cli_version,
+            list_past_sessions
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
