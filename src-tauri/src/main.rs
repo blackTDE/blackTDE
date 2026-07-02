@@ -257,6 +257,55 @@ async fn get_session_history(
     Ok(history)
 }
 
+#[tauri::command]
+async fn detect_available_clis() -> Result<Vec<String>, String> {
+    let common_commands = vec![
+        "zsh", "bash", "sh", "fish",
+        "claude", "aider", "git", "gh", "node", "python3"
+    ];
+
+    let path_var = std::env::var("PATH").unwrap_or_default();
+    let paths: Vec<&str> = path_var.split(':').collect();
+
+    let mut detected = Vec::new();
+    for cmd in common_commands {
+        let mut found = false;
+        for p in &paths {
+            let path = std::path::Path::new(p).join(cmd);
+            if path.exists() && path.is_file() {
+                found = true;
+                break;
+            }
+        }
+        
+        // Check standard macOS absolute locations as fallback (in case PATH is not fully populated in the environment context)
+        if !found {
+            let fallbacks = match cmd {
+                "zsh" => vec!["/bin/zsh", "/usr/bin/zsh"],
+                "bash" => vec!["/bin/bash", "/usr/bin/bash"],
+                "sh" => vec!["/bin/sh", "/usr/bin/sh"],
+                "fish" => vec!["/usr/local/bin/fish", "/opt/homebrew/bin/fish"],
+                "claude" => vec!["/usr/local/bin/claude", "/opt/homebrew/bin/claude"],
+                "aider" => vec!["/usr/local/bin/aider", "/opt/homebrew/bin/aider"],
+                "git" => vec!["/usr/bin/git", "/usr/local/bin/git"],
+                _ => vec![],
+            };
+            for fb in fallbacks {
+                if std::path::Path::new(fb).exists() {
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        if found {
+            detected.push(cmd.to_string());
+        }
+    }
+
+    Ok(detected)
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct WorkspaceEntry {
     pub id: String,
@@ -411,6 +460,7 @@ fn main() {
             settings::delete_proxy_virtual_model,
             list_past_sessions,
             list_workspaces,
+            detect_available_clis,
             create_workspace,
             delete_workspace,
             select_directory
