@@ -40,6 +40,7 @@ function App() {
     paneLayout,
     setPaneLayoutType,
     setPaneSessionId,
+    setActivePaneIndex,
     openFiles,
     activeFileTab,
     closeFile,
