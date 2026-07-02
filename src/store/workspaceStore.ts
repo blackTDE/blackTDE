@@ -1,38 +1,39 @@
 import { create } from 'zustand';
 
-export interface Session {
-  id: string;
-  agentType: string;
-  cwd: string;
-  status: 'active' | 'suspended' | 'terminated';
-}
-
-export interface Workspace {
+export interface WorkspaceEntry {
   id: string;
   name: string;
   path: string;
 }
 
+export interface SessionInfo {
+  id: string;
+  agentType: string; // "claude" | "aider" | "custom"
+  cwd: string;
+  provider: string; // "anthropic" | "openai" | "gemini" | "deepseek"
+  cmd: string;
+  args: string[];
+}
+
 export interface GitFileStatus {
   path: string;
-  status: string;
+  status: string; // "M" | "A" | "D" | "??"
   staged: boolean;
 }
 
 export interface PaneLayout {
   type: '1x1' | '1x2' | '2x1' | '2x2';
   activePaneIndex: number;
-  panes: (string | null)[];
+  panes: (string | null)[]; // 4 slots max for sessionId
 }
 
 interface WorkspaceState {
-  // Existing state
-  activeWorkspace: Workspace | null;
-  workspaces: Workspace[];
-  sessions: Record<string, Session>;
+  activeWorkspace: WorkspaceEntry | null;
+  workspaces: WorkspaceEntry[];
+  sessions: Record<string, SessionInfo>;
   activeSessionId: string | null;
   
-  // New state for file operations and Git
+  // File details preview
   activeFilePath: string | null;
   activeFileContent: string | null;
   activeRightPanel: 'files' | 'git' | 'settings' | 'none';
@@ -49,13 +50,16 @@ interface WorkspaceState {
   // Storage of tabs grouped by project workspace ID
   openFilesByProject: Record<string, { path: string; name: string }[]>;
   activeFileTabByProject: Record<string, string | null>;
+  
+  // Storage of pane layouts grouped by project workspace ID
+  paneLayoutsByProject: Record<string, PaneLayout>;
 
   // Actions
-  setWorkspace: (ws: Workspace | null) => void;
-  setWorkspaces: (wsList: Workspace[]) => void;
-  addWorkspace: (ws: Workspace) => void;
+  setWorkspace: (ws: WorkspaceEntry | null) => void;
+  setWorkspaces: (wsList: WorkspaceEntry[]) => void;
+  addWorkspace: (ws: WorkspaceEntry) => void;
   removeWorkspace: (id: string) => void;
-  addSession: (session: Session) => void;
+  addSession: (session: SessionInfo) => void;
   setActiveSession: (id: string | null) => void;
   removeSession: (id: string) => void;
   
@@ -97,6 +101,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   openFilesByProject: {},
   activeFileTabByProject: {},
+  paneLayoutsByProject: {},
 
   setWorkspace: (ws) =>
     set((state) => {
@@ -104,7 +109,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         return {
           activeWorkspace: null,
           openFiles: [],
-          activeFileTab: null
+          activeFileTab: null,
+          paneLayout: {
+            type: '1x1',
+            activePaneIndex: 0,
+            panes: [null, null, null, null],
+          }
         };
       }
       // Load this specific project's tabs
@@ -112,12 +122,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       const wsActiveFileTab = state.activeFileTabByProject[ws.id] !== undefined
         ? state.activeFileTabByProject[ws.id]
         : null;
+      const wsPaneLayout = state.paneLayoutsByProject[ws.id] || {
+        type: '1x1',
+        activePaneIndex: 0,
+        panes: [null, null, null, null],
+      };
 
       return {
         activeWorkspace: ws,
         openFiles: wsOpenFiles,
         activeFileTab: wsActiveFileTab,
-        activeFilePath: wsActiveFileTab
+        activeFilePath: wsActiveFileTab,
+        paneLayout: wsPaneLayout
       };
     }),
 
@@ -127,13 +143,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     set((state) => {
       const newOpenFilesByProj = { ...state.openFilesByProject };
       const newActiveFileTabByProj = { ...state.activeFileTabByProject };
+      const newPaneLayoutsByProject = { ...state.paneLayoutsByProject };
       delete newOpenFilesByProj[id];
       delete newActiveFileTabByProj[id];
+      delete newPaneLayoutsByProject[id];
 
       return {
         workspaces: state.workspaces.filter((w) => w.id !== id),
         openFilesByProject: newOpenFilesByProj,
-        activeFileTabByProject: newActiveFileTabByProj
+        activeFileTabByProject: newActiveFileTabByProj,
+        paneLayoutsByProject: newPaneLayoutsByProject
       };
     }),
 
@@ -151,11 +170,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       
       // Clean up references in split panes
       const newPanes = state.paneLayout.panes.map(p => p === id ? null : p);
+      const newPaneLayout = { ...state.paneLayout, panes: newPanes };
+
+      const wsId = state.activeWorkspace?.id || 'project_default';
+      const newPaneLayoutsByProject = {
+        ...state.paneLayoutsByProject,
+        [wsId]: newPaneLayout
+      };
 
       return {
         sessions: newSessions,
         activeSessionId: state.activeSessionId === id ? null : state.activeSessionId,
-        paneLayout: { ...state.paneLayout, panes: newPanes },
+        paneLayout: newPaneLayout,
+        paneLayoutsByProject: newPaneLayoutsByProject,
       };
     }),
     
@@ -166,25 +193,47 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setGitBranch: (branch) => set({ gitBranch: branch }),
 
   setPaneLayoutType: (type) =>
-    set((state) => ({
-      paneLayout: { ...state.paneLayout, type },
-    })),
+    set((state) => {
+      const newPaneLayout = { ...state.paneLayout, type };
+      const wsId = state.activeWorkspace?.id || 'project_default';
+      return {
+        paneLayout: newPaneLayout,
+        paneLayoutsByProject: {
+          ...state.paneLayoutsByProject,
+          [wsId]: newPaneLayout
+        }
+      };
+    }),
 
   setPaneSessionId: (index, sessionId) =>
     set((state) => {
       const newPanes = [...state.paneLayout.panes];
       newPanes[index] = sessionId;
+      const newPaneLayout = { ...state.paneLayout, panes: newPanes };
+      const wsId = state.activeWorkspace?.id || 'project_default';
       return {
-        paneLayout: { ...state.paneLayout, panes: newPanes },
+        paneLayout: newPaneLayout,
         activeSessionId: sessionId || state.activeSessionId,
+        paneLayoutsByProject: {
+          ...state.paneLayoutsByProject,
+          [wsId]: newPaneLayout
+        }
       };
     }),
 
   setActivePaneIndex: (activePaneIndex) =>
-    set((state) => ({
-      paneLayout: { ...state.paneLayout, activePaneIndex },
-      activeSessionId: state.paneLayout.panes[activePaneIndex] || state.activeSessionId,
-    })),
+    set((state) => {
+      const newPaneLayout = { ...state.paneLayout, activePaneIndex };
+      const wsId = state.activeWorkspace?.id || 'project_default';
+      return {
+        paneLayout: newPaneLayout,
+        activeSessionId: state.paneLayout.panes[activePaneIndex] || state.activeSessionId,
+        paneLayoutsByProject: {
+          ...state.paneLayoutsByProject,
+          [wsId]: newPaneLayout
+        }
+      };
+    }),
 
   openFile: (path, name) =>
     set((state) => {
