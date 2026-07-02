@@ -54,3 +54,11 @@ pub fn read_file_content(path: String) -> Result<String, String> {
 pub fn write_file_content(path: String, content: String) -> Result<(), String> {
     fs::write(path, content).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub fn read_file_base64(path: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = fs::read(path).map_err(|e| e.to_string())?;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+    Ok(b64)
+}
