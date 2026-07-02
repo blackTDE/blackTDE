@@ -1,18 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import MonacoEditor from '@monaco-editor/react';
-import { GitBranch, RefreshCw, Plus, Minus, Send, AlertCircle } from 'lucide-react';
+import { GitBranch, RefreshCw, Plus, Minus, Send, ChevronDown, ChevronRight, FileText, Clock, User } from 'lucide-react';
 import { useWorkspaceStore, GitFileStatus } from '../store/workspaceStore';
 
+interface GitCommit {
+  hash: string;
+  author: string;
+  date: string;
+  message: string;
+}
+
 export const GitPanel: React.FC = () => {
-  const { gitFiles, setGitFiles, gitBranch, setGitBranch } = useWorkspaceStore();
+  const { gitFiles, setGitFiles, gitBranch, setGitBranch, activeWorkspace, openFile } = useWorkspaceStore();
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [diffContent, setDiffContent] = useState<string>('');
+  const [, setDiffContent] = useState<string>('');
   const [commitMessage, setCommitMessage] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // We operate inside the active workspace repository
-  const workspacePath = '/Users/ray/git-repo/black_tde';
+  // Git Commit History States
+  const [commits, setCommits] = useState<GitCommit[]>([]);
+  const [expandedCommit, setExpandedCommit] = useState<string | null>(null);
+  const [commitFiles, setCommitFiles] = useState<Record<string, GitFileStatus[]>>({});
+
+  const workspacePath = activeWorkspace?.path || '/Users/ray/git-repo/black_tde';
 
   const loadGitStatus = async () => {
     setIsLoading(true);
@@ -23,9 +33,12 @@ export const GitPanel: React.FC = () => {
       const branchName = await invoke<string>('get_git_branch', { cwd: workspacePath });
       setGitBranch(branchName);
 
+      // Load Git Commit History
+      const log = await invoke<GitCommit[]>('get_git_commit_log', { cwd: workspacePath });
+      setCommits(log);
+
       // Refresh diff if a file is currently selected
       if (selectedFile) {
-        // If selected file is no longer modified, clear it
         if (!statusFiles.some(f => f.path === selectedFile)) {
           setSelectedFile(null);
           setDiffContent('');
@@ -34,7 +47,7 @@ export const GitPanel: React.FC = () => {
         }
       }
     } catch (err) {
-      console.error('Failed to load Git status:', err);
+      console.error('Failed to load Git status/history:', err);
     } finally {
       setIsLoading(false);
     }
@@ -82,15 +95,36 @@ export const GitPanel: React.FC = () => {
     }
   };
 
+  const handleCommitClick = async (hash: string) => {
+    if (expandedCommit === hash) {
+      setExpandedCommit(null);
+      return;
+    }
+    setExpandedCommit(hash);
+    if (!commitFiles[hash]) {
+      try {
+        const files = await invoke<GitFileStatus[]>('get_git_commit_files', { cwd: workspacePath, hash });
+        setCommitFiles(prev => ({ ...prev, [hash]: files }));
+      } catch (err) {
+        console.error('Failed to load commit files:', err);
+      }
+    }
+  };
+
+  const handleCommitFileClick = (hash: string, filePath: string) => {
+    const fileName = filePath.split('/').pop() || filePath;
+    openFile(`git-diff:${hash}:${filePath}`, fileName);
+  };
+
   useEffect(() => {
     loadGitStatus();
-  }, []);
+  }, [workspacePath]);
 
   const staged = gitFiles.filter(f => f.staged);
   const unstaged = gitFiles.filter(f => !f.staged);
 
   const getStatusColor = (status: string) => {
-    switch (status) {
+    switch (status.trim()) {
       case 'M':
         return 'text-amber-400';
       case 'A':
@@ -121,157 +155,193 @@ export const GitPanel: React.FC = () => {
         </button>
       </div>
 
-      {/* Main Grid: Status List & Diff Viewer */}
-      <div className="flex-1 flex flex-col min-h-0">
-        <div className="grid grid-cols-1 lg:grid-cols-2 flex-grow min-h-0">
-          
-          {/* Left Sub-Panel: Git Changes List */}
-          <div className="border-r border-slate-850 p-3 flex flex-col space-y-4 overflow-y-auto select-none">
-            {/* Staged Changes Group */}
-            <div>
-              <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between">
-                <span>Staged Changes</span>
-                <span className="bg-indigo-500/15 text-indigo-400 px-1.5 py-0.2 rounded font-mono text-[9px]">{staged.length}</span>
-              </h3>
-              {staged.length === 0 ? (
-                <div className="text-[10px] text-slate-500 italic px-2 py-1">No staged changes</div>
-              ) : (
-                <div className="space-y-1">
-                  {staged.map(file => (
-                    <div
-                      key={file.path}
-                      onClick={() => {
-                        setSelectedFile(file.path);
-                        loadFileDiff(file.path);
-                      }}
-                      className={`flex items-center justify-between p-1.5 rounded text-xs font-mono cursor-pointer transition ${
-                        selectedFile === file.path ? 'bg-slate-800/80' : 'hover:bg-slate-850/60'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-2 truncate pr-2">
-                        <span className={`w-3 font-bold text-center ${getStatusColor(file.status)}`}>
-                          {file.status}
-                        </span>
-                        <span className="truncate text-slate-300">{file.path}</span>
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleUnstageFile(file.path);
-                        }}
-                        className="p-1 hover:bg-slate-700/65 text-slate-400 rounded hover:text-red-400"
-                        title="Unstage File"
-                      >
-                        <Minus size={11} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Unstaged Changes Group */}
-            <div>
-              <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between">
-                <span>Changes</span>
-                <span className="bg-amber-500/15 text-amber-400 px-1.5 py-0.2 rounded font-mono text-[9px]">{unstaged.length}</span>
-              </h3>
-              {unstaged.length === 0 ? (
-                <div className="text-[10px] text-slate-500 italic px-2 py-1">No unstaged changes</div>
-              ) : (
-                <div className="space-y-1">
-                  {unstaged.map(file => (
-                    <div
-                      key={file.path}
-                      onClick={() => {
-                        setSelectedFile(file.path);
-                        loadFileDiff(file.path);
-                      }}
-                      className={`flex items-center justify-between p-1.5 rounded text-xs font-mono cursor-pointer transition ${
-                        selectedFile === file.path ? 'bg-slate-800/80' : 'hover:bg-slate-850/60'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-2 truncate pr-2">
-                        <span className={`w-3 font-bold text-center ${getStatusColor(file.status)}`}>
-                          {file.status}
-                        </span>
-                        <span className="truncate text-slate-300">{file.path}</span>
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleStageFile(file.path);
-                        }}
-                        className="p-1 hover:bg-slate-700/65 text-slate-400 rounded hover:text-emerald-400"
-                        title="Stage File"
-                      >
-                        <Plus size={11} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Right Sub-Panel: Diff Viewer */}
-          <div className="flex flex-col bg-[#0b0f19]/40 min-h-[250px]">
-            {selectedFile ? (
-              <div className="flex-1 flex flex-col min-h-0">
-                <div className="px-3 py-1.5 border-b border-slate-850 text-[10px] font-mono text-slate-400 truncate">
-                  Diff: {selectedFile}
-                </div>
-                <div className="flex-grow min-h-0">
-                  <MonacoEditor
-                    height="100%"
-                    language="diff"
-                    value={diffContent}
-                    theme="vs-dark"
-                    options={{
-                      readOnly: true,
-                      fontSize: 11,
-                      fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace',
-                      minimap: { enabled: false },
-                      automaticLayout: true,
-                      scrollBeyondLastLine: false,
+      {/* Main content list */}
+      <div className="flex-grow overflow-y-auto p-3 space-y-4">
+        
+        {/* Staged Changes Group */}
+        <div>
+          <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between font-mono">
+            <span>Staged Changes</span>
+            <span className="bg-indigo-500/15 text-indigo-400 px-1.5 py-0.2 rounded font-mono text-[9px]">{staged.length}</span>
+          </h3>
+          {staged.length === 0 ? (
+            <div className="text-[10px] text-slate-500 italic px-2 py-1 font-mono">No staged changes</div>
+          ) : (
+            <div className="space-y-1">
+              {staged.map(file => (
+                <div
+                  key={file.path}
+                  onClick={() => {
+                    setSelectedFile(file.path);
+                    loadFileDiff(file.path);
+                  }}
+                  className={`flex items-center justify-between p-1.5 rounded text-xs font-mono cursor-pointer transition ${
+                    selectedFile === file.path ? 'bg-slate-800/80' : 'hover:bg-slate-850/60'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2 truncate pr-2">
+                    <span className={`w-3 font-bold text-center ${getStatusColor(file.status)}`}>
+                      {file.status}
+                    </span>
+                    <span className="truncate text-slate-300">{file.path}</span>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleUnstageFile(file.path);
                     }}
-                  />
+                    className="p-1 hover:bg-slate-700/65 text-slate-400 rounded hover:text-red-400"
+                    title="Unstage File"
+                  >
+                    <Minus size={11} />
+                  </button>
                 </div>
-              </div>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-slate-500 p-4">
-                <AlertCircle size={24} className="mb-1 text-slate-600" />
-                <span className="text-xs">Select a modified file to view diff</span>
-              </div>
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Bottom Panel: Commit Form */}
-        <div className="bg-[#0b0f19] p-3 border-t border-slate-800 flex items-center space-x-3 select-none">
-          <input
-            type="text"
-            value={commitMessage}
-            onChange={(e) => setCommitMessage(e.target.value)}
-            placeholder="Type commit message..."
-            className="flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleCommit();
-            }}
-          />
-          <button
-            onClick={handleCommit}
-            disabled={staged.length === 0 || !commitMessage.trim()}
-            className={`flex items-center space-x-1 text-xs font-semibold px-3 py-1.5 rounded transition ${
-              staged.length === 0 || !commitMessage.trim()
-                ? 'text-slate-500 bg-slate-800 cursor-default'
-                : 'text-white bg-indigo-500 hover:bg-indigo-600 active:bg-indigo-700 shadow-lg shadow-indigo-500/10'
-            }`}
-          >
-            <Send size={12} />
-            <span>Commit</span>
-          </button>
+        {/* Unstaged Changes Group */}
+        <div>
+          <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between font-mono">
+            <span>Unstaged Changes</span>
+            <span className="bg-amber-500/15 text-amber-400 px-1.5 py-0.2 rounded font-mono text-[9px]">{unstaged.length}</span>
+          </h3>
+          {unstaged.length === 0 ? (
+            <div className="text-[10px] text-slate-500 italic px-2 py-1 font-mono">No unstaged changes</div>
+          ) : (
+            <div className="space-y-1">
+              {unstaged.map(file => (
+                <div
+                  key={file.path}
+                  onClick={() => {
+                    setSelectedFile(file.path);
+                    loadFileDiff(file.path);
+                  }}
+                  className={`flex items-center justify-between p-1.5 rounded text-xs font-mono cursor-pointer transition ${
+                    selectedFile === file.path ? 'bg-slate-800/80' : 'hover:bg-slate-850/60'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2 truncate pr-2">
+                    <span className={`w-3 font-bold text-center ${getStatusColor(file.status)}`}>
+                      {file.status}
+                    </span>
+                    <span className="truncate text-slate-300">{file.path}</span>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleStageFile(file.path);
+                    }}
+                    className="p-1 hover:bg-slate-700/65 text-slate-400 rounded hover:text-emerald-400"
+                    title="Stage File"
+                  >
+                    <Plus size={11} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* Commit Log History Group */}
+        <div>
+          <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between font-mono">
+            <span>Commit History</span>
+            <span className="bg-indigo-500/15 text-indigo-400 px-1.5 py-0.2 rounded font-mono text-[9px]">{commits.length}</span>
+          </h3>
+          {commits.length === 0 ? (
+            <div className="text-[10px] text-slate-500 italic px-2 py-1 font-mono">No commit history found</div>
+          ) : (
+            <div className="space-y-1">
+              {commits.map(commit => {
+                const isExpanded = expandedCommit === commit.hash;
+                const files = commitFiles[commit.hash] || [];
+
+                return (
+                  <div key={commit.hash} className="border border-slate-800 rounded bg-[#0b0f19]/30 overflow-hidden">
+                    {/* Commit Row */}
+                    <div
+                      onClick={() => handleCommitClick(commit.hash)}
+                      className={`p-2 flex flex-col cursor-pointer transition hover:bg-slate-850/60 ${
+                        isExpanded ? 'bg-slate-800/40 border-b border-slate-800' : ''
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-xs font-mono">
+                        <div className="flex items-center space-x-1 font-bold text-indigo-400">
+                          {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                          <span>{commit.hash.substring(0, 7)}</span>
+                        </div>
+                        <div className="flex items-center space-x-2 text-[9px] text-slate-500">
+                          <span className="flex items-center space-x-0.5">
+                            <User size={10} />
+                            <span className="truncate max-w-[60px]">{commit.author}</span>
+                          </span>
+                          <span className="flex items-center space-x-0.5">
+                            <Clock size={10} />
+                            <span>{commit.date}</span>
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-slate-300 font-mono mt-1 line-clamp-1 leading-normal">
+                        {commit.message}
+                      </p>
+                    </div>
+
+                    {/* Commit Expanded Files list */}
+                    {isExpanded && (
+                      <div className="p-2 bg-slate-950/20 border-t border-slate-900 space-y-1">
+                        {files.length === 0 ? (
+                          <div className="text-[9px] text-slate-500 italic font-mono pl-4">Loading changed files...</div>
+                        ) : (
+                          files.map(file => (
+                            <div
+                              key={file.path}
+                              onClick={() => handleCommitFileClick(commit.hash, file.path)}
+                              className="flex items-center space-x-2 p-1 rounded text-[10px] font-mono cursor-pointer transition hover:bg-slate-850/50"
+                            >
+                              <span className={`w-3 font-bold text-center text-[10px] ${getStatusColor(file.status)}`}>
+                                {file.status}
+                              </span>
+                              <FileText size={10} className="text-slate-500" />
+                              <span className="truncate text-slate-400 hover:text-slate-200">{file.path}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom Panel: Commit Form */}
+      <div className="bg-[#0b0f19] p-3 border-t border-slate-800 flex items-center space-x-3 select-none shrink-0">
+        <input
+          type="text"
+          value={commitMessage}
+          onChange={(e) => setCommitMessage(e.target.value)}
+          placeholder="Type commit message..."
+          className="flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleCommit();
+          }}
+        />
+        <button
+          onClick={handleCommit}
+          disabled={staged.length === 0 || !commitMessage.trim()}
+          className={`flex items-center space-x-1 text-xs font-semibold px-3 py-1.5 rounded transition ${
+            staged.length === 0 || !commitMessage.trim()
+              ? 'text-slate-500 bg-slate-800 cursor-default'
+              : 'text-white bg-indigo-500 hover:bg-indigo-600 active:bg-indigo-700 shadow-lg shadow-indigo-500/10'
+          }`}
+        >
+          <Send size={12} />
+          <span>Commit</span>
+        </button>
       </div>
     </div>
   );
