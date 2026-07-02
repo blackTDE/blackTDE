@@ -591,18 +591,81 @@ function App() {
             </div>
 
             {/* Tab content area */}
-            <div className="flex-grow overflow-y-auto p-4 min-h-0 bg-surface-1/60 font-sans">
+            <div className={`flex-grow min-h-0 bg-surface-1/60 font-sans flex flex-col overflow-hidden ${activeRightPanel === 'files' ? 'p-0' : 'p-4'}`}>
               {activeRightPanel === 'files' ? (
-                <div className="h-full flex flex-col">
-                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-2 font-mono">Workspace Files</h3>
-                  <div className="flex-grow overflow-y-auto">
-                    <FileTree rootPath={activeWorkspace?.path || workspacePath} />
+                <div className="h-full flex flex-col min-h-0">
+                  {/* File Tabs at the top of the Files panel if there are open files */}
+                  {openFiles.length > 0 && (
+                    <div className="shrink-0 flex items-center border-b border-surface-2 bg-surface-2/40 overflow-x-auto select-none scrollbar-thin">
+                      {/* Explorer button */}
+                      <button
+                        onClick={() => setActiveFileTab(null)}
+                        className={`flex items-center space-x-1 px-3 py-2 text-[10px] font-semibold border-b-2 transition shrink-0 ${
+                          activeFileTab === null
+                            ? 'border-brand text-brand-light bg-surface/40'
+                            : 'border-transparent text-zinc-550 hover:text-zinc-350'
+                        }`}
+                        title="Show File Explorer"
+                      >
+                        <Folder size={12} className={activeFileTab === null ? 'text-brand-light' : 'text-zinc-500'} />
+                        <span className="font-mono">Explorer</span>
+                      </button>
+
+                      {/* File Tabs */}
+                      {openFiles.map(f => (
+                        <div
+                          key={f.path}
+                          className={`flex items-center space-x-1 border-r border-surface-2 border-b-2 transition shrink-0 ${
+                            activeFileTab === f.path
+                              ? 'border-brand text-brand-light bg-surface/40'
+                              : 'border-transparent text-zinc-550 hover:text-zinc-350 hover:bg-surface-2/10'
+                          }`}
+                        >
+                          <button
+                            onClick={() => setActiveFileTab(f.path)}
+                            className="px-2.5 py-2 text-[10px] font-mono font-medium truncate max-w-[100px]"
+                            title={f.name}
+                          >
+                            {f.name}
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              closeFile(f.path);
+                            }}
+                            className="pr-2 text-zinc-650 hover:text-rose-450 transition cursor-pointer"
+                          >
+                            <X size={9} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Body Content */}
+                  <div className="flex-grow overflow-y-auto min-h-0">
+                    {activeFileTab === null ? (
+                      <div className="h-full flex flex-col p-4">
+                        <h3 className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-2 font-mono">Workspace Files</h3>
+                        <div className="flex-grow overflow-y-auto">
+                          <FileTree rootPath={activeWorkspace?.path || workspacePath} />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-full">
+                        <FilePreview />
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : activeRightPanel === 'git' ? (
-                <GitPanel />
+                <div className="h-full overflow-y-auto">
+                  <GitPanel />
+                </div>
               ) : activeRightPanel === 'settings' ? (
-                <SettingsPanel />
+                <div className="h-full overflow-y-auto">
+                  <SettingsPanel />
+                </div>
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center text-zinc-500 font-mono text-[10px]">
                   <Sparkles size={20} className="mb-1.5 text-zinc-600" />
