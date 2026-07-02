@@ -8,17 +8,16 @@ import { GitPanel } from './components/GitPanel';
 import { invoke } from '@tauri-apps/api/core';
 import { 
   Plus, 
-  Terminal as TermIcon, 
   Trash2, 
   HardDrive, 
-  Files, 
   GitBranch, 
-  FileCode, 
   Sparkles,
   Maximize2,
   Minimize2,
-  KeyRound,
-  Settings
+  Settings,
+  Folder,
+  X,
+  SquareTerminal
 } from 'lucide-react';
 
 function App() {
@@ -34,10 +33,13 @@ function App() {
     setGitBranch,
     paneLayout,
     setPaneLayoutType,
-    setPaneSessionId
+    setPaneSessionId,
+    openFiles,
+    activeFileTab,
+    closeFile,
+    setActiveFileTab
   } = useWorkspaceStore();
 
-  const [leftTab, setLeftTab] = useState<'sessions' | 'files'>('sessions');
   const [isRightPaneExpanded, setIsRightPaneExpanded] = useState(true);
 
   // Spawning process parameters
@@ -72,6 +74,8 @@ function App() {
   useEffect(() => {
     loadGitBranch();
     loadPastSessions();
+    // Default right panel to files tree list
+    setActiveRightPanel('files');
   }, []);
 
   const handleCreateSession = async () => {
@@ -102,6 +106,8 @@ function App() {
       setPaneSessionId(paneLayout.activePaneIndex, newSessionId);
       setResumeSessionId('');
       loadPastSessions();
+      // Auto-switch to terminal splits tab when launching process
+      setActiveFileTab(null);
     } catch (error) {
       alert('Failed to spawn session: ' + error);
     }
@@ -118,371 +124,367 @@ function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen bg-[#020617] text-slate-100 overflow-hidden font-sans flex-col">
+    <div className="flex h-screen w-screen bg-surface text-zinc-100 overflow-hidden font-sans flex-col select-none">
       {/* Main Container */}
       <div className="flex flex-1 min-h-0 w-full overflow-hidden">
         
         {/* Left Sidebar Panel */}
-        <div className="w-80 border-r border-slate-800 bg-[#0b0f19] flex flex-col select-none">
+        <div className="w-80 border-r border-surface-2 bg-surface-1 flex flex-col select-none overflow-hidden">
           {/* Header */}
-          <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+          <div className="p-4 border-b border-surface-2 flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 rounded bg-gradient-to-tr from-sky-500 to-indigo-500 flex items-center justify-center font-bold text-white shadow-md shadow-sky-500/20">
+              <div className="w-8 h-8 rounded bg-brand flex items-center justify-center font-bold text-white shadow-md shadow-brand/20">
                 T
               </div>
               <div>
-                <h1 className="font-bold text-sm tracking-wide bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent">TDE COCKPIT</h1>
-                <p className="text-[10px] text-slate-400 font-mono">v1.0.0 (React + Monaco)</p>
+                <h1 className="font-bold text-xs tracking-wider text-zinc-100 font-mono uppercase">TDE Cockpit</h1>
+                <p className="text-[9px] text-zinc-500 font-mono">v1.1.0 (Tauri v2)</p>
               </div>
             </div>
-            <div className="flex items-center space-x-1 text-emerald-400 text-xs font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <div className="flex items-center space-x-1 text-success text-[10px] font-semibold bg-success/10 px-2 py-0.5 rounded-full border border-success/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
               <span>Online</span>
             </div>
           </div>
 
-          {/* Tab Switchers */}
-          <div className="flex border-b border-slate-850 px-2 pt-2 bg-[#090d16]/80">
-            <button
-              onClick={() => setLeftTab('sessions')}
-              className={`flex-1 flex items-center justify-center space-x-1.5 py-2 text-xs font-medium border-b-2 rounded-t transition ${
-                leftTab === 'sessions'
-                  ? 'border-sky-500 text-sky-400 bg-sky-500/5'
-                  : 'border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <TermIcon size={13} />
-              <span>Sessions</span>
-            </button>
-            <button
-              onClick={() => setLeftTab('files')}
-              className={`flex-1 flex items-center justify-center space-x-1.5 py-2 text-xs font-medium border-b-2 rounded-t transition ${
-                leftTab === 'files'
-                  ? 'border-sky-500 text-sky-400 bg-sky-500/5'
-                  : 'border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Files size={13} />
-              <span>File Explorer</span>
-            </button>
-          </div>
-
-          {/* Left Tab Content */}
-          <div className="flex-1 overflow-y-auto flex flex-col">
-            {leftTab === 'sessions' ? (
-              <div className="flex flex-col flex-1">
-                {/* Spawn Process Form */}
-                <div className="p-4 border-b border-slate-800 flex flex-col space-y-3 bg-[#0c1220]/40">
-                  <h2 className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Spawn Process</h2>
-                  <div className="space-y-2 text-xs">
-                    <div>
-                      <label className="block text-slate-400 font-mono mb-1">COMMAND</label>
-                      <input
-                        type="text"
-                        value={cmdInput}
-                        onChange={(e) => setCmdInput(e.target.value)}
-                        className="w-full bg-[#1e293b] border border-slate-700 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-400 font-mono mb-1">ARGS</label>
-                      <input
-                        type="text"
-                        value={argsInput}
-                        onChange={(e) => setArgsInput(e.target.value)}
-                        placeholder="e.g. -l"
-                        className="w-full bg-[#1e293b] border border-slate-700 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-400 font-mono mb-1">DIRECTORY</label>
-                      <input
-                        type="text"
-                        value={cwdInput}
-                        onChange={(e) => setCwdInput(e.target.value)}
-                        className="w-full bg-[#1e293b] border border-slate-700 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-400 font-mono mb-1 font-bold">RESUME PAST CONVERSATION</label>
-                      <select
-                        value={resumeSessionId}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setResumeSessionId(val);
-                          if (val) {
-                            const selected = pastSessions.find(s => s.remote_session_id === val);
-                            if (selected) {
-                              setCmdInput(selected.agent_type);
-                              setCwdInput(selected.cwd);
-                              if (selected.agent_type === 'claude') {
-                                setSpawnProvider('anthropic');
-                              } else if (selected.agent_type === 'aider') {
-                                setSpawnProvider('openai');
-                              }
-                            }
-                          }
-                        }}
-                        className="w-full bg-[#1e293b] border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
-                      >
-                        <option value="">Start Fresh (No Resume)</option>
-                        {pastSessions.map(s => (
-                          <option key={s.id} value={s.remote_session_id}>
-                            {s.agent_type} - {s.remote_session_id.substring(0, 8)}... ({s.cwd.split('/').pop()})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-slate-400 font-mono mb-1 font-bold">PROVIDER (ENV KEY)</label>
-                      <select
-                        value={spawnProvider}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setSpawnProvider(val);
-                          if (val === 'anthropic') {
-                            setCmdInput('claude');
-                          } else if (val === 'openai') {
-                            setCmdInput('aider');
-                          } else if (val === 'none') {
-                            setCmdInput('/bin/zsh');
-                          }
-                        }}
-                        className="w-full bg-[#1e293b] border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
-                      >
-                        <option value="none">None (Shell)</option>
-                        <option value="anthropic">Anthropic (Claude)</option>
-                        <option value="openai">OpenAI (Aider)</option>
-                        <option value="gemini">Google Gemini</option>
-                        <option value="deepseek">DeepSeek API</option>
-                      </select>
-                    </div>
-                    <button
-                      onClick={handleCreateSession}
-                      className="w-full flex items-center justify-center space-x-1 bg-sky-500 hover:bg-sky-600 active:bg-sky-700 text-white font-medium py-1.5 px-3 rounded shadow shadow-sky-500/20 transition"
-                    >
-                      <Plus size={14} />
-                      <span>Spawn Session</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Session list */}
-                <div className="p-4 space-y-2 flex-grow overflow-y-auto">
-                  <h2 className="text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-2">Sessions List</h2>
-                  {Object.keys(sessions).length === 0 ? (
-                    <div className="text-xs text-slate-500 italic p-2 text-center">
-                      No active sessions. Spawn one above!
-                    </div>
-                  ) : (
-                    Object.values(sessions).map((session) => (
-                      <div
-                        key={session.id}
-                        onClick={() => setActiveSession(session.id)}
-                        className={`flex items-center justify-between p-2 rounded cursor-pointer transition border ${
-                          activeSessionId === session.id
-                            ? 'bg-sky-500/10 border-sky-500/40 text-sky-200'
-                            : 'bg-slate-800/40 border-transparent hover:bg-slate-800/80 text-slate-300'
-                        }`}
-                      >
-                        <div className="flex items-center space-x-2 truncate">
-                          <TermIcon size={14} className={activeSessionId === session.id ? 'text-sky-400' : 'text-slate-400'} />
-                          <div className="truncate">
-                            <p className="text-xs font-mono font-medium truncate">{session.agentType}</p>
-                            <p className="text-[10px] text-slate-500 font-mono truncate">{session.id}</p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleTerminateSession(session.id);
-                          }}
-                          className="p-1 hover:bg-red-500/20 hover:text-red-400 text-slate-500 rounded transition"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="p-4 flex-grow flex flex-col min-h-0">
-                <h2 className="text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-2">Workspace Files</h2>
-                <div className="flex-1 overflow-y-auto min-h-0">
-                  <FileTree rootPath={workspacePath} />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Center Panel (Split: Terminal + Editor/Git) */}
-        <div className="flex-grow flex min-w-0 bg-[#090d16]">
-          {/* Main vertical split panel */}
-          <div className="flex-grow flex min-w-0 h-full p-4 space-x-4">
+          {/* Left panel forms and sessions */}
+          <div className="flex-grow overflow-y-auto flex flex-col divide-y divide-surface-2 min-h-0">
             
-            {/* Split Left: Terminal splits cockpit */}
-            <div className="flex-grow flex flex-col min-w-0 h-full">
-              {/* Layout switcher toolbar */}
-              <div className="flex items-center justify-between mb-2 select-none">
+            {/* Spawn Process Form */}
+            <div className="p-4 flex flex-col space-y-3 bg-surface/30">
+              <h2 className="text-[10px] font-bold tracking-wider text-zinc-400 uppercase font-mono">Spawn Agent CLI</h2>
+              <div className="space-y-2.5 text-xs">
                 <div>
-                  <h2 className="text-xs font-bold flex items-center space-x-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse"></span>
-                    <span className="text-slate-200">Terminal splits cockpit</span>
-                  </h2>
+                  <label className="block text-zinc-400 font-mono mb-1 font-semibold">COMMAND</label>
+                  <input
+                    type="text"
+                    value={cmdInput}
+                    onChange={(e) => setCmdInput(e.target.value)}
+                    className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono"
+                  />
                 </div>
-                <div className="flex items-center space-x-2 bg-slate-800/40 p-0.5 rounded border border-slate-700/60 font-mono text-[9px] text-slate-400">
-                  <span className="px-1.5 font-bold">SPLIT:</span>
-                  <button
-                    onClick={() => setPaneLayoutType('1x1')}
-                    className={`px-2 py-0.5 rounded transition ${paneLayout.type === '1x1' ? 'bg-sky-500 text-white font-bold' : 'hover:text-slate-200 bg-slate-800'}`}
-                  >
-                    1x1
-                  </button>
-                  <button
-                    onClick={() => setPaneLayoutType('1x2')}
-                    className={`px-2 py-0.5 rounded transition ${paneLayout.type === '1x2' ? 'bg-sky-500 text-white font-bold' : 'hover:text-slate-200 bg-slate-800'}`}
-                  >
-                    1x2
-                  </button>
-                  <button
-                    onClick={() => setPaneLayoutType('2x1')}
-                    className={`px-2 py-0.5 rounded transition ${paneLayout.type === '2x1' ? 'bg-sky-500 text-white font-bold' : 'hover:text-slate-200 bg-slate-800'}`}
-                  >
-                    2x1
-                  </button>
-                  <button
-                    onClick={() => setPaneLayoutType('2x2')}
-                    className={`px-2 py-0.5 rounded transition ${paneLayout.type === '2x2' ? 'bg-sky-500 text-white font-bold' : 'hover:text-slate-200 bg-slate-800'}`}
-                  >
-                    2x2
-                  </button>
+                <div>
+                  <label className="block text-zinc-400 font-mono mb-1 font-semibold">ARGS</label>
+                  <input
+                    type="text"
+                    value={argsInput}
+                    onChange={(e) => setArgsInput(e.target.value)}
+                    placeholder="e.g. -l"
+                    className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono"
+                  />
                 </div>
-              </div>
-              <div className="flex-grow min-h-0 bg-[#070b12] rounded-lg border border-slate-800">
-                <TerminalGrid />
+                <div>
+                  <label className="block text-zinc-400 font-mono mb-1 font-semibold">DIRECTORY</label>
+                  <input
+                    type="text"
+                    value={cwdInput}
+                    onChange={(e) => setCwdInput(e.target.value)}
+                    className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-400 font-mono mb-1 font-bold">RESUME PAST CONVERSATION</label>
+                  <select
+                    value={resumeSessionId}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setResumeSessionId(val);
+                      if (val) {
+                        const selected = pastSessions.find(s => s.remote_session_id === val);
+                        if (selected) {
+                          setCmdInput(selected.agent_type);
+                          setCwdInput(selected.cwd);
+                          if (selected.agent_type === 'claude') {
+                            setSpawnProvider('anthropic');
+                          } else if (selected.agent_type === 'aider') {
+                            setSpawnProvider('openai');
+                          }
+                        }
+                      }
+                    }}
+                    className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono cursor-pointer"
+                  >
+                    <option value="">Start Fresh (No Resume)</option>
+                    {pastSessions.map(s => (
+                      <option key={s.id} value={s.remote_session_id}>
+                        {s.agent_type} - {s.remote_session_id.substring(0, 8)}... ({s.cwd.split('/').pop()})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-zinc-400 font-mono mb-1 font-bold">PROVIDER (ENV KEY)</label>
+                  <select
+                    value={spawnProvider}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSpawnProvider(val);
+                      if (val === 'anthropic') {
+                        setCmdInput('claude');
+                      } else if (val === 'openai') {
+                        setCmdInput('aider');
+                      } else if (val === 'none') {
+                        setCmdInput('/bin/zsh');
+                      }
+                    }}
+                    className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono cursor-pointer"
+                  >
+                    <option value="none">None (Shell)</option>
+                    <option value="anthropic">Anthropic (Claude)</option>
+                    <option value="openai">OpenAI (Aider)</option>
+                    <option value="gemini">Google Gemini</option>
+                    <option value="deepseek">DeepSeek API</option>
+                  </select>
+                </div>
+                <button
+                  onClick={handleCreateSession}
+                  className="w-full flex items-center justify-center space-x-1.5 bg-brand hover:bg-brand/90 active:bg-brand text-white font-semibold py-2 px-3 rounded shadow shadow-brand/20 transition text-xs cursor-pointer"
+                >
+                  <Plus size={13} />
+                  <span>Spawn Session</span>
+                </button>
               </div>
             </div>
 
-            {/* Split Right: Swappable Utility Panel (Monaco / Git) */}
-            {isRightPaneExpanded && (
-              <div className="flex-1 min-w-0 h-full flex flex-col">
-                {/* Utilities Tab Switcher */}
-                <div className="flex items-center justify-between mb-2 select-none">
-                  <div className="flex space-x-2 bg-slate-800/40 p-0.5 rounded border border-slate-700/60">
+            {/* Session list */}
+            <div className="p-4 space-y-2 flex-grow overflow-y-auto min-h-0 bg-surface-1/40">
+              <h2 className="text-[10px] font-bold tracking-wider text-zinc-400 uppercase mb-2 font-mono">Sessions List</h2>
+              {Object.keys(sessions).length === 0 ? (
+                <div className="text-xs text-zinc-500 italic p-3 text-center bg-surface-2/20 rounded border border-surface-3/30 font-mono">
+                  No active sessions. Spawn one above!
+                </div>
+              ) : (
+                Object.values(sessions).map((session) => (
+                  <div
+                    key={session.id}
+                    onClick={() => setActiveSession(session.id)}
+                    className={`flex items-center justify-between p-2 rounded cursor-pointer transition border ${
+                      activeSessionId === session.id
+                        ? 'bg-brand/10 border-brand/40 text-brand-light font-semibold'
+                        : 'bg-surface-2/30 border-transparent hover:bg-surface-2 text-zinc-300'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2 truncate">
+                      <SquareTerminal size={13} className={activeSessionId === session.id ? 'text-brand-light' : 'text-zinc-500'} />
+                      <div className="truncate">
+                        <p className="text-xs font-mono truncate font-medium">{session.agentType}</p>
+                        <p className="text-[9px] text-zinc-500 font-mono truncate">{session.id}</p>
+                      </div>
+                    </div>
                     <button
-                      onClick={() => setActiveRightPanel('editor')}
-                      className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-semibold transition ${
-                        activeRightPanel === 'editor'
-                          ? 'bg-slate-700 text-slate-100 shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleTerminateSession(session.id);
+                      }}
+                      className="p-1 hover:bg-error/25 hover:text-error text-zinc-500 rounded transition cursor-pointer"
                     >
-                      <FileCode size={13} />
-                      <span>Code Editor</span>
-                    </button>
-                    <button
-                      onClick={() => setActiveRightPanel('git')}
-                      className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-semibold transition ${
-                        activeRightPanel === 'git'
-                          ? 'bg-slate-700 text-slate-100 shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      <GitBranch size={13} />
-                      <span>Git status</span>
-                    </button>
-                    <button
-                      onClick={() => setActiveRightPanel('vault')}
-                      className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-semibold transition ${
-                        activeRightPanel === 'vault'
-                          ? 'bg-slate-700 text-slate-100 shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      <KeyRound size={13} className="text-amber-500" />
-                      <span>Vault</span>
-                    </button>
-                    <button
-                      onClick={() => setActiveRightPanel('settings')}
-                      className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-semibold transition ${
-                        activeRightPanel === 'settings'
-                          ? 'bg-slate-700 text-slate-100 shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      <Settings size={13} className="text-sky-400" />
-                      <span>Settings</span>
+                      <Trash2 size={12} />
                     </button>
                   </div>
-                  <button
-                    onClick={() => setIsRightPaneExpanded(false)}
-                    className="p-1 hover:bg-slate-850 rounded text-slate-400 transition"
-                    title="Collapse Utility Panel"
-                  >
-                    <Minimize2 size={13} />
-                  </button>
-                </div>
-
-                {/* Swappable panel content */}
-                <div className="flex-1 min-h-0">
-                  {activeRightPanel === 'editor' ? (
-                    <EditorPane />
-                  ) : activeRightPanel === 'git' ? (
-                    <GitPanel />
-                  ) : activeRightPanel === 'vault' ? (
-                    <SettingsPanel />
-                  ) : activeRightPanel === 'settings' ? (
-                    <SettingsPanel />
-                  ) : (
-                    <div className="w-full h-full bg-[#0f172a] rounded-lg border border-slate-700 flex flex-col items-center justify-center text-slate-500">
-                      <Sparkles size={28} className="mb-1 text-slate-600" />
-                      <span className="text-xs">Select Code Editor, Git, Vault, or Settings above</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Expand Right Pane Trigger */}
-            {!isRightPaneExpanded && (
-              <button
-                onClick={() => {
-                  setIsRightPaneExpanded(true);
-                  if (activeRightPanel === 'none') {
-                    setActiveRightPanel('editor');
-                  }
-                }}
-                className="w-8 bg-[#0b0f19] border border-slate-700/60 rounded-lg flex items-center justify-center hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition"
-                title="Expand Utility Panel"
-              >
-                <Maximize2 size={13} className="rotate-90" />
-              </button>
-            )}
-
+                ))
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Center Panel (Swappable Workbench) */}
+        <div className="flex-grow flex flex-col min-w-0 bg-surface">
+          {/* Tabs header bar */}
+          <div className="shrink-0 flex items-center border-b border-surface-2 bg-surface-1 overflow-x-auto select-none">
+            {/* Terminal Tab */}
+            <button
+              onClick={() => setActiveFileTab(null)}
+              className={`flex items-center space-x-1.5 px-4 py-2.5 text-xs font-medium border-b-2 transition ${
+                activeFileTab === null
+                  ? 'border-brand text-zinc-100 bg-surface/40'
+                  : 'border-transparent text-zinc-500 hover:text-zinc-350'
+              }`}
+            >
+              <SquareTerminal size={13} className={activeFileTab === null ? 'text-brand-light' : 'text-zinc-500'} />
+              <span className="font-mono">Terminal splits cockpit</span>
+            </button>
+
+            {/* Opened File Tabs */}
+            {openFiles.map(f => (
+              <div
+                key={f.path}
+                className={`flex items-center space-x-1 border-r border-surface-2 border-b-2 transition ${
+                  activeFileTab === f.path
+                    ? 'border-brand text-zinc-100 bg-surface/40'
+                    : 'border-transparent text-zinc-500 hover:text-zinc-350 hover:bg-surface-2/10'
+                }`}
+              >
+                <button
+                  onClick={() => setActiveFileTab(f.path)}
+                  className="px-3 py-2.5 text-xs font-mono font-medium"
+                >
+                  {f.name}
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeFile(f.path);
+                  }}
+                  className="pr-2.5 text-zinc-600 hover:text-rose-400 transition"
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Tab content area */}
+          <div className="flex-grow min-h-0 p-4 overflow-hidden">
+            {activeFileTab === null ? (
+              <div className="w-full h-full flex flex-col">
+                {/* Splits Layout controls */}
+                <div className="flex items-center justify-between mb-2 select-none">
+                  <h2 className="text-xs font-bold font-mono text-zinc-400">Terminal splits grid</h2>
+                  <div className="flex items-center space-x-2 bg-surface-2/60 p-0.5 rounded border border-surface-3 font-mono text-[9px] text-zinc-400">
+                    <span className="px-1.5 font-bold">SPLIT:</span>
+                    <button
+                      onClick={() => setPaneLayoutType('1x1')}
+                      className={`px-2 py-0.5 rounded transition ${paneLayout.type === '1x1' ? 'bg-brand text-white font-bold' : 'hover:text-zinc-200 bg-surface-3/50'}`}
+                    >
+                      1x1
+                    </button>
+                    <button
+                      onClick={() => setPaneLayoutType('1x2')}
+                      className={`px-2 py-0.5 rounded transition ${paneLayout.type === '1x2' ? 'bg-brand text-white font-bold' : 'hover:text-zinc-200 bg-surface-3/50'}`}
+                    >
+                      1x2
+                    </button>
+                    <button
+                      onClick={() => setPaneLayoutType('2x1')}
+                      className={`px-2 py-0.5 rounded transition ${paneLayout.type === '2x1' ? 'bg-brand text-white font-bold' : 'hover:text-zinc-200 bg-surface-3/50'}`}
+                    >
+                      2x1
+                    </button>
+                    <button
+                      onClick={() => setPaneLayoutType('2x2')}
+                      className={`px-2 py-0.5 rounded transition ${paneLayout.type === '2x2' ? 'bg-brand text-white font-bold' : 'hover:text-zinc-200 bg-surface-3/50'}`}
+                    >
+                      2x2
+                    </button>
+                  </div>
+                </div>
+                <div className="flex-grow min-h-0 bg-surface-1 rounded-lg border border-surface-2 overflow-hidden shadow-inner">
+                  <TerminalGrid />
+                </div>
+              </div>
+            ) : (
+              <div className="w-full h-full">
+                <EditorPane />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Panel (Inspector tabs) */}
+        {isRightPaneExpanded && (
+          <div className="w-80 border-l border-surface-2 bg-surface-1 flex flex-col overflow-hidden">
+            {/* Swappable Panel Tabs */}
+            <div className="shrink-0 flex border-b border-surface-2 select-none bg-surface-1/40">
+              <button
+                onClick={() => setActiveRightPanel('files')}
+                className={`flex-1 flex items-center justify-center space-x-1.5 py-2.5 text-xs font-semibold border-b-2 transition ${
+                  activeRightPanel === 'files'
+                    ? 'border-brand text-zinc-100 bg-surface/30'
+                    : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                <Folder size={13} />
+                <span>Files</span>
+              </button>
+              <button
+                onClick={() => setActiveRightPanel('git')}
+                className={`flex-1 flex items-center justify-center space-x-1.5 py-2.5 text-xs font-semibold border-b-2 transition ${
+                  activeRightPanel === 'git'
+                    ? 'border-brand text-zinc-100 bg-surface/30'
+                    : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                <GitBranch size={13} />
+                <span>Git</span>
+              </button>
+              <button
+                onClick={() => setActiveRightPanel('settings')}
+                className={`flex-1 flex items-center justify-center space-x-1.5 py-2.5 text-xs font-semibold border-b-2 transition ${
+                  activeRightPanel === 'settings'
+                    ? 'border-brand text-zinc-100 bg-surface/30'
+                    : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                <Settings size={13} />
+                <span>Settings</span>
+              </button>
+              <button
+                onClick={() => setIsRightPaneExpanded(false)}
+                className="px-3 text-zinc-500 hover:text-zinc-300 transition"
+                title="Collapse Panel"
+              >
+                <Minimize2 size={13} />
+              </button>
+            </div>
+
+            {/* Tab content area */}
+            <div className="flex-grow overflow-y-auto p-4 min-h-0 bg-surface-1/60">
+              {activeRightPanel === 'files' ? (
+                <div className="h-full flex flex-col">
+                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-2 font-mono">Workspace Files</h3>
+                  <div className="flex-grow overflow-y-auto">
+                    <FileTree rootPath={workspacePath} />
+                  </div>
+                </div>
+              ) : activeRightPanel === 'git' ? (
+                <GitPanel />
+              ) : activeRightPanel === 'settings' ? (
+                <SettingsPanel />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center text-zinc-500 font-mono text-[10px]">
+                  <Sparkles size={20} className="mb-1.5 text-zinc-600" />
+                  <span>Select a tab above</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Expand Right Pane Trigger */}
+        {!isRightPaneExpanded && (
+          <button
+            onClick={() => {
+              setIsRightPaneExpanded(true);
+              if (activeRightPanel === 'none') {
+                setActiveRightPanel('files');
+              }
+            }}
+            className="w-8 bg-surface-1 border-l border-surface-2 flex items-center justify-center hover:bg-surface-2 text-zinc-500 hover:text-zinc-300 transition cursor-pointer"
+            title="Expand Panel"
+          >
+            <Maximize2 size={13} className="rotate-90" />
+          </button>
+        )}
 
       </div>
 
       {/* Bottom Status Bar */}
-      <div className="h-6 bg-[#090d16] border-t border-slate-800 px-3 flex items-center justify-between text-[10px] text-slate-400 font-mono select-none">
+      <div className="h-6 bg-surface-2 border-t border-surface-3 px-3 flex items-center justify-between text-[10px] text-zinc-500 font-mono select-none">
         <div className="flex items-center space-x-4">
           <span className="flex items-center space-x-1">
-            <HardDrive size={10} className="text-sky-400" />
-            <span>Workspace: <strong className="text-slate-300">black_tde</strong></span>
+            <HardDrive size={10} className="text-brand-light" />
+            <span>Workspace: <strong className="text-zinc-300">black_tde</strong></span>
           </span>
           <span className="flex items-center space-x-1">
-            <GitBranch size={10} className="text-indigo-400" />
-            <span>Branch: <strong className="text-slate-300">{gitBranch}</strong></span>
+            <GitBranch size={10} className="text-brand-light" />
+            <span>Branch: <strong className="text-zinc-300">{gitBranch}</strong></span>
           </span>
         </div>
         <div className="flex items-center space-x-4">
           {activeSessionId && (
-            <span>Active Session: <strong className="text-sky-400">{activeSessionId}</strong></span>
+            <span>Active Session: <strong className="text-brand-light">{activeSessionId}</strong></span>
           )}
-          <span className="text-slate-500">UTF-8</span>
+          <span className="text-zinc-600">UTF-8</span>
         </div>
       </div>
     </div>
