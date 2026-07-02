@@ -107,6 +107,7 @@ function App() {
   const [spawnProvider, setSpawnProvider] = useState('none');
   const [pastSessions, setPastSessions] = useState<any[]>([]);
   const [resumeSessionId, setResumeSessionId] = useState('');
+  const [detectedClis, setDetectedClis] = useState<string[]>([]);
 
   const workspacePath = '/Users/ray/git-repo/black_tde';
 
@@ -242,6 +243,9 @@ function App() {
     loadWorkspaces();
     loadPastSessions();
     setActiveRightPanel('files');
+    invoke<string[]>('detect_available_clis')
+      .then(setDetectedClis)
+      .catch((err) => console.error('Failed to detect CLIs:', err));
 
     const unlistenPromise = listen('tde-event', (event: any) => {
       const payload = event.payload;
@@ -861,13 +865,78 @@ function App() {
 
               <div className="space-y-3">
                 <div>
-                  <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-semibold">AGENT CLI COMMAND</label>
-                  <input
-                    type="text"
-                    value={cmdInput}
-                    onChange={(e) => setCmdInput(e.target.value)}
-                    className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono"
-                  />
+                  <div className="flex space-x-2">
+                    <div className="flex-grow">
+                      <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-semibold">AGENT CLI COMMAND / SHELL</label>
+                      <input
+                        type="text"
+                        value={cmdInput}
+                        onChange={(e) => setCmdInput(e.target.value)}
+                        className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono"
+                      />
+                    </div>
+                    {detectedClis.length > 0 && (
+                      <div className="w-32">
+                        <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-semibold">PRESETS</label>
+                        <select
+                          value={detectedClis.includes(cmdInput) ? cmdInput : ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val) {
+                              setCmdInput(val);
+                              const lower = val.toLowerCase();
+                              if (lower.includes('claude')) {
+                                setSpawnProvider('anthropic');
+                              } else if (lower.includes('aider')) {
+                                setSpawnProvider('openai');
+                              } else {
+                                setSpawnProvider('none');
+                              }
+                            }
+                          }}
+                          className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono cursor-pointer text-xs"
+                        >
+                          <option value="">-- Select --</option>
+                          {detectedClis.map(cli => (
+                            <option key={cli} value={cli}>{cli}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  {detectedClis.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <span className="text-[9px] text-zinc-500 font-mono self-center mr-1">Detected CLIs:</span>
+                      {detectedClis.map(cli => {
+                        const isSelected = cmdInput === cli;
+                        return (
+                          <button
+                            key={cli}
+                            type="button"
+                            onClick={() => {
+                              setCmdInput(cli);
+                              const lower = cli.toLowerCase();
+                              if (lower.includes('claude')) {
+                                setSpawnProvider('anthropic');
+                              } else if (lower.includes('aider')) {
+                                setSpawnProvider('openai');
+                              } else {
+                                setSpawnProvider('none');
+                              }
+                            }}
+                            className={`text-[9px] font-mono px-2 py-0.5 rounded border transition cursor-pointer ${
+                              isSelected
+                                ? 'bg-brand/20 border-brand/50 text-brand-light font-bold'
+                                : 'bg-surface-3/50 border-surface-3 text-zinc-400 hover:text-zinc-200'
+                            }`}
+                          >
+                            {cli}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
