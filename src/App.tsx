@@ -392,7 +392,10 @@ function App() {
                   <div key={ws.id} className="space-y-1">
                     {/* Project Folder Row (Father Node) */}
                     <div
-                      onClick={() => handleSelectProject(ws)}
+                      onClick={(e) => {
+                        handleSelectProject(ws);
+                        toggleProjectExpand(ws.id, e);
+                      }}
                       className={`group flex items-center justify-between px-2.5 py-2 rounded-lg border transition cursor-pointer ${
                         isActive
                           ? 'bg-brand/5 border-brand/30 text-brand-light font-semibold'
