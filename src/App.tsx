@@ -27,6 +27,27 @@ import {
   FolderOpen
 } from 'lucide-react';
 
+const getAgentIconClass = (name: string): string => {
+  const lower = name.toLowerCase();
+  if (lower.includes('claude')) return 'from-orange-500 to-amber-600';
+  if (lower.includes('gemini')) return 'from-blue-500 to-indigo-600';
+  if (lower.includes('codex')) return 'from-emerald-500 to-teal-600';
+  if (lower.includes('aider')) return 'from-purple-500 to-indigo-600';
+  return 'from-indigo-600 to-fuchsia-600';
+};
+
+const getInitials = (name: string): string => {
+  const clean = name.replace(/[^a-zA-Z0-9\s-]/g, '').trim();
+  const parts = clean.split(/[\s-]+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  if (clean.length >= 2) {
+    return clean.slice(0, 2).toUpperCase();
+  }
+  return clean.slice(0, 1).toUpperCase() || 'AG';
+};
+
 function App() {
   const { 
     sessions, 
@@ -481,7 +502,9 @@ function App() {
                             }`}
                           >
                             <div className="flex items-center space-x-2 truncate">
-                              <SquareTerminal size={12} className={activeSessionId === session.id ? 'text-brand-light' : 'text-zinc-500'} />
+                              <div className={`flex items-center justify-center w-5 h-5 rounded-full bg-gradient-to-tr ${getAgentIconClass(session.agentType)} text-white font-extrabold text-[8px] shadow-sm select-none shrink-0`}>
+                                {getInitials(session.agentType)}
+                              </div>
                               <div className="truncate font-mono">
                                 <span>{session.agentType}</span>
                                 <span className="text-[9px] text-zinc-650 ml-1.5">({session.id.substring(8, 14)})</span>
@@ -663,12 +686,15 @@ function App() {
                           <button
                             key={session.id}
                             onClick={() => handleSelectSession(activeWorkspace, session.id)}
-                            className={`flex items-center space-x-1 px-2.5 py-0.5 rounded text-[10px] font-mono border transition shrink-0 cursor-pointer ${
+                            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-[10px] font-mono border transition shrink-0 cursor-pointer ${
                               activeSessionId === session.id
                                 ? 'bg-brand/10 border-brand/40 text-brand-light font-bold'
                                 : 'bg-surface-3/30 border-surface-3 text-zinc-450 hover:text-zinc-200'
                             }`}
                           >
+                            <div className={`flex items-center justify-center w-4 h-4 rounded-full bg-gradient-to-tr ${getAgentIconClass(session.agentType)} text-white font-extrabold text-[7px] shadow-sm select-none shrink-0`}>
+                              {getInitials(session.agentType)}
+                            </div>
                             <span>{session.agentType}</span>
                             <span className="text-[8px] text-zinc-500 font-normal">({session.id.substring(8, 12)})</span>
                           </button>
