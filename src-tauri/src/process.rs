@@ -38,6 +38,17 @@ pub fn spawn_pty_process(
     let mut cmd = CommandBuilder::new(command);
     cmd.args(args);
     cmd.cwd(std::path::Path::new(cwd));
+
+    // Inherit parent environment variables (important for PATH, HOME, etc.)
+    for (k, v) in std::env::vars() {
+        cmd.env(k, v);
+    }
+
+    // Set standard terminal variables for maximum shell capability
+    cmd.env("TERM".to_string(), "xterm-256color".to_string());
+    cmd.env("TERM_PROGRAM".to_string(), "Apple_Terminal".to_string());
+
+    // Inject/override session specific envs
     for (k, v) in envs {
         cmd.env(k, v);
     }
