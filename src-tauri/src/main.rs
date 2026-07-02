@@ -4,6 +4,7 @@ mod event_bus;
 mod file_manager;
 mod git_runner;
 mod provider;
+mod settings;
 
 use std::io::Write;
 use tauri::Manager;
@@ -20,6 +21,7 @@ async fn spawn_session(
     rows: u16,
     cols: u16,
     provider: String,
+    resume_session_id: Option<String>,
     pool: State<'_, SqlitePool>,
     manager: State<'_, process::ProcessManager>,
     app_handle: tauri::AppHandle,
@@ -35,8 +37,26 @@ async fn spawn_session(
     .await
     .map_err(|e| e.to_string())?;
 
-    // 2. Query provider credentials from database for environment injection
+    // 2. Query active proxy configuration
+    let proxy_row = sqlx::query("SELECT provider, base_url FROM local_proxies WHERE active = 1")
+        .fetch_optional(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
     let mut envs = Vec::new();
+
+    if let Some(row) = proxy_row {
+        let proxy_provider: String = row.get("provider");
+        let proxy_url: String = row.get("base_url");
+        
+        // If local proxy is active, pre-inject overrides for base URL envs
+        if provider == "anthropic" || command == "claude" || proxy_provider == "ollama" || proxy_provider == "lm-studio" {
+            envs.push(("ANTHROPIC_BASE_URL".to_string(), format!("{}/anthropic", proxy_url.trim_end_matches('/'))));
+            envs.push(("OPENAI_BASE_URL".to_string(), format!("{}/v1", proxy_url.trim_end_matches('/'))));
+        }
+    }
+
+    // 3. Query provider credentials from database for environment injection
     if !provider.is_empty() && provider != "none" {
         let key_row = sqlx::query("SELECT api_key FROM provider_keys WHERE provider = $1")
             .bind(&provider)
@@ -57,7 +77,36 @@ async fn spawn_session(
         }
     }
 
-    // 3. Insert session record to DB
+    // Inject dummy fallback keys if missing, to prevent CLI crashes when routing to local LLMs
+    let has_anthropic_key = envs.iter().any(|(k, _)| k == "ANTHROPIC_API_KEY");
+    if !has_anthropic_key && (provider == "anthropic" || command == "claude") {
+        envs.push(("ANTHROPIC_API_KEY".to_string(), "dummy-proxy-key".to_string()));
+    }
+    let has_openai_key = envs.iter().any(|(k, _)| k == "OPENAI_API_KEY");
+    if !has_openai_key && (provider == "openai" || command == "aider") {
+        envs.push(("OPENAI_API_KEY".to_string(), "dummy-proxy-key".to_string()));
+    }
+
+    // 4. Adapt CLI options & handle session resume
+    let mut command_args = args.clone();
+    if command == "claude" {
+        // Run Claude Code CLI in stream-json mode to auto-capture session ID
+        command_args.extend(vec![
+            "--dangerously-skip-permissions".to_string(),
+            "--output-format".to_string(),
+            "stream-json".to_string()
+        ]);
+        if let Some(ref r_id) = resume_session_id {
+            if !r_id.trim().is_empty() {
+                command_args.extend(vec![
+                    "--resume".to_string(),
+                    r_id.clone()
+                ]);
+            }
+        }
+    }
+
+    // 5. Insert session record to DB
     sqlx::query(
         "INSERT INTO sessions (id, workspace_id, agent_type, cwd, status) VALUES ($1, $2, $3, $4, 'active')"
     )
@@ -69,19 +118,19 @@ async fn spawn_session(
     .await
     .map_err(|e| e.to_string())?;
 
-    // 4. Spawn PTY process with injected credentials
-    let active_process = process::spawn_pty_process(&command, args, &cwd, rows, cols, envs)
+    // 6. Spawn PTY process with injected environment variables
+    let active_process = process::spawn_pty_process(&command, command_args, &cwd, rows, cols, envs)
         .map_err(|e| e.to_string())?;
 
     let master_clone = active_process.master.clone();
 
-    // 5. Register active session in process manager
+    // 7. Register active session in process manager
     {
         let mut active_sessions = manager.active_sessions.lock().map_err(|e| e.to_string())?;
         active_sessions.insert(id.clone(), active_process);
     }
 
-    // 6. Start stdout reader loop
+    // 8. Start stdout reader loop
     event_bus::start_stdout_reader(id, master_clone, pool.inner().clone(), app_handle);
 
     Ok(())
@@ -175,7 +224,12 @@ fn main() {
             git_runner::git_commit_changes,
             git_runner::get_git_branch,
             provider::save_provider_key,
-            provider::get_provider_keys
+            provider::get_provider_keys,
+            settings::save_local_proxy,
+            settings::get_local_proxies,
+            settings::save_mcp_server,
+            settings::get_mcp_servers,
+            settings::check_cli_version
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
