@@ -48,6 +48,11 @@ graph TD
 
 ## Features Implemented
 
+* **Crest Visual Layout**: Spreads the PTY terminal splits to the full width and height of the center main panel (zero padding) for a focused native shell experience.
+* **Smart Visual File Previews**: Opens files in a read-only visual previewer by default (supporting markdown rendering, sandboxed html iframes, base64 images, and office/PDF metadata cards) with a toggle to switch to editable Monaco Editor mode.
+* **Overlay Dialog Spawning Modal**: Hides spawn configurations from the sidebar, opening them inside an interactive, backdrop-blurred overlay modal when triggering new sessions.
+* **Hierarchical Project-Session Tree Nodes**: Groups workspaces as parent nodes in the left panel list. Expanding a project node displays its active nested processes and session triggers.
+* **Auto-detected Project Names**: Automatically parses inputted local host directories to extract and apply the base folder name as the project workspace name.
 * **Terminal splits cockpit (up to 4 screens)**: Supports layouts matching 1x1, 1x2, 2x1, and 2x2 grid cell divisions in the frontend with focus tracking.
 * **Session Auto-Capture & Resumption**: Backend scans stdout logs on the fly to capture remote session ID tokens (e.g. from Claude Code stream-json output) and auto-injects `--resume <session_id>` flag to recover conversations.
 * **Advanced Settings Panel**: Full configurations UI managing Model Context Protocol (MCP) server inputs, local LLM proxies (Ollama, LM Studio overrides), credentials vault keys, and CLI version checkers.
