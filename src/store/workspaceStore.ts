@@ -42,9 +42,13 @@ interface WorkspaceState {
   // Split Pane Layout
   paneLayout: PaneLayout;
 
-  // Tab Manager for Center Panel
+  // Tab Manager for Center Panel (Current values active for current workspace)
   openFiles: { path: string; name: string }[];
   activeFileTab: string | null; // null means terminal splits grid, otherwise file path string
+
+  // Storage of tabs grouped by project workspace ID
+  openFilesByProject: Record<string, { path: string; name: string }[]>;
+  activeFileTabByProject: Record<string, string | null>;
 
   // Actions
   setWorkspace: (ws: Workspace | null) => void;
@@ -91,21 +95,61 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   openFiles: [],
   activeFileTab: null,
 
-  setWorkspace: (ws) => set({ activeWorkspace: ws }),
+  openFilesByProject: {},
+  activeFileTabByProject: {},
+
+  setWorkspace: (ws) =>
+    set((state) => {
+      if (!ws) {
+        return {
+          activeWorkspace: null,
+          openFiles: [],
+          activeFileTab: null
+        };
+      }
+      // Load this specific project's tabs
+      const wsOpenFiles = state.openFilesByProject[ws.id] || [];
+      const wsActiveFileTab = state.activeFileTabByProject[ws.id] !== undefined
+        ? state.activeFileTabByProject[ws.id]
+        : null;
+
+      return {
+        activeWorkspace: ws,
+        openFiles: wsOpenFiles,
+        activeFileTab: wsActiveFileTab,
+        activeFilePath: wsActiveFileTab
+      };
+    }),
+
   setWorkspaces: (wsList) => set({ workspaces: wsList }),
   addWorkspace: (ws) => set((state) => ({ workspaces: [...state.workspaces, ws] })),
-  removeWorkspace: (id) => set((state) => ({ workspaces: state.workspaces.filter(w => w.id !== id) })),
+  removeWorkspace: (id) =>
+    set((state) => {
+      const newOpenFilesByProj = { ...state.openFilesByProject };
+      const newActiveFileTabByProj = { ...state.activeFileTabByProject };
+      delete newOpenFilesByProj[id];
+      delete newActiveFileTabByProj[id];
+
+      return {
+        workspaces: state.workspaces.filter((w) => w.id !== id),
+        openFilesByProject: newOpenFilesByProj,
+        activeFileTabByProject: newActiveFileTabByProj
+      };
+    }),
+
   addSession: (session) =>
     set((state) => ({
       sessions: { ...state.sessions, [session.id]: session },
     })),
+
   setActiveSession: (id) => set({ activeSessionId: id }),
+
   removeSession: (id) =>
     set((state) => {
       const newSessions = { ...state.sessions };
       delete newSessions[id];
       
-      // Also clean up references in split panes
+      // Clean up references in split panes
       const newPanes = state.paneLayout.panes.map(p => p === id ? null : p);
 
       return {
@@ -125,6 +169,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     set((state) => ({
       paneLayout: { ...state.paneLayout, type },
     })),
+
   setPaneSessionId: (index, sessionId) =>
     set((state) => {
       const newPanes = [...state.paneLayout.panes];
@@ -134,37 +179,79 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         activeSessionId: sessionId || state.activeSessionId,
       };
     }),
+
   setActivePaneIndex: (activePaneIndex) =>
     set((state) => ({
       paneLayout: { ...state.paneLayout, activePaneIndex },
       activeSessionId: state.paneLayout.panes[activePaneIndex] || state.activeSessionId,
     })),
 
-  openFile: (path, name) => set((state) => {
-    const exists = state.openFiles.some(f => f.path === path);
-    const newOpenFiles = exists ? state.openFiles : [...state.openFiles, { path, name }];
-    return {
-      openFiles: newOpenFiles,
-      activeFileTab: path,
-      activeFilePath: path,
-    };
-  }),
+  openFile: (path, name) =>
+    set((state) => {
+      const wsId = state.activeWorkspace?.id || 'project_default';
+      const currentWsOpenFiles = state.openFilesByProject[wsId] || [];
+      const exists = currentWsOpenFiles.some(f => f.path === path);
+      const newOpenFiles = exists ? currentWsOpenFiles : [...currentWsOpenFiles, { path, name }];
 
-  closeFile: (path) => set((state) => {
-    const newOpenFiles = state.openFiles.filter(f => f.path !== path);
-    let newActiveTab = state.activeFileTab;
-    if (state.activeFileTab === path) {
-      newActiveTab = newOpenFiles.length > 0 ? newOpenFiles[newOpenFiles.length - 1].path : null;
-    }
-    return {
-      openFiles: newOpenFiles,
-      activeFileTab: newActiveTab,
-      activeFilePath: newActiveTab,
-    };
-  }),
+      const newOpenFilesByProj = {
+        ...state.openFilesByProject,
+        [wsId]: newOpenFiles
+      };
+      const newActiveFileTabByProj = {
+        ...state.activeFileTabByProject,
+        [wsId]: path
+      };
 
-  setActiveFileTab: (tab) => set({ 
-    activeFileTab: tab,
-    activeFilePath: tab,
-  }),
+      return {
+        openFiles: newOpenFiles,
+        activeFileTab: path,
+        activeFilePath: path,
+        openFilesByProject: newOpenFilesByProj,
+        activeFileTabByProject: newActiveFileTabByProj
+      };
+    }),
+
+  closeFile: (path) =>
+    set((state) => {
+      const wsId = state.activeWorkspace?.id || 'project_default';
+      const currentWsOpenFiles = state.openFilesByProject[wsId] || [];
+      const currentWsActiveFileTab = state.activeFileTabByProject[wsId] || null;
+
+      const newOpenFiles = currentWsOpenFiles.filter(f => f.path !== path);
+      let newActiveTab = currentWsActiveFileTab;
+      if (currentWsActiveFileTab === path) {
+        newActiveTab = newOpenFiles.length > 0 ? newOpenFiles[newOpenFiles.length - 1].path : null;
+      }
+
+      const newOpenFilesByProj = {
+        ...state.openFilesByProject,
+        [wsId]: newOpenFiles
+      };
+      const newActiveFileTabByProj = {
+        ...state.activeFileTabByProject,
+        [wsId]: newActiveTab
+      };
+
+      return {
+        openFiles: newOpenFiles,
+        activeFileTab: newActiveTab,
+        activeFilePath: newActiveTab,
+        openFilesByProject: newOpenFilesByProj,
+        activeFileTabByProject: newActiveFileTabByProj
+      };
+    }),
+
+  setActiveFileTab: (tab) =>
+    set((state) => {
+      const wsId = state.activeWorkspace?.id || 'project_default';
+      const newActiveFileTabByProj = {
+        ...state.activeFileTabByProject,
+        [wsId]: tab
+      };
+      return {
+        activeFileTab: tab,
+        activeFilePath: tab,
+        activeFileTabByProject: newActiveFileTabByProj
+      };
+    }),
 }));
