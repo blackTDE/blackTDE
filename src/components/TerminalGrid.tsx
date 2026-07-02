@@ -5,6 +5,18 @@ import { TerminalPane } from './TerminalPane';
 export const TerminalGrid: React.FC = () => {
   const { paneLayout, sessions, setPaneSessionId, setActivePaneIndex, activeWorkspace } = useWorkspaceStore();
 
+  const getVisiblePaneCount = (layoutType: '1x1' | '1x2' | '2x1' | '2x2'): number => {
+    switch (layoutType) {
+      case '1x1': return 1;
+      case '1x2': return 2;
+      case '2x1': return 2;
+      case '2x2': return 4;
+    }
+  };
+
+  const visibleCount = getVisiblePaneCount(paneLayout.type);
+  const visiblePanes = paneLayout.panes.slice(0, visibleCount);
+
   const renderCell = (index: number) => {
     const sessId = paneLayout.panes[index];
     const isActive = paneLayout.activePaneIndex === index;
@@ -63,7 +75,7 @@ export const TerminalGrid: React.FC = () => {
                 {Object.values(sessions)
                   .filter(s => s.cwd === activeWorkspace?.path)
                   .map(s => {
-                    const isAssigned = paneLayout.panes.includes(s.id);
+                    const isAssigned = visiblePanes.includes(s.id);
                     if (isAssigned) return null;
                     return (
                       <button
