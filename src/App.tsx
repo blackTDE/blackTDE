@@ -205,6 +205,13 @@ function App() {
     setActiveRightPanel('files');
   }, []);
 
+  useEffect(() => {
+    if (activeFileTab) {
+      setIsRightPaneExpanded(true);
+      setActiveRightPanel('files');
+    }
+  }, [activeFileTab]);
+
   const handleCreateSession = async () => {
     const newSessionId = 'session_' + Math.random().toString(36).substring(2, 11);
     const mockWorkspaceId = modalTargetProject?.id || activeWorkspace?.id || 'project_default';
@@ -235,7 +242,6 @@ function App() {
       setResumeSessionId('');
       loadPastSessions();
       setShowNewSessionModal(false);
-      setActiveFileTab(null);
     } catch (error) {
       alert('Failed to spawn session: ' + error);
     }
@@ -254,7 +260,6 @@ function App() {
   const handleSelectSession = (ws: any, sessionId: string) => {
     handleSelectProject(ws);
     setActiveSession(sessionId);
-    setActiveFileTab(null);
 
     // Auto-focus this session in PTY split cell if not focused
     const isVisibleInPane = paneLayout.panes.some(p => p === sessionId);
