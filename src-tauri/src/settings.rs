@@ -18,6 +18,23 @@ pub struct McpServerEntry {
     pub args: String,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct ProxyProvider {
+    pub name: String,
+    pub r#type: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub default_model: String,
+    pub is_default: bool,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct ProxyVirtualModel {
+    pub name: String,
+    pub provider: String,
+    pub model: String,
+}
+
 #[tauri::command]
 pub async fn save_local_proxy(
     id: String,
@@ -30,7 +47,6 @@ pub async fn save_local_proxy(
     let active_int = if active { 1 } else { 0 };
 
     if active {
-        // Deactivate all other proxies
         sqlx::query("UPDATE local_proxies SET active = 0")
             .execute(&*pool)
             .await
@@ -122,7 +138,6 @@ pub async fn get_mcp_servers(
 
 #[tauri::command]
 pub fn check_cli_version(binary: String) -> Result<String, String> {
-    // Restrict binary argument strictly for security
     if binary != "claude" && binary != "aider" && binary != "git" {
         return Err("Unsupported binary check".into());
     }
@@ -140,7 +155,6 @@ pub fn check_cli_version(binary: String) -> Result<String, String> {
             }
         }
         Err(_) => {
-            // Fallback for some command variants (-v)
             let out_v = Command::new(&binary)
                 .arg("-v")
                 .output();
@@ -156,4 +170,157 @@ pub fn check_cli_version(binary: String) -> Result<String, String> {
             }
         }
     }
+}
+
+// ── Redesigned Proxy Providers CRUD ───────────────────────────────────────────
+
+#[tauri::command]
+pub async fn save_proxy_provider(
+    name: String,
+    r#type: String,
+    base_url: String,
+    api_key: String,
+    default_model: String,
+    is_default: bool,
+    pool: State<'_, SqlitePool>,
+) -> Result<(), String> {
+    let default_val = if is_default { 1 } else { 0 };
+
+    if is_default {
+        // Clear default flag on all other providers
+        sqlx::query("UPDATE proxy_providers SET is_default = 0")
+            .execute(&*pool)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    sqlx::query(
+        "INSERT OR REPLACE INTO proxy_providers (name, type, base_url, api_key, default_model, is_default) VALUES ($1, $2, $3, $4, $5, $6)"
+    )
+    .bind(name)
+    .bind(r#type)
+    .bind(base_url)
+    .bind(api_key)
+    .bind(default_model)
+    .bind(default_val)
+    .execute(&*pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_proxy_providers(
+    pool: State<'_, SqlitePool>,
+) -> Result<Vec<ProxyProvider>, String> {
+    let rows = sqlx::query("SELECT name, type, base_url, api_key, default_model, is_default FROM proxy_providers")
+        .fetch_all(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut list = Vec::new();
+    for row in rows {
+        let name: String = row.get("name");
+        let r#type: String = row.get("type");
+        let base_url: String = row.get("base_url");
+        let api_key: String = row.get("api_key");
+        let default_model: String = row.get("default_model");
+        let is_default: i32 = row.get("is_default");
+        
+        list.push(ProxyProvider {
+            name,
+            r#type,
+            base_url,
+            api_key,
+            default_model,
+            is_default: is_default == 1,
+        });
+    }
+    Ok(list)
+}
+
+#[tauri::command]
+pub async fn delete_proxy_provider(
+    name: String,
+    pool: State<'_, SqlitePool>,
+) -> Result<(), String> {
+    sqlx::query("DELETE FROM proxy_providers WHERE name = $1")
+        .bind(name)
+        .execute(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_default_proxy_provider(
+    name: String,
+    pool: State<'_, SqlitePool>,
+) -> Result<(), String> {
+    sqlx::query("UPDATE proxy_providers SET is_default = 0")
+        .execute(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("UPDATE proxy_providers SET is_default = 1 WHERE name = $1")
+        .bind(name)
+        .execute(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ── Redesigned Proxy Virtual Models CRUD ──────────────────────────────────────
+
+#[tauri::command]
+pub async fn save_proxy_virtual_model(
+    name: String,
+    provider: String,
+    model: String,
+    pool: State<'_, SqlitePool>,
+) -> Result<(), String> {
+    sqlx::query(
+        "INSERT OR REPLACE INTO proxy_virtual_models (name, provider, model) VALUES ($1, $2, $3)"
+    )
+    .bind(name)
+    .bind(provider)
+    .bind(model)
+    .execute(&*pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_proxy_virtual_models(
+    pool: State<'_, SqlitePool>,
+) -> Result<Vec<ProxyVirtualModel>, String> {
+    let rows = sqlx::query("SELECT name, provider, model FROM proxy_virtual_models")
+        .fetch_all(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut list = Vec::new();
+    for row in rows {
+        let name: String = row.get("name");
+        let provider: String = row.get("provider");
+        let model: String = row.get("model");
+        list.push(ProxyVirtualModel { name, provider, model });
+    }
+    Ok(list)
+}
+
+#[tauri::command]
+pub async fn delete_proxy_virtual_model(
+    name: String,
+    pool: State<'_, SqlitePool>,
+) -> Result<(), String> {
+    sqlx::query("DELETE FROM proxy_virtual_models WHERE name = $1")
+        .bind(name)
+        .execute(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
