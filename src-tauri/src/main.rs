@@ -116,6 +116,18 @@ async fn spawn_session(
 
     // 4. Adapt CLI options & handle session resume
     let mut command_args = args.clone();
+    if let Some(ref m_override) = model_override {
+        if clean_cmd == "aider" {
+            if !command_args.iter().any(|arg| arg == "--model") {
+                command_args.push("--model".to_string());
+                command_args.push(m_override.clone());
+            }
+        } else if clean_cmd == "claude" {
+            if !envs.iter().any(|(k, _)| k == "CLAUDE_MODEL") {
+                envs.push(("CLAUDE_MODEL".to_string(), m_override.clone()));
+            }
+        }
+    }
     if command == "claude" {
         // Run Claude Code CLI in stream-json mode to auto-capture session ID
         command_args.extend(vec![
