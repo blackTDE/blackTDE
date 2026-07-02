@@ -128,12 +128,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         panes: [null, null, null, null],
       };
 
+      const activeSessId = wsPaneLayout.panes[wsPaneLayout.activePaneIndex] || null;
+
       return {
         activeWorkspace: ws,
         openFiles: wsOpenFiles,
         activeFileTab: wsActiveFileTab,
         activeFilePath: wsActiveFileTab,
-        paneLayout: wsPaneLayout
+        paneLayout: wsPaneLayout,
+        activeSessionId: activeSessId,
       };
     }),
 
