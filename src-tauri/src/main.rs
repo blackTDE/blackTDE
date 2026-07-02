@@ -158,7 +158,16 @@ async fn spawn_session(
     .map_err(|e| e.to_string())?;
 
     // 6. Spawn PTY process with injected environment variables
-    let active_process = process::spawn_pty_process(&command, command_args, &cwd, rows, cols, envs)
+    let mut resolved_command = command.clone();
+    if command == "zsh" {
+        resolved_command = "/bin/zsh".to_string();
+    } else if command == "bash" {
+        resolved_command = "/bin/bash".to_string();
+    } else if command == "sh" {
+        resolved_command = "/bin/sh".to_string();
+    }
+
+    let active_process = process::spawn_pty_process(&resolved_command, command_args, &cwd, rows, cols, envs)
         .map_err(|e| e.to_string())?;
 
     let master_clone = active_process.master.clone();
