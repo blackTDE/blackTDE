@@ -53,6 +53,8 @@ function App() {
   } = useWorkspaceStore();
 
   const [isRightPaneExpanded, setIsRightPaneExpanded] = useState(true);
+  const [isSettingsFatherTabOpen, setIsSettingsFatherTabOpen] = useState(false);
+  const [activeFatherTabId, setActiveFatherTabId] = useState('');
 
   // Expanded/Collapsed state for projects in Left Panel
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({
@@ -104,6 +106,9 @@ function App() {
       // Default select the first project if no project is active yet
       if (!activeWorkspace && list.length > 0) {
         handleSelectProject(list[0]);
+        setActiveFatherTabId(list[0].id);
+      } else if (activeWorkspace) {
+        setActiveFatherTabId(activeWorkspace.id);
       }
     } catch (err) {
       console.error('Failed to load workspaces:', err);
@@ -162,6 +167,7 @@ function App() {
       const newlyCreated = list.find(w => w.id === id);
       if (newlyCreated) {
         handleSelectProject(newlyCreated);
+        setActiveFatherTabId(id);
         // Expand the newly created project in the sidebar list
         setExpandedProjects(prev => ({ ...prev, [id]: true }));
       }
@@ -275,6 +281,7 @@ function App() {
 
   const handleSelectSession = (ws: any, sessionId: string) => {
     handleSelectProject(ws);
+    setActiveFatherTabId(ws.id); // Ensure the project's father tab is active!
     
     // Read the updated state synchronously to avoid React closure batching issues
     const state = useWorkspaceStore.getState();
