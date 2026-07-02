@@ -10,11 +10,21 @@ export const EditorPane: React.FC = () => {
   const [isSaved, setIsSaved] = useState(true);
 
   useEffect(() => {
-    if (activeFileContent !== null) {
-      setEditorVal(activeFileContent);
-      setIsSaved(true);
-    }
-  }, [activeFilePath, activeFileContent]);
+    if (!activeFilePath) return;
+
+    const loadContent = async () => {
+      try {
+        const content = await invoke<string>('read_file_content', { path: activeFilePath });
+        setEditorVal(content);
+        setActiveFileContent(content);
+        setIsSaved(true);
+      } catch (err) {
+        console.error('Failed to load file content:', err);
+      }
+    };
+
+    loadContent();
+  }, [activeFilePath]);
 
   if (!activeFilePath) {
     return (

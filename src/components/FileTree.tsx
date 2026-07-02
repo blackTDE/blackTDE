@@ -19,18 +19,11 @@ interface NodeProps {
 const FileNode: React.FC<NodeProps> = ({ name, path, isDir, level }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [children, setChildren] = useState<FileTreeEntry[]>([]);
-  const { setActiveFilePath, setActiveFileContent, setActiveRightPanel } = useWorkspaceStore();
+  const { openFile } = useWorkspaceStore();
 
   const handleToggle = async () => {
     if (!isDir) {
-      try {
-        const content = await invoke<string>('read_file_content', { path });
-        setActiveFilePath(path);
-        setActiveFileContent(content);
-        setActiveRightPanel('editor');
-      } catch (err) {
-        console.error('Failed to read file:', err);
-      }
+      openFile(path, name);
       return;
     }
 
