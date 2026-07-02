@@ -206,7 +206,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         openFiles: newOpenFiles,
         activeFileTab: path,
         activeFilePath: path,
-        activeRightPanel: 'files',
         openFilesByProject: newOpenFilesByProj,
         activeFileTabByProject: newActiveFileTabByProj
       };
