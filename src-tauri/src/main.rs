@@ -38,7 +38,7 @@ async fn spawn_session(
     .map_err(|e| e.to_string())?;
 
     // 2. Resolve provider details via virtual models mapping or default provider
-    let clean_cmd = command.split(/[/\\]/).last().unwrap_or(&command).to_lowercase();
+    let clean_cmd = command.split(|c| c == '/' || c == '\\').last().unwrap_or(&command).to_lowercase();
     let virtual_model_row = sqlx::query(
         "SELECT provider, model FROM proxy_virtual_models WHERE name = $1"
     )
