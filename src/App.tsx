@@ -48,6 +48,15 @@ const getInitials = (name: string): string => {
   return clean.slice(0, 1).toUpperCase() || 'AG';
 };
 
+const getVisiblePaneCount = (layoutType: '1x1' | '1x2' | '2x1' | '2x2'): number => {
+  switch (layoutType) {
+    case '1x1': return 1;
+    case '1x2': return 2;
+    case '2x1': return 2;
+    case '2x2': return 4;
+  }
+};
+
 function App() {
   const { 
     sessions, 
@@ -311,17 +320,21 @@ function App() {
     setActiveSession(sessionId);
     setActiveFileTab(null); // Auto open the terminal sessions view!
 
-    // Auto-focus this session in PTY split cell if not focused
-    const isVisibleInPane = currentPaneLayout.panes.some(p => p === sessionId);
+    // Auto-focus this session in PTY split cell if not focused, considering only visible panes
+    const visibleCount = getVisiblePaneCount(currentPaneLayout.type);
+    const visiblePanes = currentPaneLayout.panes.slice(0, visibleCount);
+    const isVisibleInPane = visiblePanes.some(p => p === sessionId);
+
     if (!isVisibleInPane) {
-      // Find the first empty pane, or use the active pane if all are occupied
-      const emptyIndex = currentPaneLayout.panes.indexOf(null);
+      // Find the first empty pane inside the visible range, or overwrite active pane if occupied
+      const emptyIndex = visiblePanes.indexOf(null);
       const targetIndex = emptyIndex !== -1 ? emptyIndex : currentPaneLayout.activePaneIndex;
-      setPaneSessionId(targetIndex, sessionId);
-      setActivePaneIndex(targetIndex);
+      const finalIndex = targetIndex < visibleCount ? targetIndex : 0;
+      setPaneSessionId(finalIndex, sessionId);
+      setActivePaneIndex(finalIndex);
     } else {
       // Focus the pane that already holds this session
-      const paneIndex = currentPaneLayout.panes.findIndex(p => p === sessionId);
+      const paneIndex = visiblePanes.findIndex(p => p === sessionId);
       if (paneIndex !== -1) {
         setActivePaneIndex(paneIndex);
       }
