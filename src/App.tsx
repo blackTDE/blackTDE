@@ -7,6 +7,7 @@ import { FilePreview } from './components/FilePreview';
 import { GitPanel } from './components/GitPanel';
 import { GitDiffCompare } from './components/GitDiffCompare';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { 
   Plus, 
   Trash2, 
@@ -205,6 +206,17 @@ function App() {
     loadWorkspaces();
     loadPastSessions();
     setActiveRightPanel('files');
+
+    const unlistenPromise = listen('tde-event', (event: any) => {
+      const payload = event.payload;
+      if (payload.event_type === 'exit') {
+        removeSession(payload.session_id);
+      }
+    });
+
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
   }, []);
 
   useEffect(() => {
