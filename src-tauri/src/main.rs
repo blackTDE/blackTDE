@@ -217,6 +217,14 @@ async fn list_workspaces(
 }
 
 #[tauri::command]
+async fn select_directory() -> Result<Option<String>, String> {
+    let dir = rfd::AsyncFileDialog::new()
+        .pick_folder()
+        .await;
+    Ok(dir.map(|d| d.path().to_string_lossy().to_string()))
+}
+
+#[tauri::command]
 async fn create_workspace(
     id: String,
     name: String,
@@ -326,7 +334,8 @@ fn main() {
             list_past_sessions,
             list_workspaces,
             create_workspace,
-            delete_workspace
+            delete_workspace,
+            select_directory
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
