@@ -3,7 +3,7 @@ import { useWorkspaceStore } from '../store/workspaceStore';
 import { TerminalPane } from './TerminalPane';
 
 export const TerminalGrid: React.FC = () => {
-  const { paneLayout, sessions, setPaneSessionId, setActivePaneIndex } = useWorkspaceStore();
+  const { paneLayout, sessions, setPaneSessionId, setActivePaneIndex, activeWorkspace } = useWorkspaceStore();
 
   const renderCell = (index: number) => {
     const sessId = paneLayout.panes[index];
@@ -60,22 +60,24 @@ export const TerminalGrid: React.FC = () => {
               
               {/* Attach Existing List */}
               <div className="flex flex-col space-y-1 w-full max-w-[180px]">
-                {Object.values(sessions).map(s => {
-                  const isAssigned = paneLayout.panes.includes(s.id);
-                  if (isAssigned) return null;
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPaneSessionId(index, s.id);
-                      }}
-                      className="text-[9px] bg-slate-800/50 hover:bg-slate-700 active:bg-slate-650 text-slate-300 font-mono py-1 px-2 rounded border border-slate-700 text-left truncate transition"
-                    >
-                      Attach: {s.agentType} ({s.id.substring(8, 13)})
-                    </button>
-                  );
-                })}
+                {Object.values(sessions)
+                  .filter(s => s.cwd === activeWorkspace?.path)
+                  .map(s => {
+                    const isAssigned = paneLayout.panes.includes(s.id);
+                    if (isAssigned) return null;
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPaneSessionId(index, s.id);
+                        }}
+                        className="text-[9px] bg-slate-800/50 hover:bg-slate-700 active:bg-slate-650 text-slate-300 font-mono py-1 px-2 rounded border border-slate-700 text-left truncate transition"
+                      >
+                        Attach: {s.agentType} ({s.id.substring(8, 13)})
+                      </button>
+                    );
+                  })}
               </div>
             </div>
           )}
