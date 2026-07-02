@@ -5,6 +5,7 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { FileTree } from './components/FileTree';
 import { FilePreview } from './components/FilePreview';
 import { GitPanel } from './components/GitPanel';
+import { GitDiffCompare } from './components/GitDiffCompare';
 import { invoke } from '@tauri-apps/api/core';
 import { 
   Plus, 
@@ -528,32 +529,37 @@ function App() {
             </button>
 
             {/* Opened File Tabs */}
-            {openFiles.map(f => (
-              <div
-                key={f.path}
-                className={`flex items-center space-x-1 border-r border-surface-2 border-b-2 transition shrink-0 ${
-                  activeFileTab === f.path
-                    ? 'border-brand text-zinc-100 bg-surface/40'
-                    : 'border-transparent text-zinc-550 hover:text-zinc-350 hover:bg-surface-2/10'
-                }`}
-              >
-                <button
-                  onClick={() => setActiveFileTab(f.path)}
-                  className="px-3 py-2 text-xs font-mono font-medium truncate max-w-[150px]"
+            {openFiles.map(f => {
+              const isGitDiff = f.path.startsWith('git-diff:');
+              const displayName = isGitDiff ? `Diff: ${f.name}` : f.name;
+              return (
+                <div
+                  key={f.path}
+                  className={`flex items-center space-x-1 border-r border-surface-2 border-b-2 transition shrink-0 ${
+                    activeFileTab === f.path
+                      ? 'border-brand text-zinc-100 bg-surface/40'
+                      : 'border-transparent text-zinc-550 hover:text-zinc-350 hover:bg-surface-2/10'
+                  }`}
                 >
-                  {f.name}
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    closeFile(f.path);
-                  }}
-                  className="pr-2.5 text-zinc-650 hover:text-rose-450 transition cursor-pointer"
-                >
-                  <X size={10} />
-                </button>
-              </div>
-            ))}
+                  <button
+                    onClick={() => setActiveFileTab(f.path)}
+                    className="px-3 py-2 text-xs font-mono font-medium truncate max-w-[150px]"
+                    title={displayName}
+                  >
+                    {displayName}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeFile(f.path);
+                    }}
+                    className="pr-2.5 text-zinc-650 hover:text-rose-450 transition cursor-pointer"
+                  >
+                    <X size={10} />
+                  </button>
+                </div>
+              );
+            })}
           </div>
 
           {/* Tab content area */}
@@ -611,6 +617,10 @@ function App() {
                 <div className="flex-grow min-h-0 p-0 bg-[#070b12] overflow-hidden">
                   <TerminalGrid />
                 </div>
+              </div>
+            ) : activeFileTab.startsWith('git-diff:') ? (
+              <div className="w-full h-full">
+                <GitDiffCompare tabPath={activeFileTab} />
               </div>
             ) : (
               <div className="w-full h-full">
