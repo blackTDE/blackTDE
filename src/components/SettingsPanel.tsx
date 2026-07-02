@@ -60,7 +60,6 @@ const getInitials = (name: string): string => {
 
 export const SettingsPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'vault' | 'virtual-models' | 'providers' | 'mcp' | 'versions'>('virtual-models');
-  const [isLoading, setIsLoading] = useState(false);
 
   // Redesigned Providers States
   const [providers, setProviders] = useState<ProxyProvider[]>([]);
@@ -145,14 +144,12 @@ export const SettingsPanel: React.FC = () => {
   };
 
   const reloadAll = async () => {
-    setIsLoading(true);
     await Promise.all([
       loadProviders(),
       loadVirtualModels(),
       loadMcpServers(),
       checkVersions()
     ]);
-    setIsLoading(false);
   };
 
   useEffect(() => {
