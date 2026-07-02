@@ -229,6 +229,25 @@ async fn terminate_session(
     Ok(())
 }
 
+#[tauri::command]
+async fn get_session_history(
+    id: String,
+    pool: State<'_, SqlitePool>,
+) -> Result<Vec<u8>, String> {
+    let rows = sqlx::query("SELECT data FROM transcripts WHERE session_id = $1 ORDER BY id ASC")
+        .bind(&id)
+        .fetch_all(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut history = Vec::new();
+    for row in rows {
+        let chunk: Vec<u8> = row.get("data");
+        history.extend(chunk);
+    }
+    Ok(history)
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct WorkspaceEntry {
     pub id: String,
@@ -353,6 +372,7 @@ fn main() {
             write_to_session,
             resize_session,
             terminate_session,
+            get_session_history,
             file_manager::list_directory,
             file_manager::read_file_content,
             file_manager::write_file_content,
