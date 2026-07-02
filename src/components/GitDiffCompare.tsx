@@ -1,0 +1,146 @@
+import React, { useState, useEffect } from 'react';
+import { DiffEditor } from '@monaco-editor/react';
+import { invoke } from '@tauri-apps/api/core';
+import { useWorkspaceStore } from '../store/workspaceStore';
+import { AlertCircle, FileCode } from 'lucide-react';
+
+interface GitDiffCompareProps {
+  tabPath: string; // format: "git-diff:commit_hash:file_path"
+}
+
+export const GitDiffCompare: React.FC<GitDiffCompareProps> = ({ tabPath }) => {
+  const { activeWorkspace } = useWorkspaceStore();
+  const [originalContent, setOriginalContent] = useState<string>('');
+  const [modifiedContent, setModifiedContent] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const workspacePath = activeWorkspace?.path || '/Users/ray/git-repo/black_tde';
+
+  // Parse: git-diff:commit_hash:file_path
+  const parts = tabPath.split(':');
+  const commitHash = parts[1] || '';
+  const filePath = parts.slice(2).join(':') || '';
+  const fileName = filePath.split('/').pop() || filePath;
+
+  const getLanguage = (path: string) => {
+    const ext = path.split('.').pop()?.toLowerCase();
+    switch (ext) {
+      case 'js':
+      case 'jsx':
+        return 'javascript';
+      case 'ts':
+      case 'tsx':
+        return 'typescript';
+      case 'rs':
+        return 'rust';
+      case 'json':
+        return 'json';
+      case 'html':
+        return 'html';
+      case 'css':
+        return 'css';
+      case 'md':
+        return 'markdown';
+      case 'sql':
+        return 'sql';
+      case 'toml':
+        return 'ini';
+      default:
+        return 'plaintext';
+    }
+  };
+
+  useEffect(() => {
+    const loadContent = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        // Original: parent of the commit (commitHash~1)
+        const original = await invoke<string>('get_git_file_content_at_rev', {
+          cwd: workspacePath,
+          rev: `${commitHash}~1`,
+          filePath,
+        });
+
+        // Modified: the commit itself (commitHash)
+        const modified = await invoke<string>('get_git_file_content_at_rev', {
+          cwd: workspacePath,
+          rev: commitHash,
+          filePath,
+        });
+
+        setOriginalContent(original);
+        setModifiedContent(modified);
+      } catch (err: any) {
+        console.error('Failed to load git diff content:', err);
+        setError(err.toString());
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (commitHash && filePath) {
+      loadContent();
+    }
+  }, [tabPath, commitHash, filePath, workspacePath]);
+
+  if (isLoading) {
+    return (
+      <div className="w-full h-full bg-[#0f172a] rounded-lg border border-slate-700 flex items-center justify-center text-slate-500 font-mono text-xs">
+        <span className="w-4 h-4 rounded-full border-2 border-sky-400 border-t-transparent animate-spin mr-2"></span>
+        <span>Loading comparison diff...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="w-full h-full bg-[#0f172a] rounded-lg border border-slate-700 flex flex-col items-center justify-center p-6 text-center font-mono">
+        <AlertCircle size={32} className="text-rose-400 mb-2" />
+        <h3 className="text-sm font-bold text-slate-200 mb-1">Failed to Load Diff</h3>
+        <p className="text-[10px] text-slate-500 max-w-md">{error}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full h-full bg-[#0f172a] rounded-lg border border-slate-700 flex flex-col overflow-hidden shadow-lg select-none">
+      {/* Header bar */}
+      <div className="bg-[#0b0f19] px-4 py-2.5 border-b border-slate-800 flex items-center justify-between">
+        <div className="flex items-center space-x-2 truncate">
+          <FileCode size={14} className="text-indigo-400 shrink-0" />
+          <span className="text-xs font-mono text-slate-300 font-bold truncate">
+            {fileName}
+          </span>
+          <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-indigo-950/60 text-indigo-400 border border-indigo-900/50 uppercase tracking-wider font-mono">
+            Commit: {commitHash.substring(0, 8)}
+          </span>
+        </div>
+        <div className="text-[9px] font-mono text-slate-500 uppercase tracking-wider">
+          Side-by-side comparison (Parent vs Commit)
+        </div>
+      </div>
+
+      {/* Monaco Diff Editor */}
+      <div className="flex-1 w-full min-h-[300px]">
+        <DiffEditor
+          height="100%"
+          original={originalContent}
+          modified={modifiedContent}
+          language={getLanguage(filePath)}
+          theme="vs-dark"
+          options={{
+            readOnly: true,
+            fontSize: 12,
+            fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace',
+            minimap: { enabled: false },
+            automaticLayout: true,
+            renderSideBySide: true,
+            scrollBeyondLastLine: false,
+          }}
+        />
+      </div>
+    </div>
+  );
+};
