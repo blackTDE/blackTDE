@@ -25,11 +25,16 @@ export const FilePreview: React.FC = () => {
     'pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'
   ].includes(ext);
 
+  const isBinary = [
+    'png', 'jpg', 'jpeg', 'gif', 'svg', 
+    'pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'
+  ].includes(ext);
+
   useEffect(() => {
     if (!activeFilePath) return;
 
     // Reset editing state on file swap
-    setIsEditMode(!isPreviewable);
+    setIsEditMode(isPreviewable ? false : true);
     setLoadError(null);
     setIsLoading(true);
     setTextContent('');
@@ -388,7 +393,7 @@ export const FilePreview: React.FC = () => {
 
         {/* Action button triggers */}
         <div className="flex items-center space-x-2">
-          {isPreviewable && (
+          {isPreviewable && !isBinary && (
             <button
               onClick={() => setIsEditMode(!isEditMode)}
               className={`flex items-center space-x-1 text-xs font-medium px-2.5 py-1 rounded transition border cursor-pointer ${
