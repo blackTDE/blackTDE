@@ -190,6 +190,62 @@ async fn terminate_session(
     Ok(())
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct WorkspaceEntry {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+}
+
+#[tauri::command]
+async fn list_workspaces(
+    pool: State<'_, SqlitePool>,
+) -> Result<Vec<WorkspaceEntry>, String> {
+    let rows = sqlx::query("SELECT id, name, path FROM workspaces ORDER BY created_at DESC")
+        .fetch_all(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut entries = Vec::new();
+    for row in rows {
+        let id: String = row.get("id");
+        let name: String = row.get("name");
+        let path: String = row.get("path");
+        entries.push(WorkspaceEntry { id, name, path });
+    }
+    Ok(entries)
+}
+
+#[tauri::command]
+async fn create_workspace(
+    id: String,
+    name: String,
+    path: String,
+    pool: State<'_, SqlitePool>,
+) -> Result<(), String> {
+    sqlx::query("INSERT INTO workspaces (id, name, path) VALUES ($1, $2, $3)")
+        .bind(id)
+        .bind(name)
+        .bind(path)
+        .execute(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_workspace(
+    id: String,
+    pool: State<'_, SqlitePool>,
+) -> Result<(), String> {
+    sqlx::query("DELETE FROM workspaces WHERE id = $1")
+        .bind(id)
+        .execute(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[derive(serde::Serialize)]
 pub struct PastSession {
     pub id: String,
@@ -266,7 +322,10 @@ fn main() {
             settings::save_mcp_server,
             settings::get_mcp_servers,
             settings::check_cli_version,
-            list_past_sessions
+            list_past_sessions,
+            list_workspaces,
+            create_workspace,
+            delete_workspace
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
