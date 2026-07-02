@@ -67,13 +67,41 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
 
+      let isHistoryLoaded = false;
+      const incomingQueue: Uint8Array[] = [];
+
+      // Fetch past session history first
+      invoke<number[]>('get_session_history', { id: sessionId })
+        .then((historyBytes) => {
+          if (historyBytes && historyBytes.length > 0) {
+            term.write(new Uint8Array(historyBytes));
+          }
+          isHistoryLoaded = true;
+          // Flush any events queued during the fetch
+          while (incomingQueue.length > 0) {
+            const chunk = incomingQueue.shift();
+            if (chunk) {
+              term.write(chunk);
+            }
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to load session history:', err);
+          isHistoryLoaded = true;
+        });
+
       // Listen to stdout event stream from event bus
       let unlistenFn: (() => void) | null = null;
       listen('tde-event', (event: any) => {
         const payload = event.payload;
         if (payload.session_id === sessionId) {
           if (payload.event_type === 'stdout') {
-            term.write(new Uint8Array(payload.data));
+            const dataBytes = new Uint8Array(payload.data);
+            if (isHistoryLoaded) {
+              term.write(dataBytes);
+            } else {
+              incomingQueue.push(dataBytes);
+            }
           } else if (payload.event_type === 'exit') {
             term.write('\r\n\x1b[1;31m[Process terminated]\x1b[0m\r\n');
           }
