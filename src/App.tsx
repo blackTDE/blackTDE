@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useWorkspaceStore } from './store/workspaceStore';
-import { TerminalPane } from './components/TerminalPane';
+import { TerminalGrid } from './components/TerminalGrid';
+import { SettingsPanel } from './components/SettingsPanel';
 import { FileTree } from './components/FileTree';
 import { EditorPane } from './components/EditorPane';
 import { GitPanel } from './components/GitPanel';
@@ -15,7 +16,9 @@ import {
   FileCode, 
   Sparkles,
   Maximize2,
-  Minimize2
+  Minimize2,
+  KeyRound,
+  Settings
 } from 'lucide-react';
 
 function App() {
@@ -28,7 +31,10 @@ function App() {
     activeRightPanel,
     setActiveRightPanel,
     gitBranch,
-    setGitBranch
+    setGitBranch,
+    paneLayout,
+    setPaneLayoutType,
+    setPaneSessionId
   } = useWorkspaceStore();
 
   const [leftTab, setLeftTab] = useState<'sessions' | 'files'>('sessions');
@@ -38,8 +44,20 @@ function App() {
   const [cmdInput, setCmdInput] = useState('/bin/zsh');
   const [argsInput, setArgsInput] = useState('');
   const [cwdInput, setCwdInput] = useState('/Users/ray/git-repo/black_tde');
+  const [spawnProvider, setSpawnProvider] = useState('none');
+  const [pastSessions, setPastSessions] = useState<any[]>([]);
+  const [resumeSessionId, setResumeSessionId] = useState('');
 
   const workspacePath = '/Users/ray/git-repo/black_tde';
+
+  const loadPastSessions = async () => {
+    try {
+      const list = await invoke<any[]>('list_past_sessions');
+      setPastSessions(list.filter(s => s.remote_session_id));
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // Load Git Branch name on load
   const loadGitBranch = async () => {
@@ -53,6 +71,7 @@ function App() {
 
   useEffect(() => {
     loadGitBranch();
+    loadPastSessions();
   }, []);
 
   const handleCreateSession = async () => {
@@ -69,6 +88,8 @@ function App() {
         cwd: cwdInput || workspacePath,
         rows: 24,
         cols: 80,
+        provider: spawnProvider,
+        resumeSessionId: resumeSessionId || null,
       });
 
       addSession({
@@ -78,7 +99,9 @@ function App() {
         status: 'active',
       });
 
-      setActiveSession(newSessionId);
+      setPaneSessionId(paneLayout.activePaneIndex, newSessionId);
+      setResumeSessionId('');
+      loadPastSessions();
     } catch (error) {
       alert('Failed to spawn session: ' + error);
     }
@@ -180,6 +203,60 @@ function App() {
                         className="w-full bg-[#1e293b] border border-slate-700 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
                       />
                     </div>
+                    <div>
+                      <label className="block text-slate-400 font-mono mb-1 font-bold">RESUME PAST CONVERSATION</label>
+                      <select
+                        value={resumeSessionId}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setResumeSessionId(val);
+                          if (val) {
+                            const selected = pastSessions.find(s => s.remote_session_id === val);
+                            if (selected) {
+                              setCmdInput(selected.agent_type);
+                              setCwdInput(selected.cwd);
+                              if (selected.agent_type === 'claude') {
+                                setSpawnProvider('anthropic');
+                              } else if (selected.agent_type === 'aider') {
+                                setSpawnProvider('openai');
+                              }
+                            }
+                          }
+                        }}
+                        className="w-full bg-[#1e293b] border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
+                      >
+                        <option value="">Start Fresh (No Resume)</option>
+                        {pastSessions.map(s => (
+                          <option key={s.id} value={s.remote_session_id}>
+                            {s.agent_type} - {s.remote_session_id.substring(0, 8)}... ({s.cwd.split('/').pop()})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 font-mono mb-1 font-bold">PROVIDER (ENV KEY)</label>
+                      <select
+                        value={spawnProvider}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSpawnProvider(val);
+                          if (val === 'anthropic') {
+                            setCmdInput('claude');
+                          } else if (val === 'openai') {
+                            setCmdInput('aider');
+                          } else if (val === 'none') {
+                            setCmdInput('/bin/zsh');
+                          }
+                        }}
+                        className="w-full bg-[#1e293b] border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
+                      >
+                        <option value="none">None (Shell)</option>
+                        <option value="anthropic">Anthropic (Claude)</option>
+                        <option value="openai">OpenAI (Aider)</option>
+                        <option value="gemini">Google Gemini</option>
+                        <option value="deepseek">DeepSeek API</option>
+                      </select>
+                    </div>
                     <button
                       onClick={handleCreateSession}
                       className="w-full flex items-center justify-center space-x-1 bg-sky-500 hover:bg-sky-600 active:bg-sky-700 text-white font-medium py-1.5 px-3 rounded shadow shadow-sky-500/20 transition"
@@ -245,36 +322,47 @@ function App() {
           {/* Main vertical split panel */}
           <div className="flex-grow flex min-w-0 h-full p-4 space-x-4">
             
-            {/* Split Left: Terminal Pane */}
-            <div className="flex-1 min-w-0 h-full flex flex-col">
-              {activeSessionId && sessions[activeSessionId] ? (
-                <div className="flex-1 flex flex-col h-full min-h-0">
-                  <div className="flex items-center justify-between mb-2 select-none">
-                    <div>
-                      <h2 className="text-sm font-bold flex items-center space-x-2">
-                        <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span>
-                        <span className="text-slate-200">Terminal Panel</span>
-                      </h2>
-                      <p className="text-[10px] font-mono text-slate-400 mt-0.5">
-                        ID: {activeSessionId} | CWD: {sessions[activeSessionId].cwd}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex-grow min-h-0">
-                    <TerminalPane sessionId={activeSessionId} />
-                  </div>
+            {/* Split Left: Terminal splits cockpit */}
+            <div className="flex-grow flex flex-col min-w-0 h-full">
+              {/* Layout switcher toolbar */}
+              <div className="flex items-center justify-between mb-2 select-none">
+                <div>
+                  <h2 className="text-xs font-bold flex items-center space-x-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse"></span>
+                    <span className="text-slate-200">Terminal splits cockpit</span>
+                  </h2>
                 </div>
-              ) : (
-                <div className="flex-grow flex flex-col items-center justify-center text-center p-8 select-none border border-dashed border-slate-700/60 rounded-lg bg-slate-900/10">
-                  <div className="w-12 h-12 rounded-full bg-slate-800/40 flex items-center justify-center text-slate-400 mb-3 border border-slate-700/40">
-                    <TermIcon size={24} />
-                  </div>
-                  <h2 className="text-sm font-bold text-slate-300">No Active Terminal</h2>
-                  <p className="text-xs text-slate-400 max-w-xs mt-1">
-                    Spawn a shell process in the sidebar to start running commands.
-                  </p>
+                <div className="flex items-center space-x-2 bg-slate-800/40 p-0.5 rounded border border-slate-700/60 font-mono text-[9px] text-slate-400">
+                  <span className="px-1.5 font-bold">SPLIT:</span>
+                  <button
+                    onClick={() => setPaneLayoutType('1x1')}
+                    className={`px-2 py-0.5 rounded transition ${paneLayout.type === '1x1' ? 'bg-sky-500 text-white font-bold' : 'hover:text-slate-200 bg-slate-800'}`}
+                  >
+                    1x1
+                  </button>
+                  <button
+                    onClick={() => setPaneLayoutType('1x2')}
+                    className={`px-2 py-0.5 rounded transition ${paneLayout.type === '1x2' ? 'bg-sky-500 text-white font-bold' : 'hover:text-slate-200 bg-slate-800'}`}
+                  >
+                    1x2
+                  </button>
+                  <button
+                    onClick={() => setPaneLayoutType('2x1')}
+                    className={`px-2 py-0.5 rounded transition ${paneLayout.type === '2x1' ? 'bg-sky-500 text-white font-bold' : 'hover:text-slate-200 bg-slate-800'}`}
+                  >
+                    2x1
+                  </button>
+                  <button
+                    onClick={() => setPaneLayoutType('2x2')}
+                    className={`px-2 py-0.5 rounded transition ${paneLayout.type === '2x2' ? 'bg-sky-500 text-white font-bold' : 'hover:text-slate-200 bg-slate-800'}`}
+                  >
+                    2x2
+                  </button>
                 </div>
-              )}
+              </div>
+              <div className="flex-grow min-h-0 bg-[#070b12] rounded-lg border border-slate-800">
+                <TerminalGrid />
+              </div>
             </div>
 
             {/* Split Right: Swappable Utility Panel (Monaco / Git) */}
@@ -305,6 +393,28 @@ function App() {
                       <GitBranch size={13} />
                       <span>Git status</span>
                     </button>
+                    <button
+                      onClick={() => setActiveRightPanel('vault')}
+                      className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-semibold transition ${
+                        activeRightPanel === 'vault'
+                          ? 'bg-slate-700 text-slate-100 shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <KeyRound size={13} className="text-amber-500" />
+                      <span>Vault</span>
+                    </button>
+                    <button
+                      onClick={() => setActiveRightPanel('settings')}
+                      className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-semibold transition ${
+                        activeRightPanel === 'settings'
+                          ? 'bg-slate-700 text-slate-100 shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <Settings size={13} className="text-sky-400" />
+                      <span>Settings</span>
+                    </button>
                   </div>
                   <button
                     onClick={() => setIsRightPaneExpanded(false)}
@@ -321,10 +431,14 @@ function App() {
                     <EditorPane />
                   ) : activeRightPanel === 'git' ? (
                     <GitPanel />
+                  ) : activeRightPanel === 'vault' ? (
+                    <SettingsPanel />
+                  ) : activeRightPanel === 'settings' ? (
+                    <SettingsPanel />
                   ) : (
                     <div className="w-full h-full bg-[#0f172a] rounded-lg border border-slate-700 flex flex-col items-center justify-center text-slate-500">
                       <Sparkles size={28} className="mb-1 text-slate-600" />
-                      <span className="text-xs">Select Code Editor or Git above</span>
+                      <span className="text-xs">Select Code Editor, Git, Vault, or Settings above</span>
                     </div>
                   )}
                 </div>

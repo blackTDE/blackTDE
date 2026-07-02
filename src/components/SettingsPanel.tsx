@@ -1,17 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { 
-  KeyRound, 
-  ShieldAlert, 
   Cpu, 
   Layers, 
   Save, 
   CheckCircle, 
-  HelpCircle, 
-  Terminal, 
   RefreshCw,
-  Plus,
-  Trash2
+  Plus
 } from 'lucide-react';
 import { ProviderVault } from './ProviderVault';
 
