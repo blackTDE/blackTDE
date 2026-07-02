@@ -28,6 +28,7 @@ export interface PaneLayout {
 interface WorkspaceState {
   // Existing state
   activeWorkspace: Workspace | null;
+  workspaces: Workspace[];
   sessions: Record<string, Session>;
   activeSessionId: string | null;
   
@@ -46,7 +47,10 @@ interface WorkspaceState {
   activeFileTab: string | null; // null means terminal splits grid, otherwise file path string
 
   // Actions
-  setWorkspace: (ws: Workspace) => void;
+  setWorkspace: (ws: Workspace | null) => void;
+  setWorkspaces: (wsList: Workspace[]) => void;
+  addWorkspace: (ws: Workspace) => void;
+  removeWorkspace: (id: string) => void;
   addSession: (session: Session) => void;
   setActiveSession: (id: string | null) => void;
   removeSession: (id: string) => void;
@@ -68,6 +72,7 @@ interface WorkspaceState {
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   activeWorkspace: null,
+  workspaces: [],
   sessions: {},
   activeSessionId: null,
   
@@ -87,6 +92,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   activeFileTab: null,
 
   setWorkspace: (ws) => set({ activeWorkspace: ws }),
+  setWorkspaces: (wsList) => set({ workspaces: wsList }),
+  addWorkspace: (ws) => set((state) => ({ workspaces: [...state.workspaces, ws] })),
+  removeWorkspace: (id) => set((state) => ({ workspaces: state.workspaces.filter(w => w.id !== id) })),
   addSession: (session) =>
     set((state) => ({
       sessions: { ...state.sessions, [session.id]: session },
