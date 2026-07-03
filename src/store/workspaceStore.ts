@@ -60,6 +60,7 @@ interface WorkspaceState {
   addWorkspace: (ws: WorkspaceEntry) => void;
   removeWorkspace: (id: string) => void;
   addSession: (session: SessionInfo) => void;
+  setSessions: (sessions: Record<string, SessionInfo>) => void;
   setActiveSession: (id: string | null) => void;
   removeSession: (id: string) => void;
   
@@ -163,6 +164,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     set((state) => ({
       sessions: { ...state.sessions, [session.id]: session },
     })),
+
+  setSessions: (sessions) =>
+    set({ sessions }),
 
   setActiveSession: (id) => set({ activeSessionId: id }),
 
