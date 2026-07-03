@@ -67,6 +67,15 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
             term.write(chunk);
           }
         }
+
+        // Check if the PTY process is currently active in the backend process manager
+        invoke<string[]>('list_active_session_ids')
+          .then((activeIds) => {
+            if (!activeIds.includes(sessionId)) {
+              term.write('\r\n\x1b[1;31m[Process terminated - past history loaded]\x1b[0m\r\n');
+            }
+          })
+          .catch((err) => console.error('Failed to query active session list:', err));
       })
       .catch((err) => {
         console.error('Failed to load session history:', err);
