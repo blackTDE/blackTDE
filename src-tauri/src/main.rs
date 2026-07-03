@@ -406,6 +406,15 @@ async fn list_past_sessions(
     Ok(entries)
 }
 
+#[tauri::command]
+async fn list_active_session_ids(
+    manager: State<'_, process::ProcessManager>,
+) -> Result<Vec<String>, String> {
+    let active_sessions = manager.active_sessions.lock().map_err(|e| e.to_string())?;
+    let ids: Vec<String> = active_sessions.keys().cloned().collect();
+    Ok(ids)
+}
+
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -459,6 +468,7 @@ fn main() {
             settings::get_proxy_virtual_models,
             settings::delete_proxy_virtual_model,
             list_past_sessions,
+            list_active_session_ids,
             list_workspaces,
             detect_available_clis,
             create_workspace,
