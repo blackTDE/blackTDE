@@ -11,7 +11,6 @@ import { listen } from '@tauri-apps/api/event';
 import { 
   Plus, 
   Trash2, 
-  HardDrive, 
   GitBranch, 
   Sparkles,
   Maximize2,
@@ -1016,8 +1015,8 @@ function App() {
       {/* Bottom Status Bar */}
       <div className="h-6 bg-surface-2 border-t border-surface-3 px-3 flex items-center justify-between text-[10px] text-zinc-500 font-mono select-none shrink-0">
         <div className="flex items-center space-x-4">
-          <span className="flex items-center space-x-1">
-            <HardDrive size={10} className="text-brand-light" />
+          <span className="flex items-center space-x-1.5">
+            <img src={brandIcon} alt="Logo" className="w-3.5 h-3.5 object-cover rounded-sm shrink-0" />
             <span>Workspace: <strong className="text-zinc-300">{activeWorkspace?.name || 'None'}</strong></span>
           </span>
           <span className="flex items-center space-x-1">
