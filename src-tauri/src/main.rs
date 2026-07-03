@@ -147,12 +147,14 @@ async fn spawn_session(
 
     // 5. Insert session record to DB
     sqlx::query(
-        "INSERT INTO sessions (id, workspace_id, agent_type, cwd, status) VALUES ($1, $2, $3, $4, 'active')"
+        "INSERT INTO sessions (id, workspace_id, agent_type, cwd, status, provider, model) VALUES ($1, $2, $3, $4, 'active', $5, $6)"
     )
     .bind(&id)
     .bind(&workspace_id)
     .bind(&command)
     .bind(&cwd)
+    .bind(&provider)
+    .bind(&model_override)
     .execute(&*pool)
     .await
     .map_err(|e| e.to_string())?;
