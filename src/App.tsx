@@ -115,9 +115,24 @@ function App() {
   const loadPastSessions = async () => {
     try {
       const list = await invoke<any[]>('list_past_sessions');
+      // Filter for resume dropdown list (needs remote conversation ID)
       setPastSessions(list.filter(s => s.remote_session_id));
+
+      // Populate Zustand store sessions to persist them across app restarts
+      const sessionsMap: Record<string, any> = {};
+      for (const s of list) {
+        sessionsMap[s.id] = {
+          id: s.id,
+          agentType: s.agent_type,
+          cwd: s.cwd,
+          provider: s.provider || 'none',
+          cmd: s.agent_type,
+          args: [],
+        };
+      }
+      useWorkspaceStore.getState().setSessions(sessionsMap);
     } catch (e) {
-      console.error(e);
+      console.error('Failed to load past sessions:', e);
     }
   };
 
