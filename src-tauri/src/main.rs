@@ -497,8 +497,10 @@ async fn clear_terminated_sessions(
     pool: State<'_, SqlitePool>,
     manager: State<'_, process::ProcessManager>,
 ) -> Result<(), String> {
-    let active_sessions = manager.active_sessions.lock().map_err(|e| e.to_string())?;
-    let active_ids: Vec<String> = active_sessions.keys().cloned().collect();
+    let active_ids: Vec<String> = {
+        let active_sessions = manager.active_sessions.lock().map_err(|e| e.to_string())?;
+        active_sessions.keys().cloned().collect()
+    };
 
     if active_ids.is_empty() {
         sqlx::query("DELETE FROM sessions")
