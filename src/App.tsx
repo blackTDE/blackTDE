@@ -109,6 +109,7 @@ function App() {
   const [pastSessions, setPastSessions] = useState<any[]>([]);
   const [resumeSessionId, setResumeSessionId] = useState('');
   const [detectedClis, setDetectedClis] = useState<string[]>([]);
+  const [privileged, setPrivileged] = useState(true);
 
   const workspacePath = '/Users/ray/git-repo/black_tde';
 
@@ -133,6 +134,15 @@ function App() {
       useWorkspaceStore.getState().setSessions(sessionsMap);
     } catch (e) {
       console.error('Failed to load past sessions:', e);
+    }
+  };
+
+  const handleClearTerminatedSessions = async () => {
+    try {
+      await invoke('clear_terminated_sessions');
+      await loadPastSessions();
+    } catch (err) {
+      console.error('Failed to clear terminated sessions:', err);
     }
   };
 
@@ -299,6 +309,7 @@ function App() {
         cols: 80,
         provider: spawnProvider,
         resumeSessionId: resumeSessionId || null,
+        privileged: privileged,
       });
 
       addSession({
@@ -376,7 +387,7 @@ function App() {
       <div className="flex flex-1 min-h-0 w-full overflow-hidden">
         
         {/* Left Sidebar Panel (Projects Tree Viewer) */}
-        <div className="w-80 border-r border-surface-2 bg-surface-1 flex flex-col select-none overflow-hidden font-sans">
+        <div className="w-80 shrink-0 border-r border-surface-2 bg-surface-1 flex flex-col select-none overflow-hidden font-sans">
           {/* Header */}
           <div className="p-4 border-b border-surface-2 flex items-center justify-between">
             <div className="flex items-center space-x-2">
@@ -396,13 +407,22 @@ function App() {
           <div className="flex-grow overflow-y-auto flex flex-col p-4 space-y-3 min-h-0">
             <div className="flex items-center justify-between">
               <h2 className="text-[10px] font-bold tracking-wider text-zinc-400 uppercase font-mono">Project Tree</h2>
-              <button
-                onClick={() => setShowNewProjectForm(!showNewProjectForm)}
-                className="text-zinc-500 hover:text-brand-light p-1 transition cursor-pointer"
-                title="Create New Project"
-              >
-                <Plus size={14} />
-              </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleClearTerminatedSessions}
+                  className="text-zinc-500 hover:text-red-400 p-1 transition cursor-pointer"
+                  title="Clear Terminated Sessions"
+                >
+                  <Trash2 size={13} />
+                </button>
+                <button
+                  onClick={() => setShowNewProjectForm(!showNewProjectForm)}
+                  className="text-zinc-500 hover:text-brand-light p-1 transition cursor-pointer"
+                  title="Create New Project"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
             </div>
 
             {/* Create Project Form */}
@@ -1004,6 +1024,20 @@ function App() {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                {/* Privileged Mode Checkbox */}
+                <div className="flex items-center space-x-2 pt-1.5">
+                  <input
+                    type="checkbox"
+                    id="privilegedMode"
+                    checked={privileged}
+                    onChange={(e) => setPrivileged(e.target.checked)}
+                    className="accent-brand rounded border-surface-3 bg-surface-2 h-3.5 w-3.5 cursor-pointer"
+                  />
+                  <label htmlFor="privilegedMode" className="text-zinc-400 font-mono text-[10px] select-none cursor-pointer font-semibold uppercase tracking-wider">
+                    Privileged Mode (Skip agent prompts)
+                  </label>
                 </div>
               </div>
             </div>
