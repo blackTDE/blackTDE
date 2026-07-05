@@ -22,6 +22,7 @@ async fn spawn_session(
     cols: u16,
     provider: String,
     resume_session_id: Option<String>,
+    privileged: bool,
     pool: State<'_, SqlitePool>,
     manager: State<'_, process::ProcessManager>,
     app_handle: tauri::AppHandle,
@@ -70,7 +71,75 @@ async fn spawn_session(
 
     let mut envs = Vec::new();
 
-    if let Some(p_name) = provider_name {
+    // Check if there is an active local proxy
+    let active_local_proxy = sqlx::query(
+        "SELECT provider, base_url, default_model FROM local_proxies WHERE active = 1"
+    )
+    .fetch_optional(&*pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if let Some(lp) = active_local_proxy {
+        let lp_provider: String = lp.get("provider");
+        let lp_base_url: String = lp.get("base_url");
+        let lp_default_model: String = lp.get("default_model");
+
+        if model_override.is_none() {
+            model_override = Some(lp_default_model);
+        }
+
+        let base = lp_base_url.trim_end_matches('/').to_string();
+
+        let mut api_key = String::new();
+        let key_row = sqlx::query(
+            "SELECT api_key FROM provider_keys WHERE provider = $1"
+        )
+        .bind(&lp_provider)
+        .fetch_optional(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if let Some(row) = key_row {
+            api_key = row.get("api_key");
+        } else {
+            let prov_row = sqlx::query(
+                "SELECT api_key FROM proxy_providers WHERE name = $1"
+            )
+            .bind(&lp_provider)
+            .fetch_optional(&*pool)
+            .await
+            .map_err(|e| e.to_string())?;
+            if let Some(row) = prov_row {
+                api_key = row.get("api_key");
+            }
+        }
+
+        let active_key = if api_key.is_empty() { "proxy-dummy-key".to_string() } else { api_key };
+
+        let mut anthropic_url = base.clone();
+        if anthropic_url.ends_with("/v1") {
+            anthropic_url = anthropic_url[..anthropic_url.len() - 3].to_string();
+        }
+        anthropic_url = format!("{}/anthropic", anthropic_url.trim_end_matches('/'));
+
+        let mut openai_url = base.clone();
+        if !openai_url.ends_with("/v1") {
+            openai_url = format!("{}/v1", openai_url.trim_end_matches('/'));
+        }
+
+        let mut gemini_url = base.clone();
+        if gemini_url.ends_with("/v1") {
+            gemini_url = gemini_url[..gemini_url.len() - 3].to_string();
+        }
+
+        envs.push(("ANTHROPIC_BASE_URL".to_string(), anthropic_url));
+        envs.push(("ANTHROPIC_API_KEY".to_string(), active_key.clone()));
+        envs.push(("OPENAI_BASE_URL".to_string(), openai_url));
+        envs.push(("OPENAI_API_KEY".to_string(), active_key.clone()));
+        envs.push(("GEMINI_BASE_URL".to_string(), gemini_url.clone()));
+        envs.push(("GOOGLE_GEMINI_BASE_URL".to_string(), gemini_url));
+        envs.push(("GEMINI_API_KEY".to_string(), active_key));
+    } else if let Some(p_name) = provider_name {
         let provider_row = sqlx::query(
             "SELECT type, base_url, api_key FROM proxy_providers WHERE name = $1"
         )
@@ -88,7 +157,6 @@ async fn spawn_session(
                 envs.push(("OPENAI_BASE_URL".to_string(), base_url.clone()));
                 envs.push(("OPENAI_API_KEY".to_string(), if api_key.is_empty() { "dummy-proxy-key".to_string() } else { api_key.clone() }));
                 
-                // If it's Claude CLI, direct it to the openai proxy endpoint but using anthropic paths
                 if clean_cmd == "claude" {
                     envs.push(("ANTHROPIC_BASE_URL".to_string(), format!("{}/anthropic", base_url.trim_end_matches('/'))));
                     envs.push(("ANTHROPIC_API_KEY".to_string(), if api_key.is_empty() { "dummy-proxy-key".to_string() } else { api_key.clone() }));
@@ -96,15 +164,12 @@ async fn spawn_session(
             } else if p_type == "anthropic" {
                 envs.push(("ANTHROPIC_BASE_URL".to_string(), base_url.clone()));
                 envs.push(("ANTHROPIC_API_KEY".to_string(), if api_key.is_empty() { "dummy-proxy-key".to_string() } else { api_key.clone() }));
-                
-                // Also set OpenAI compatibility envs if Aider/other clients need it
                 envs.push(("OPENAI_BASE_URL".to_string(), base_url.clone()));
                 envs.push(("OPENAI_API_KEY".to_string(), if api_key.is_empty() { "dummy-proxy-key".to_string() } else { api_key.clone() }));
             }
         }
     }
 
-    // Ensure fallback dummy keys are injected if envs are empty (to prevent startup validation errors)
     let has_anthropic_key = envs.iter().any(|(k, _)| k == "ANTHROPIC_API_KEY");
     if !has_anthropic_key && (provider == "anthropic" || clean_cmd == "claude") {
         envs.push(("ANTHROPIC_API_KEY".to_string(), "dummy-proxy-key".to_string()));
@@ -128,13 +193,17 @@ async fn spawn_session(
             }
         }
     }
-    if command == "claude" {
-        // Run Claude Code CLI in stream-json mode to auto-capture session ID
-        command_args.extend(vec![
-            "--dangerously-skip-permissions".to_string(),
-            "--output-format".to_string(),
-            "stream-json".to_string()
-        ]);
+
+    if clean_cmd == "claude" {
+        if privileged {
+            if !command_args.iter().any(|arg| arg == "--dangerously-skip-permissions") {
+                command_args.push("--dangerously-skip-permissions".to_string());
+            }
+        }
+        if !command_args.iter().any(|arg| arg == "--output-format") {
+            command_args.push("--output-format".to_string());
+            command_args.push("stream-json".to_string());
+        }
         if let Some(ref r_id) = resume_session_id {
             if !r_id.trim().is_empty() {
                 command_args.extend(vec![
@@ -423,6 +492,31 @@ async fn list_active_session_ids(
     Ok(ids)
 }
 
+#[tauri::command]
+async fn clear_terminated_sessions(
+    pool: State<'_, SqlitePool>,
+    manager: State<'_, process::ProcessManager>,
+) -> Result<(), String> {
+    let active_sessions = manager.active_sessions.lock().map_err(|e| e.to_string())?;
+    let active_ids: Vec<String> = active_sessions.keys().cloned().collect();
+
+    if active_ids.is_empty() {
+        sqlx::query("DELETE FROM sessions")
+            .execute(&*pool)
+            .await
+            .map_err(|e| e.to_string())?;
+    } else {
+        let placeholders = active_ids.iter().enumerate().map(|(i, _)| format!("${}", i + 1)).collect::<Vec<_>>().join(",");
+        let query_str = format!("DELETE FROM sessions WHERE id NOT IN ({})", placeholders);
+        let mut query = sqlx::query(&query_str);
+        for id in &active_ids {
+            query = query.bind(id);
+        }
+        query.execute(&*pool).await.map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -477,6 +571,7 @@ fn main() {
             settings::delete_proxy_virtual_model,
             list_past_sessions,
             list_active_session_ids,
+            clear_terminated_sessions,
             list_workspaces,
             detect_available_clis,
             create_workspace,
