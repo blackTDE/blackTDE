@@ -72,13 +72,37 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
         invoke<string[]>('list_active_session_ids')
           .then((activeIds) => {
             if (!activeIds.includes(sessionId)) {
-              term.write('\r\n\x1b[1;33m[Session disconnected - auto resuming agent/shell...]\x1b[0m\r\n');
-              invoke('resume_terminated_session', { id: sessionId })
-                .then(() => {
-                  term.write('\x1b[1;32m[Session resumed successfully]\x1b[0m\r\n\r\n');
+              // Fetch remote session ID to print it before resuming
+              invoke<string | null>('get_remote_session_id', { id: sessionId })
+                .then((remoteId) => {
+                  const displayId = remoteId || "None (fresh shell)";
+                  term.write(`\r\n\x1b[1;33m[Session disconnected - auto resuming agent/shell with remote ID: ${displayId}]\x1b[0m\r\n`);
+                  
+                  // Reset xterm context to prevent overlapping character mess
+                  term.reset();
+                  term.write(`\x1b[1;33m[Session disconnected - auto resuming agent/shell with remote ID: ${displayId}]\x1b[0m\r\n`);
+                  term.write('\x1b[1;30m(Note: Re-connecting to PTY process and cleaning screen context...)\x1b[0m\r\n\r\n');
+
+                  invoke('resume_terminated_session', { id: sessionId })
+                    .then(() => {
+                      term.write('\x1b[1;32m[Session resumed successfully]\x1b[0m\r\n\r\n');
+                    })
+                    .catch((err) => {
+                      term.write(`\r\n\x1b[1;31m[Auto resume failed: ${err}]\x1b[0m\r\n`);
+                    });
                 })
                 .catch((err) => {
-                  term.write(`\r\n\x1b[1;31m[Auto resume failed: ${err}]\x1b[0m\r\n`);
+                  console.error('Failed to get remote session id:', err);
+                  // Fallback without printing remote ID
+                  term.reset();
+                  term.write('\x1b[1;33m[Session disconnected - auto resuming agent/shell...]\x1b[0m\r\n');
+                  invoke('resume_terminated_session', { id: sessionId })
+                    .then(() => {
+                      term.write('\x1b[1;32m[Session resumed successfully]\x1b[0m\r\n\r\n');
+                    })
+                    .catch((resumeErr) => {
+                      term.write(`\r\n\x1b[1;31m[Auto resume failed: ${resumeErr}]\x1b[0m\r\n`);
+                    });
                 });
             }
           })
