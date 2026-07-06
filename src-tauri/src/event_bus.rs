@@ -41,28 +41,38 @@ pub fn start_stdout_reader(
                 Ok(n) => {
                     let data_chunk = buffer[..n].to_vec();
 
-                    // Scan chunk for remote session_id (e.g. from Claude Code stream-json init payload)
+                    // Scan chunk for remote session_id/conversation_id (e.g. from Claude Code, Codex, OpenCode, Pi Agent stream payloads)
                     if let Ok(text) = std::str::from_utf8(&data_chunk) {
-                        if let Some(idx) = text.find("\"session_id\"") {
-                            let after = &text[idx + 12..];
-                            if let Some(start_quote) = after.find('"') {
-                                let val_part = &after[start_quote + 1..];
-                                if let Some(end_quote) = val_part.find('"') {
-                                    let session_id_val = &val_part[..end_quote];
-                                    let pool = db_pool_clone.clone();
-                                    let s_id = session_id_clone.clone();
-                                    let captured_sid = session_id_val.to_string();
-                                    tauri::async_runtime::spawn(async move {
-                                        let _ = sqlx::query(
-                                            "UPDATE sessions SET remote_session_id = $1 WHERE id = $2"
-                                        )
-                                        .bind(captured_sid)
-                                        .bind(s_id)
-                                        .execute(&pool)
-                                        .await;
-                                    });
+                        let keys = vec!["\"session_id\"", "\"sessionId\"", "\"conversation_id\"", "\"conversationId\"", "\"run_id\"", "\"runId\""];
+                        let mut found_sid = None;
+                        for key in keys {
+                            if let Some(idx) = text.find(key) {
+                                let after = &text[idx + key.len()..];
+                                if let Some(start_quote) = after.find('"') {
+                                    let val_part = &after[start_quote + 1..];
+                                    if let Some(end_quote) = val_part.find('"') {
+                                        let val = &val_part[..end_quote];
+                                        if !val.trim().is_empty() && val != "default" {
+                                            found_sid = Some(val.to_string());
+                                            break;
+                                        }
+                                    }
                                 }
                             }
+                        }
+
+                        if let Some(captured_sid) = found_sid {
+                            let pool = db_pool_clone.clone();
+                            let s_id = session_id_clone.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = sqlx::query(
+                                    "UPDATE sessions SET remote_session_id = $1 WHERE id = $2"
+                                )
+                                .bind(captured_sid)
+                                .bind(s_id)
+                                .execute(&pool)
+                                .await;
+                            });
                         }
                     }
 
