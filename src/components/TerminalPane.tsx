@@ -72,7 +72,14 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
         invoke<string[]>('list_active_session_ids')
           .then((activeIds) => {
             if (!activeIds.includes(sessionId)) {
-              term.write('\r\n\x1b[1;31m[Process terminated - past history loaded]\x1b[0m\r\n');
+              term.write('\r\n\x1b[1;33m[Session disconnected - auto resuming agent/shell...]\x1b[0m\r\n');
+              invoke('resume_terminated_session', { id: sessionId })
+                .then(() => {
+                  term.write('\x1b[1;32m[Session resumed successfully]\x1b[0m\r\n\r\n');
+                })
+                .catch((err) => {
+                  term.write(`\r\n\x1b[1;31m[Auto resume failed: ${err}]\x1b[0m\r\n`);
+                });
             }
           })
           .catch((err) => console.error('Failed to query active session list:', err));
