@@ -530,6 +530,19 @@ async fn clear_terminated_sessions(
     Ok(())
 }
 #[tauri::command]
+async fn get_remote_session_id(
+    id: String,
+    pool: State<'_, SqlitePool>,
+) -> Result<Option<String>, String> {
+    let row = sqlx::query("SELECT remote_session_id FROM sessions WHERE id = $1")
+        .bind(&id)
+        .fetch_optional(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(row.and_then(|r| r.get::<Option<String>, _>("remote_session_id")))
+}
+
+#[tauri::command]
 async fn resume_terminated_session(
     id: String,
     pool: State<'_, SqlitePool>,
@@ -784,6 +797,7 @@ fn main() {
             settings::delete_proxy_virtual_model,
             list_past_sessions,
             list_active_session_ids,
+            get_remote_session_id,
             clear_terminated_sessions,
             resume_terminated_session,
             list_workspaces,
