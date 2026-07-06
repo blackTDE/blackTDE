@@ -194,22 +194,25 @@ async fn spawn_session(
         }
     }
 
-    if clean_cmd == "claude" {
-        if privileged {
-            if !command_args.iter().any(|arg| arg == "--dangerously-skip-permissions") {
-                command_args.push("--dangerously-skip-permissions".to_string());
+    let is_agent = matches!(clean_cmd.as_str(), "claude" | "codex" | "opencode" | "open-code" | "gemini" | "pi" | "pi-agent");
+    if is_agent {
+        if clean_cmd == "claude" {
+            if privileged {
+                if !command_args.iter().any(|arg| arg == "--dangerously-skip-permissions") {
+                    command_args.push("--dangerously-skip-permissions".to_string());
+                }
             }
-        }
-        if !command_args.iter().any(|arg| arg == "--output-format") {
-            command_args.push("--output-format".to_string());
-            command_args.push("stream-json".to_string());
+            if !command_args.iter().any(|arg| arg == "--output-format") {
+                command_args.push("--output-format".to_string());
+                command_args.push("stream-json".to_string());
+            }
         }
         if let Some(ref r_id) = resume_session_id {
             if !r_id.trim().is_empty() {
-                command_args.extend(vec![
-                    "--resume".to_string(),
-                    r_id.clone()
-                ]);
+                if !command_args.iter().any(|arg| arg == "--resume") {
+                    command_args.push("--resume".to_string());
+                    command_args.push(r_id.clone());
+                }
             }
         }
     }
@@ -526,6 +529,206 @@ async fn clear_terminated_sessions(
     }
     Ok(())
 }
+#[tauri::command]
+async fn resume_terminated_session(
+    id: String,
+    pool: State<'_, SqlitePool>,
+    manager: State<'_, process::ProcessManager>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    // 1. Check if the session is already active in process manager
+    {
+        let active_sessions = manager.active_sessions.lock().map_err(|e| e.to_string())?;
+        if active_sessions.contains_key(&id) {
+            return Ok(()); // Already running
+        }
+    }
+
+    // 2. Fetch session details from SQLite
+    let session_row = sqlx::query(
+        "SELECT workspace_id, agent_type, cwd, remote_session_id, provider, model FROM sessions WHERE id = $1"
+    )
+    .bind(&id)
+    .fetch_optional(&*pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let row = match session_row {
+        Some(r) => r,
+        None => return Err(format!("Session {} not found in database", id)),
+    };
+
+    let _workspace_id: String = row.get("workspace_id");
+    let command: String = row.get("agent_type");
+    let cwd: String = row.get("cwd");
+    let remote_session_id: Option<String> = row.get("remote_session_id");
+    let provider: String = row.get("provider");
+    let model: Option<String> = row.get("model");
+
+    let clean_cmd = command.split(|c| c == '/' || c == '\\').last().unwrap_or(&command).to_lowercase();
+
+    // 3. Resolve environment variables and arguments
+    let mut envs = Vec::new();
+    let mut model_override = model.clone();
+
+    // Check active local proxy
+    let active_local_proxy = sqlx::query(
+        "SELECT provider, base_url, default_model FROM local_proxies WHERE active = 1"
+    )
+    .fetch_optional(&*pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if let Some(lp) = active_local_proxy {
+        let lp_provider: String = lp.get("provider");
+        let lp_base_url: String = lp.get("base_url");
+        let lp_default_model: String = lp.get("default_model");
+
+        if model_override.is_none() {
+            model_override = Some(lp_default_model);
+        }
+
+        let base = lp_base_url.trim_end_matches('/').to_string();
+
+        let mut api_key = String::new();
+        let key_row = sqlx::query("SELECT api_key FROM provider_keys WHERE provider = $1")
+            .bind(&lp_provider)
+            .fetch_optional(&*pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        if let Some(r) = key_row {
+            api_key = r.get("api_key");
+        } else {
+            let prov_row = sqlx::query("SELECT api_key FROM proxy_providers WHERE name = $1")
+                .bind(&lp_provider)
+                .fetch_optional(&*pool)
+                .await
+                .map_err(|e| e.to_string())?;
+            if let Some(r) = prov_row {
+                api_key = r.get("api_key");
+            }
+        }
+
+        let active_key = if api_key.is_empty() { "proxy-dummy-key".to_string() } else { api_key };
+
+        let mut anthropic_url = base.clone();
+        if anthropic_url.ends_with("/v1") {
+            anthropic_url = anthropic_url[..anthropic_url.len() - 3].to_string();
+        }
+        anthropic_url = format!("{}/anthropic", anthropic_url.trim_end_matches('/'));
+
+        let mut openai_url = base.clone();
+        if !openai_url.ends_with("/v1") {
+            openai_url = format!("{}/v1", openai_url.trim_end_matches('/'));
+        }
+
+        let mut gemini_url = base.clone();
+        if gemini_url.ends_with("/v1") {
+            gemini_url = gemini_url[..gemini_url.len() - 3].to_string();
+        }
+
+        envs.push(("ANTHROPIC_BASE_URL".to_string(), anthropic_url));
+        envs.push(("ANTHROPIC_API_KEY".to_string(), active_key.clone()));
+        envs.push(("OPENAI_BASE_URL".to_string(), openai_url));
+        envs.push(("OPENAI_API_KEY".to_string(), active_key.clone()));
+        envs.push(("GEMINI_BASE_URL".to_string(), gemini_url.clone()));
+        envs.push(("GOOGLE_GEMINI_BASE_URL".to_string(), gemini_url));
+        envs.push(("GEMINI_API_KEY".to_string(), active_key));
+    } else {
+        // Fallback to proxy_providers
+        let provider_row = sqlx::query(
+            "SELECT type, base_url, api_key FROM proxy_providers WHERE name = $1"
+        )
+        .bind(&provider)
+        .fetch_optional(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if let Some(row) = provider_row {
+            let p_type: String = row.get("type");
+            let base_url: String = row.get("base_url");
+            let api_key: String = row.get("api_key");
+
+            if p_type == "openai" {
+                envs.push(("OPENAI_BASE_URL".to_string(), base_url.clone()));
+                envs.push(("OPENAI_API_KEY".to_string(), if api_key.is_empty() { "dummy-proxy-key".to_string() } else { api_key.clone() }));
+                if clean_cmd == "claude" {
+                    envs.push(("ANTHROPIC_BASE_URL".to_string(), format!("{}/anthropic", base_url.trim_end_matches('/'))));
+                    envs.push(("ANTHROPIC_API_KEY".to_string(), if api_key.is_empty() { "dummy-proxy-key".to_string() } else { api_key.clone() }));
+                }
+            } else if p_type == "anthropic" {
+                envs.push(("ANTHROPIC_BASE_URL".to_string(), base_url.clone()));
+                envs.push(("ANTHROPIC_API_KEY".to_string(), if api_key.is_empty() { "dummy-proxy-key".to_string() } else { api_key.clone() }));
+                envs.push(("OPENAI_BASE_URL".to_string(), base_url.clone()));
+                envs.push(("OPENAI_API_KEY".to_string(), if api_key.is_empty() { "dummy-proxy-key".to_string() } else { api_key.clone() }));
+            }
+        }
+    }
+
+    let has_anthropic_key = envs.iter().any(|(k, _)| k == "ANTHROPIC_API_KEY");
+    if !has_anthropic_key && (provider == "anthropic" || clean_cmd == "claude") {
+        envs.push(("ANTHROPIC_API_KEY".to_string(), "dummy-proxy-key".to_string()));
+    }
+    let has_openai_key = envs.iter().any(|(k, _)| k == "OPENAI_API_KEY");
+    if !has_openai_key && (provider == "openai" || clean_cmd == "aider") {
+        envs.push(("OPENAI_API_KEY".to_string(), "dummy-proxy-key".to_string()));
+    }
+
+    // 4. Construct CLI arguments
+    let mut command_args = Vec::new();
+    if let Some(ref m_override) = model_override {
+        if clean_cmd == "aider" {
+            command_args.push("--model".to_string());
+            command_args.push(m_override.clone());
+        } else if clean_cmd == "claude" {
+            envs.push(("CLAUDE_MODEL".to_string(), m_override.clone()));
+        }
+    }
+
+    // Standard agent list for auto-resume
+    let is_agent = matches!(clean_cmd.as_str(), "claude" | "codex" | "opencode" | "open-code" | "gemini" | "pi" | "pi-agent");
+    if is_agent {
+        if clean_cmd == "claude" {
+            // Default skip permission is true for resume
+            command_args.push("--dangerously-skip-permissions".to_string());
+            command_args.push("--output-format".to_string());
+            command_args.push("stream-json".to_string());
+        }
+
+        if let Some(ref r_id) = remote_session_id {
+            if !r_id.trim().is_empty() {
+                command_args.push("--resume".to_string());
+                command_args.push(r_id.clone());
+            }
+        }
+    }
+
+    // 5. Spawn PTY process
+    let mut resolved_command = command.clone();
+    if command == "zsh" {
+        resolved_command = "/bin/zsh".to_string();
+    } else if command == "bash" {
+        resolved_command = "/bin/bash".to_string();
+    } else if command == "sh" {
+        resolved_command = "/bin/sh".to_string();
+    }
+
+    let active_process = process::spawn_pty_process(&resolved_command, command_args, &cwd, 24, 80, envs)
+        .map_err(|e| e.to_string())?;
+
+    let master_clone = active_process.master.clone();
+
+    // 6. Register in process manager
+    {
+        let mut active_sessions = manager.active_sessions.lock().map_err(|e| e.to_string())?;
+        active_sessions.insert(id.clone(), active_process);
+    }
+
+    // 7. Start stdout reader
+    event_bus::start_stdout_reader(id, master_clone, pool.inner().clone(), app_handle);
+
+    Ok(())
+}
 
 fn main() {
     tauri::Builder::default()
@@ -582,6 +785,7 @@ fn main() {
             list_past_sessions,
             list_active_session_ids,
             clear_terminated_sessions,
+            resume_terminated_session,
             list_workspaces,
             detect_available_clis,
             create_workspace,
