@@ -197,6 +197,8 @@ async fn spawn_session(
         }
     }
 
+    let mut initial_remote_id = None;
+
     let is_agent = matches!(clean_cmd.as_str(), "claude" | "codex" | "opencode" | "open-code" | "gemini" | "pi" | "pi-agent");
     if is_agent {
         if clean_cmd == "claude" {
@@ -209,12 +211,31 @@ async fn spawn_session(
                 command_args.push("--output-format".to_string());
                 command_args.push("stream-json".to_string());
             }
-        }
-        if let Some(ref r_id) = resume_session_id {
-            if !r_id.trim().is_empty() {
-                if !command_args.iter().any(|arg| arg == "--resume") {
-                    command_args.push("--resume".to_string());
-                    command_args.push(r_id.clone());
+
+            if let Some(ref r_id) = resume_session_id {
+                if !r_id.trim().is_empty() {
+                    if !command_args.iter().any(|arg| arg == "--resume") {
+                        command_args.push("--resume".to_string());
+                        command_args.push(r_id.clone());
+                    }
+                    initial_remote_id = Some(r_id.clone());
+                }
+            } else {
+                // Brand new session: generate a unique UUID and pass as --session-id
+                let new_uuid = uuid::Uuid::new_v4().to_string();
+                command_args.push("--session-id".to_string());
+                command_args.push(new_uuid.clone());
+                initial_remote_id = Some(new_uuid);
+            }
+        } else {
+            // Non-claude agents
+            if let Some(ref r_id) = resume_session_id {
+                if !r_id.trim().is_empty() {
+                    if !command_args.iter().any(|arg| arg == "--resume") {
+                        command_args.push("--resume".to_string());
+                        command_args.push(r_id.clone());
+                    }
+                    initial_remote_id = Some(r_id.clone());
                 }
             }
         }
@@ -222,7 +243,7 @@ async fn spawn_session(
 
     // 5. Insert session record to DB
     sqlx::query(
-        "INSERT INTO sessions (id, workspace_id, agent_type, cwd, status, provider, model) VALUES ($1, $2, $3, $4, 'active', $5, $6)"
+        "INSERT INTO sessions (id, workspace_id, agent_type, cwd, status, provider, model, remote_session_id) VALUES ($1, $2, $3, $4, 'active', $5, $6, $7)"
     )
     .bind(&id)
     .bind(&workspace_id)
@@ -230,6 +251,7 @@ async fn spawn_session(
     .bind(&cwd)
     .bind(&provider)
     .bind(&model_override)
+    .bind(&initial_remote_id)
     .execute(&*pool)
     .await
     .map_err(|e| e.to_string())?;
