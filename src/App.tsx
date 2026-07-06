@@ -330,12 +330,29 @@ function App() {
     }
   };
 
-  const handleTerminateSession = async (id: string) => {
+  const handleDeleteSession = async (id: string) => {
     try {
-      await invoke('terminate_session', { id });
+      const activeIds = await invoke<string[]>('list_active_session_ids');
+      const isAlive = activeIds.includes(id);
+
+      if (isAlive) {
+        const confirmDelete = window.confirm(
+          "This session is currently active/running. Are you sure you want to terminate and delete it?"
+        );
+        if (!confirmDelete) return;
+      }
+
+      await invoke('delete_session', { id });
       removeSession(id);
+
+      const state = useWorkspaceStore.getState();
+      if (state.activeSessionId === id) {
+        state.setActiveSession(null);
+      }
+
+      loadPastSessions();
     } catch (error) {
-      console.error('Failed to terminate session:', error);
+      console.error('Failed to delete session:', error);
       removeSession(id);
     }
   };
@@ -564,7 +581,7 @@ function App() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleTerminateSession(session.id);
+                                handleDeleteSession(session.id);
                               }}
                               className="p-0.5 hover:bg-error/25 hover:text-error text-zinc-550 rounded transition cursor-pointer"
                             >
@@ -733,23 +750,40 @@ function App() {
                       <div className="flex items-center space-x-2 overflow-x-auto">
                         <SquareTerminal size={14} className="text-brand-light shrink-0" />
                         <span className="text-[10px] text-zinc-450 font-mono uppercase tracking-wider font-semibold mr-1.5 shrink-0">PTY Sessions:</span>
-                        {activeProjectSessions.map((session) => (
-                          <button
-                            key={session.id}
-                            onClick={() => handleSelectSession(activeWorkspace, session.id)}
-                            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-[10px] font-mono border transition shrink-0 cursor-pointer ${
-                              activeSessionId === session.id
-                                ? 'bg-brand/10 border-brand/40 text-brand-light font-bold'
-                                : 'bg-surface-3/30 border-surface-3 text-zinc-450 hover:text-zinc-200'
-                            }`}
-                          >
-                            <div className={`flex items-center justify-center w-4 h-4 rounded-full bg-gradient-to-tr ${getAgentIconClass(session.agentType)} text-white font-extrabold text-[7px] shadow-sm select-none shrink-0`}>
-                              {getInitials(session.agentType)}
+                        {activeProjectSessions.map((session) => {
+                          const isSelected = activeSessionId === session.id;
+                          return (
+                            <div
+                              key={session.id}
+                              className={`flex items-center space-x-1.5 px-2 py-0.5 rounded text-[10px] font-mono border transition shrink-0 ${
+                                isSelected
+                                  ? 'bg-brand/10 border-brand/40 text-brand-light font-bold'
+                                  : 'bg-surface-3/30 border-surface-3 text-zinc-450 hover:text-zinc-200'
+                              }`}
+                            >
+                              <button
+                                onClick={() => handleSelectSession(activeWorkspace, session.id)}
+                                className="flex items-center space-x-1.5 cursor-pointer py-0.5"
+                              >
+                                <div className={`flex items-center justify-center w-4 h-4 rounded-full bg-gradient-to-tr ${getAgentIconClass(session.agentType)} text-white font-extrabold text-[7px] shadow-sm select-none shrink-0`}>
+                                  {getInitials(session.agentType)}
+                                </div>
+                                <span>{session.agentType}</span>
+                                <span className="text-[8px] text-zinc-500 font-normal">({session.id.substring(8, 12)})</span>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteSession(session.id);
+                                }}
+                                className="p-0.5 hover:bg-red-500/20 hover:text-red-400 text-zinc-550 rounded transition cursor-pointer"
+                                title="Delete Session"
+                              >
+                                <X size={10} />
+                              </button>
                             </div>
-                            <span>{session.agentType}</span>
-                            <span className="text-[8px] text-zinc-500 font-normal">({session.id.substring(8, 12)})</span>
-                          </button>
-                        ))}
+                          );
+                        })}
                         
                         {/* Spawn Session Trigger Button */}
                         {activeWorkspace && (
