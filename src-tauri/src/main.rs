@@ -532,17 +532,166 @@ async fn clear_terminated_sessions(
     }
     Ok(())
 }
+fn get_claude_project_key(cwd: &str) -> String {
+    let mut sanitized = String::new();
+    for c in cwd.chars() {
+        if c.is_ascii_alphanumeric() {
+            sanitized.push(c);
+        } else {
+            sanitized.push('-');
+        }
+    }
+
+    if sanitized.len() <= 200 {
+        sanitized
+    } else {
+        // Calculate simple hash matching JS absolute value behaviors
+        let mut h: i64 = 0;
+        for ch in cwd.chars() {
+            let char_val = ch as i64;
+            h = (h << 5) - h + char_val;
+            h = h & 0xFFFFFFFF; // coerce to 32-bit
+        }
+        let h_u32 = h as u32;
+        let h_abs = if (h_u32 as i32) < 0 {
+            (-(h_u32 as i32)) as u32
+        } else {
+            h_u32
+        };
+        
+        let mut base36 = String::new();
+        let digits = b"0123456789abcdefghijklmnopqrstuvwxyz";
+        let mut n = h_abs;
+        if n == 0 {
+            base36.push('0');
+        } else {
+            while n > 0 {
+                base36.push(digits[(n % 36) as usize] as char);
+                n /= 36;
+            }
+        }
+        let hash_str: String = base36.chars().rev().collect();
+        format!("{}-{}", &sanitized[..200], hash_str)
+    }
+}
+
+fn find_latest_file_in_dir(dir: &Path, extension: &str) -> Option<PathBuf> {
+    if !dir.is_dir() {
+        return None;
+    }
+    let mut latest_file = None;
+    let mut latest_mtime = SystemTime::UNIX_EPOCH;
+    
+    fn walk_dir(dir: &Path, extension: &str, latest_file: &mut Option<PathBuf>, latest_mtime: &mut SystemTime) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        walk_dir(&path, extension, latest_file, latest_mtime);
+                    } else if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some(extension) {
+                        if let Ok(metadata) = fs::metadata(&path) {
+                            if let Ok(modified) = metadata.modified() {
+                                if modified > *latest_mtime {
+                                    *latest_mtime = modified;
+                                    *latest_file = Some(path);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    walk_dir(dir, extension, &mut latest_file, &mut latest_mtime);
+    latest_file
+}
+
 #[tauri::command]
 async fn get_remote_session_id(
     id: String,
     pool: State<'_, SqlitePool>,
 ) -> Result<Option<String>, String> {
-    let row = sqlx::query("SELECT remote_session_id FROM sessions WHERE id = $1")
+    // 1. Fetch details of the session from DB
+    let row = sqlx::query("SELECT agent_type, cwd, remote_session_id FROM sessions WHERE id = $1")
         .bind(&id)
         .fetch_optional(&*pool)
         .await
         .map_err(|e| e.to_string())?;
-    Ok(row.and_then(|r| r.get::<Option<String>, _>("remote_session_id")))
+
+    let (command, cwd, remote_id) = match row {
+        Some(r) => {
+            let cmd: String = r.get("agent_type");
+            let dir: String = r.get("cwd");
+            let rid: Option<String> = r.get("remote_session_id");
+            (cmd, dir, rid)
+        }
+        None => return Ok(None),
+    };
+
+    // If already resolved, return it
+    if let Some(ref rid_val) = remote_id {
+        if !rid_val.trim().is_empty() {
+            return Ok(Some(rid_val.clone()));
+        }
+    }
+
+    // Try to auto-resolve/heal session ID from local directories based on agent type
+    let clean_cmd = command.split(|c| c == '/' || c == '\\').last().unwrap_or(&command).to_lowercase();
+    let home = std::env::var("HOME").ok().map(PathBuf::from);
+
+    if let Some(home_path) = home {
+        if clean_cmd == "claude" {
+            let project_key = get_claude_project_key(&cwd);
+            let project_dir = home_path.join(".claude").join("projects").join(&project_key);
+            if let Some(latest_path) = find_latest_file_in_dir(&project_dir, "jsonl") {
+                if let Some(stem) = latest_path.file_stem().and_then(|s| s.to_str()) {
+                    let resolved = stem.to_string();
+                    // Update database
+                    sqlx::query("UPDATE sessions SET remote_session_id = $1 WHERE id = $2")
+                        .bind(&resolved)
+                        .bind(&id)
+                        .execute(&*pool)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    return Ok(Some(resolved));
+                }
+            }
+        } else if clean_cmd == "codex" {
+            let codex_dir = home_path.join(".codex").join("sessions");
+            if let Some(latest_path) = find_latest_file_in_dir(&codex_dir, "jsonl") {
+                if let Some(stem) = latest_path.file_stem().and_then(|s| s.to_str()) {
+                    let resolved = stem.to_string();
+                    // Update database
+                    sqlx::query("UPDATE sessions SET remote_session_id = $1 WHERE id = $2")
+                        .bind(&resolved)
+                        .bind(&id)
+                        .execute(&*pool)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    return Ok(Some(resolved));
+                }
+            }
+        } else if clean_cmd == "opencode" || clean_cmd == "open-code" {
+            let opencode_dir = home_path.join(".local").join("share").join("opencode").join("project");
+            if let Some(latest_path) = find_latest_file_in_dir(&opencode_dir, "json") {
+                if let Some(stem) = latest_path.file_stem().and_then(|s| s.to_str()) {
+                    let resolved = stem.to_string();
+                    // Update database
+                    sqlx::query("UPDATE sessions SET remote_session_id = $1 WHERE id = $2")
+                        .bind(&resolved)
+                        .bind(&id)
+                        .execute(&*pool)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    return Ok(Some(resolved));
+                }
+            }
+        }
+    }
+
+    Ok(None)
 }
 
 #[tauri::command]
