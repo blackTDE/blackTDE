@@ -295,17 +295,25 @@ async fn resize_session(
 }
 
 #[tauri::command]
-async fn terminate_session(
+async fn delete_session(
     id: String,
+    pool: State<'_, SqlitePool>,
     manager: State<'_, process::ProcessManager>,
 ) -> Result<(), String> {
-    let mut active_sessions = manager.active_sessions.lock().map_err(|e| e.to_string())?;
-    if let Some(proc) = active_sessions.remove(&id) {
-        let mut child = proc.child.lock().map_err(|e| e.to_string())?;
-        child.kill().map_err(|e| e.to_string())?;
-    } else {
-        return Err(format!("Session {} not found", id));
+    {
+        let mut active_sessions = manager.active_sessions.lock().map_err(|e| e.to_string())?;
+        if let Some(proc) = active_sessions.remove(&id) {
+            let mut child = proc.child.lock().map_err(|e| e.to_string())?;
+            let _ = child.kill();
+        }
     }
+
+    sqlx::query("DELETE FROM sessions WHERE id = $1")
+        .bind(&id)
+        .execute(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
@@ -542,7 +550,7 @@ fn main() {
             spawn_session,
             write_to_session,
             resize_session,
-            terminate_session,
+            delete_session,
             get_session_history,
             file_manager::list_directory,
             file_manager::read_file_content,
