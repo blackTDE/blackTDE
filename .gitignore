@@ -1,5 +1,9 @@
-node_modules
-target
-dist
-src-tauri/target
+node_modules/
+dist/
+target/
+src-tauri/target/
+docs/orca/
+
 .DS_Store
+.env
+.env.*
