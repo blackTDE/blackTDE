@@ -28,7 +28,7 @@ export const EditorPane: React.FC = () => {
 
   if (!activeFilePath) {
     return (
-      <div className="w-full h-full bg-[#0f172a] rounded-lg border border-slate-700 flex flex-col items-center justify-center text-slate-500">
+      <div className="w-full h-full bg-[#1e1e1e] rounded-lg border border-slate-700 flex flex-col items-center justify-center text-slate-500">
         <FileCode size={32} className="mb-2" />
         <span className="text-xs">Select a file from the explorer tree to view or edit</span>
       </div>
@@ -91,12 +91,12 @@ export const EditorPane: React.FC = () => {
   return (
     <div
       onKeyDown={handleKeyDown}
-      className="w-full h-full bg-[#0f172a] rounded-lg border border-slate-700 flex flex-col overflow-hidden"
+      className="w-full h-full bg-[#1e1e1e] rounded-lg border border-slate-700 flex flex-col overflow-hidden"
     >
       {/* Editor Header */}
-      <div className="bg-[#0b0f19] px-3 py-2 border-b border-slate-800 flex items-center justify-between select-none">
+      <div className="bg-[#171717] px-3 py-2 border-b border-slate-800 flex items-center justify-between select-none">
         <div className="flex items-center space-x-2 truncate">
-          <FileCode size={14} className="text-sky-400" />
+          <FileCode size={14} className="text-brand-light" />
           <span className="text-xs font-mono truncate text-slate-300">
             {activeFilePath.split('/').pop()}
           </span>
@@ -110,7 +110,7 @@ export const EditorPane: React.FC = () => {
           className={`flex items-center space-x-1 text-xs font-medium px-2 py-1 rounded transition ${
             isSaved
               ? 'text-slate-500 bg-slate-800/40 cursor-default'
-              : 'text-white bg-sky-500 hover:bg-sky-600 active:bg-sky-700 shadow-md shadow-sky-500/10'
+              : 'text-white bg-brand hover:bg-brand/80 active:bg-brand/90 shadow-md shadow-brand/10'
           }`}
         >
           <Save size={12} />

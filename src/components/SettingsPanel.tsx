@@ -40,10 +40,10 @@ interface McpServerEntry {
 const getAgentIconClass = (name: string): string => {
   const lower = name.toLowerCase();
   if (lower.includes('claude')) return 'from-orange-500 to-amber-600';
-  if (lower.includes('gemini')) return 'from-blue-500 to-indigo-600';
+  if (lower.includes('gemini')) return 'from-brand to-brand-light';
   if (lower.includes('codex')) return 'from-emerald-500 to-teal-600';
-  if (lower.includes('aider')) return 'from-purple-500 to-indigo-600';
-  return 'from-indigo-600 to-fuchsia-600';
+  if (lower.includes('aider')) return 'from-brand to-slate-500';
+  return 'from-brand to-slate-600';
 };
 
 const getInitials = (name: string): string => {
@@ -302,10 +302,10 @@ export const SettingsPanel: React.FC = () => {
   };
 
   return (
-    <div className="w-full h-full bg-[#070b12] flex flex-col font-sans text-slate-200">
+    <div className="w-full h-full bg-[#0a0a0a] flex flex-col font-sans text-slate-200">
       
       {/* Top Tab Switcher */}
-      <div className="shrink-0 bg-[#0b0f19] px-6 py-3.5 border-b border-slate-800/80 flex items-center justify-between select-none">
+      <div className="shrink-0 bg-[#171717] px-6 py-3.5 border-b border-slate-800/80 flex items-center justify-between select-none">
         <div className="flex items-center space-x-2">
           <Cpu className="text-brand-light w-4 h-4" />
           <h2 className="text-xs font-mono font-bold tracking-wide uppercase text-slate-300">TDE Engine Cockpit</h2>
@@ -338,7 +338,7 @@ export const SettingsPanel: React.FC = () => {
       </div>
 
       {/* Main Contents Area */}
-      <div className="flex-grow p-6 overflow-y-auto min-h-0 bg-[#070b12]">
+      <div className="flex-grow p-6 overflow-y-auto min-h-0 bg-[#0a0a0a]">
         
         {/* ── TAB: Agent Models (Virtual Models) ── */}
         {activeTab === 'virtual-models' && (
@@ -357,7 +357,7 @@ export const SettingsPanel: React.FC = () => {
               </button>
             </div>
 
-            <div className="border border-slate-800 rounded-xl overflow-hidden bg-[#0b0f19]/35">
+            <div className="border border-slate-800 rounded-xl overflow-hidden bg-[#171717]/35">
               <table className="w-full text-left border-collapse font-mono">
                 <thead>
                   <tr className="bg-slate-900/60 border-b border-slate-800 text-[10px] uppercase font-bold text-slate-500 select-none">
@@ -437,14 +437,14 @@ export const SettingsPanel: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {providers.length === 0 ? (
-                <div className="col-span-2 text-center text-slate-600 py-10 bg-[#0b0f19]/20 border border-slate-800/80 rounded-xl font-mono text-xs">
+                <div className="col-span-2 text-center text-slate-600 py-10 bg-[#171717]/20 border border-slate-800/80 rounded-xl font-mono text-xs">
                   No LLM providers registered yet.
                 </div>
               ) : (
                 providers.map((p) => (
                   <div 
                     key={p.name} 
-                    className={`p-4 rounded-xl border flex flex-col justify-between transition bg-[#0b0f19]/35 ${
+                    className={`p-4 rounded-xl border flex flex-col justify-between transition bg-[#171717]/35 ${
                       p.is_default ? 'border-brand/40 shadow shadow-brand/5' : 'border-slate-800/80 hover:border-slate-700'
                     }`}
                   >
@@ -516,7 +516,7 @@ export const SettingsPanel: React.FC = () => {
                     return (
                       <div
                         key={s.name}
-                        className="p-3 bg-[#0b0f19]/35 border border-slate-800/80 rounded-lg flex items-center justify-between"
+                        className="p-3 bg-[#171717]/35 border border-slate-800/80 rounded-lg flex items-center justify-between"
                       >
                         <div>
                           <h4 className="text-xs font-semibold text-slate-200">{s.name}</h4>
@@ -531,7 +531,7 @@ export const SettingsPanel: React.FC = () => {
             </div>
 
             {/* Right side form */}
-            <div className="w-full md:w-80 bg-[#0b0f19]/30 border border-slate-800/80 rounded-xl p-4 flex flex-col space-y-3.5 h-fit select-none">
+            <div className="w-full md:w-80 bg-[#171717]/30 border border-slate-800/80 rounded-xl p-4 flex flex-col space-y-3.5 h-fit select-none">
               <div className="flex items-center space-x-1.5 text-slate-400">
                 <Layers size={14} className="text-brand-light" />
                 <h3 className="text-[10px] font-bold uppercase tracking-wider">Register MCP Server</h3>
@@ -545,7 +545,7 @@ export const SettingsPanel: React.FC = () => {
                     value={mcpName}
                     onChange={(e) => setMcpName(e.target.value)}
                     placeholder="e.g. memory-server"
-                    className="w-full bg-[#161d2a] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-mono"
+                    className="w-full bg-[#262626] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-mono"
                   />
                 </div>
 
@@ -556,7 +556,7 @@ export const SettingsPanel: React.FC = () => {
                     value={mcpCommand}
                     onChange={(e) => setMcpCommand(e.target.value)}
                     placeholder="npx"
-                    className="w-full bg-[#161d2a] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-mono"
+                    className="w-full bg-[#262626] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-mono"
                   />
                 </div>
 
@@ -567,7 +567,7 @@ export const SettingsPanel: React.FC = () => {
                     value={mcpArgs}
                     onChange={(e) => setMcpArgs(e.target.value)}
                     placeholder="-y @modelcontextprotocol/server-memory"
-                    className="w-full bg-[#161d2a] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-mono"
+                    className="w-full bg-[#262626] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-mono"
                   />
                 </div>
 
@@ -589,7 +589,7 @@ export const SettingsPanel: React.FC = () => {
           <div className="space-y-4 max-w-xl select-none">
             <h3 className="text-xs font-bold font-mono text-slate-400">Agent CLI Command Versions</h3>
             
-            <div className="bg-[#0b0f19]/35 border border-slate-800/80 rounded-xl divide-y divide-slate-800/40 font-mono text-xs">
+            <div className="bg-[#171717]/35 border border-slate-800/80 rounded-xl divide-y divide-slate-800/40 font-mono text-xs">
               {[
                 { name: 'Claude Code CLI', bin: 'claude', val: versions.claude },
                 { name: 'Aider Code Agent', bin: 'aider', val: versions.aider },
@@ -623,7 +623,7 @@ export const SettingsPanel: React.FC = () => {
       {/* ── PROMPT MODAL: Mapped Agent Model Form ── */}
       {showVmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm select-none">
-          <div className="bg-[#0b0f19] border border-slate-800 rounded-xl w-full max-w-sm overflow-hidden shadow-2xl p-5 space-y-4">
+          <div className="bg-[#171717] border border-slate-800 rounded-xl w-full max-w-sm overflow-hidden shadow-2xl p-5 space-y-4">
             <h3 className="text-xs font-bold font-mono uppercase tracking-wider text-slate-200 border-b border-slate-800 pb-2">
               {editingVm ? `Edit Model "${editingVm}"` : 'Add Agent Model'}
             </h3>
@@ -636,7 +636,7 @@ export const SettingsPanel: React.FC = () => {
                     value={vmForm.name}
                     onChange={(e) => setVmForm(f => ({ ...f, name: e.target.value }))}
                     placeholder="e.g. claude, codex, aider"
-                    className="w-full bg-[#161d2a] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-mono"
+                    className="w-full bg-[#262626] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-mono"
                   />
                 </div>
               )}
@@ -645,7 +645,7 @@ export const SettingsPanel: React.FC = () => {
                 <select
                   value={vmForm.provider}
                   onChange={(e) => setVmForm(f => ({ ...f, provider: e.target.value }))}
-                  className="w-full bg-[#161d2a] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-semibold font-mono"
+                  className="w-full bg-[#262626] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-semibold font-mono"
                 >
                   <option value="">— select —</option>
                   {providers.map((p) => (
@@ -660,7 +660,7 @@ export const SettingsPanel: React.FC = () => {
                   value={vmForm.model}
                   onChange={(e) => setVmForm(f => ({ ...f, model: e.target.value }))}
                   placeholder="e.g. deepseek-v4-flash, claude-3-5-sonnet"
-                  className="w-full bg-[#161d2a] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-mono"
+                  className="w-full bg-[#262626] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-mono"
                 />
               </div>
 
@@ -687,7 +687,7 @@ export const SettingsPanel: React.FC = () => {
       {/* ── PROMPT MODAL: Provider Form ── */}
       {showProviderModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm select-none">
-          <div className="bg-[#0b0f19] border border-slate-800 rounded-xl w-full max-w-sm overflow-hidden shadow-2xl p-5 space-y-4">
+          <div className="bg-[#171717] border border-slate-800 rounded-xl w-full max-w-sm overflow-hidden shadow-2xl p-5 space-y-4">
             <h3 className="text-xs font-bold font-mono uppercase tracking-wider text-slate-200 border-b border-slate-800 pb-2">
               {editingProvider ? `Edit Provider "${editingProvider}"` : 'Add LLM Provider'}
             </h3>
@@ -700,7 +700,7 @@ export const SettingsPanel: React.FC = () => {
                     value={providerForm.name}
                     onChange={(e) => setProviderForm(f => ({ ...f, name: e.target.value }))}
                     placeholder="e.g. cysic, ollama, lm-studio"
-                    className="w-full bg-[#161d2a] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-mono"
+                    className="w-full bg-[#262626] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-mono"
                   />
                 </div>
               )}
@@ -709,7 +709,7 @@ export const SettingsPanel: React.FC = () => {
                 <select
                   value={providerForm.type}
                   onChange={(e) => setProviderForm(f => ({ ...f, type: e.target.value }))}
-                  className="w-full bg-[#161d2a] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-semibold font-mono"
+                  className="w-full bg-[#262626] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-semibold font-mono"
                 >
                   <option value="openai">OpenAI Compatible</option>
                   <option value="anthropic">Anthropic API</option>
@@ -722,7 +722,7 @@ export const SettingsPanel: React.FC = () => {
                   value={providerForm.base_url}
                   onChange={(e) => setProviderForm(f => ({ ...f, base_url: e.target.value }))}
                   placeholder="https://token-ai.cysic.xyz/v1"
-                  className="w-full bg-[#161d2a] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-mono"
+                  className="w-full bg-[#262626] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-mono"
                 />
               </div>
               <div>
@@ -733,7 +733,7 @@ export const SettingsPanel: React.FC = () => {
                     value={providerForm.api_key}
                     onChange={(e) => setProviderForm(f => ({ ...f, api_key: e.target.value }))}
                     placeholder="Provide token if required..."
-                    className="w-full bg-[#161d2a] border border-slate-700/60 rounded px-2.5 py-1.5 pr-8 text-slate-200 focus:outline-none font-mono"
+                    className="w-full bg-[#262626] border border-slate-700/60 rounded px-2.5 py-1.5 pr-8 text-slate-200 focus:outline-none font-mono"
                   />
                   <button
                     type="button"
@@ -751,7 +751,7 @@ export const SettingsPanel: React.FC = () => {
                   value={providerForm.default_model}
                   onChange={(e) => setProviderForm(f => ({ ...f, default_model: e.target.value }))}
                   placeholder="deepseek-v4-flash"
-                  className="w-full bg-[#161d2a] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-mono"
+                  className="w-full bg-[#262626] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-mono"
                 />
               </div>
 

@@ -49,7 +49,7 @@ const FileNode: React.FC<NodeProps> = ({ name, path, isDir, level }) => {
         {isDir ? (
           <>
             {isOpen ? <ChevronDown size={12} className="text-slate-500" /> : <ChevronRight size={12} className="text-slate-500" />}
-            {isOpen ? <FolderOpen size={12} className="text-sky-400" /> : <Folder size={12} className="text-sky-400" />}
+            {isOpen ? <FolderOpen size={12} className="text-brand-light" /> : <Folder size={12} className="text-brand-light" />}
           </>
         ) : (
           <>

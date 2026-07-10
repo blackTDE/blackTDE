@@ -81,9 +81,9 @@ export const ProviderVault: React.FC = () => {
   }, []);
 
   return (
-    <div className="w-full h-full bg-[#0f172a] rounded-lg border border-slate-700 flex flex-col overflow-hidden">
+    <div className="w-full h-full bg-[#1e1e1e] rounded-lg border border-slate-700 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="bg-[#0b0f19] px-3 py-2 border-b border-slate-800 flex items-center space-x-2 select-none">
+      <div className="bg-[#171717] px-3 py-2 border-b border-slate-800 flex items-center space-x-2 select-none">
         <KeyRound size={14} className="text-amber-400" />
         <span className="text-xs font-mono font-bold text-slate-300">Credentials vault</span>
       </div>
@@ -141,7 +141,7 @@ export const ProviderVault: React.FC = () => {
               <select
                 value={selectedProvider}
                 onChange={(e) => setSelectedProvider(e.target.value)}
-                className="w-full bg-[#1e293b] border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-amber-500 font-semibold"
+                className="w-full bg-[#262626] border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-amber-500 font-semibold"
               >
                 {Object.entries(PROVIDER_METADATA).map(([id, meta]) => (
                   <option key={id} value={id}>
@@ -158,7 +158,7 @@ export const ProviderVault: React.FC = () => {
                 value={keyInput}
                 onChange={(e) => setKeyInput(e.target.value)}
                 placeholder="Paste API Key here..."
-                className="w-full bg-[#1e293b] border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-amber-500 font-mono"
+                className="w-full bg-[#262626] border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-amber-500 font-mono"
               />
             </div>
 

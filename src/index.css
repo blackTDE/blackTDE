@@ -4,12 +4,20 @@
 
 :root {
   color-scheme: dark;
+  --background: #0a0a0a;
+  --foreground: #fafafa;
+  --card: #171717;
+  --muted: #262626;
+  --border: rgb(255 255 255 / 0.07);
+  --ring: #737373;
+  --primary: #1447e6;
 }
 
 body {
   margin: 0;
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  background-color: #0f172a;
+  font-family: Geist, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
   color-scheme: dark;
 }
 
@@ -20,26 +28,26 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #070b12;
+  background: #0a0a0a;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: #404040;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: #525252;
 }
 
 /* Firefox compatibility */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #1e293b #070b12;
+  scrollbar-color: #404040 #0a0a0a;
 }
 
 /* Prevent default browser selection ring from being white/ugly */
 input:focus, select:focus, textarea:focus {
   outline: none;
-  border-color: #3b82f6; /* Tailwind blue-500 */
+  border-color: var(--primary);
 }

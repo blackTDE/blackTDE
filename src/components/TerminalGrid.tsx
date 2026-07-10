@@ -28,16 +28,16 @@ export const TerminalGrid: React.FC = () => {
         onClick={() => setActivePaneIndex(index)}
         className={`relative w-full h-full rounded border flex flex-col overflow-hidden transition-all duration-200 ${
           isActive 
-            ? 'border-sky-500 shadow-md shadow-sky-500/5' 
+            ? 'border-brand shadow-md shadow-brand/5' 
             : 'border-slate-800 hover:border-slate-700 bg-slate-900/10'
         }`}
       >
         {/* Cell Header */}
         <div className={`px-2 py-1 flex items-center justify-between text-[10px] font-mono select-none ${
-          isActive ? 'bg-sky-950/40 border-b border-sky-500/20' : 'bg-slate-950/20 border-b border-slate-850'
+          isActive ? 'bg-brand/40 border-b border-brand/20' : 'bg-slate-950/20 border-b border-slate-850'
         }`}>
           <div className="flex items-center space-x-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-sky-400 animate-pulse' : 'bg-slate-600'}`} />
+            <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-brand-light animate-pulse' : 'bg-slate-600'}`} />
             <span className="text-[10px] text-slate-400 font-bold uppercase">Pane {index + 1}</span>
             {session && (
               <span className="text-slate-500 text-[9px] font-semibold bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700 max-w-[120px] truncate">
@@ -60,7 +60,7 @@ export const TerminalGrid: React.FC = () => {
         </div>
 
         {/* Cell Content */}
-        <div className="flex-grow min-h-0 bg-[#0f172a]">
+        <div className="flex-grow min-h-0 bg-[#1e1e1e]">
           {sessId ? (
             <TerminalPane sessionId={sessId} />
           ) : (

@@ -87,8 +87,8 @@ export const GitDiffCompare: React.FC<GitDiffCompareProps> = ({ tabPath }) => {
 
   if (isLoading) {
     return (
-      <div className="w-full h-full bg-[#0f172a] rounded-lg border border-slate-700 flex items-center justify-center text-slate-500 font-mono text-xs">
-        <span className="w-4 h-4 rounded-full border-2 border-sky-400 border-t-transparent animate-spin mr-2"></span>
+      <div className="w-full h-full bg-[#1e1e1e] rounded-lg border border-slate-700 flex items-center justify-center text-slate-500 font-mono text-xs">
+        <span className="w-4 h-4 rounded-full border-2 border-brand-light border-t-transparent animate-spin mr-2"></span>
         <span>Loading comparison diff...</span>
       </div>
     );
@@ -96,7 +96,7 @@ export const GitDiffCompare: React.FC<GitDiffCompareProps> = ({ tabPath }) => {
 
   if (error) {
     return (
-      <div className="w-full h-full bg-[#0f172a] rounded-lg border border-slate-700 flex flex-col items-center justify-center p-6 text-center font-mono">
+      <div className="w-full h-full bg-[#1e1e1e] rounded-lg border border-slate-700 flex flex-col items-center justify-center p-6 text-center font-mono">
         <AlertCircle size={32} className="text-rose-400 mb-2" />
         <h3 className="text-sm font-bold text-slate-200 mb-1">Failed to Load Diff</h3>
         <p className="text-[10px] text-slate-500 max-w-md">{error}</p>
@@ -105,15 +105,15 @@ export const GitDiffCompare: React.FC<GitDiffCompareProps> = ({ tabPath }) => {
   }
 
   return (
-    <div className="w-full h-full bg-[#0f172a] rounded-lg border border-slate-700 flex flex-col overflow-hidden shadow-lg select-none">
+    <div className="w-full h-full bg-[#1e1e1e] rounded-lg border border-slate-700 flex flex-col overflow-hidden shadow-lg select-none">
       {/* Header bar */}
-      <div className="bg-[#0b0f19] px-4 py-2.5 border-b border-slate-800 flex items-center justify-between">
+      <div className="bg-[#171717] px-4 py-2.5 border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center space-x-2 truncate">
-          <FileCode size={14} className="text-indigo-400 shrink-0" />
+          <FileCode size={14} className="text-brand-light shrink-0" />
           <span className="text-xs font-mono text-slate-300 font-bold truncate">
             {fileName}
           </span>
-          <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-indigo-950/60 text-indigo-400 border border-indigo-900/50 uppercase tracking-wider font-mono">
+          <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-brand/60 text-brand-light border border-brand/50 uppercase tracking-wider font-mono">
             Commit: {commitHash.substring(0, 8)}
           </span>
         </div>

@@ -29,10 +29,10 @@ import {
 const getAgentIconClass = (name: string): string => {
   const lower = name.toLowerCase();
   if (lower.includes('claude')) return 'from-orange-500 to-amber-600';
-  if (lower.includes('gemini')) return 'from-blue-500 to-indigo-600';
+  if (lower.includes('gemini')) return 'from-brand to-brand-light';
   if (lower.includes('codex')) return 'from-emerald-500 to-teal-600';
-  if (lower.includes('aider')) return 'from-purple-500 to-indigo-600';
-  return 'from-indigo-600 to-fuchsia-600';
+  if (lower.includes('aider')) return 'from-brand to-slate-500';
+  return 'from-brand to-slate-600';
 };
 
 const getInitials = (name: string): string => {
@@ -684,19 +684,19 @@ function App() {
 
           {activeFatherTabId === 'settings' ? (
             /* Render full page Settings Dashboard */
-            <div className="flex-grow min-h-0 bg-[#070b12] overflow-hidden">
+            <div className="flex-grow min-h-0 bg-[#0a0a0a] overflow-hidden">
               <SettingsPanel />
             </div>
           ) : (
             /* Render Workspace Content */
             <>
               {/* Level 2: Child Tabs (sessions and open files) */}
-              <div className="shrink-0 flex items-center justify-between border-b border-surface-2 bg-[#0b0f19] select-none">
+              <div className="shrink-0 flex items-center justify-between border-b border-surface-2 bg-[#171717] select-none">
                 <div className="flex-1 flex items-center overflow-x-auto scrollbar-none relative">
                   {/* Sessions Tab - sticky to the left */}
                   <button
                     onClick={() => setActiveFileTab(null)}
-                    className={`sticky left-0 z-10 flex items-center space-x-1.5 px-4 py-2.5 text-xs font-semibold border-r border-surface-2 transition bg-[#0b0f19] shrink-0 border-b-2 ${
+                    className={`sticky left-0 z-10 flex items-center space-x-1.5 px-4 py-2.5 text-xs font-semibold border-r border-surface-2 transition bg-[#171717] shrink-0 border-b-2 ${
                       activeFileTab === null
                         ? 'border-b-brand text-zinc-100'
                         : 'border-b-transparent text-zinc-500 hover:text-zinc-350'
@@ -744,7 +744,7 @@ function App() {
               {/* Tab content area */}
               <div className={`flex-grow min-h-0 overflow-hidden ${activeFileTab === null ? 'p-0' : 'p-4'}`}>
                 {activeFileTab === null ? (
-                  <div className="w-full h-full flex flex-col bg-[#070b12] overflow-hidden">
+                  <div className="w-full h-full flex flex-col bg-[#0a0a0a] overflow-hidden">
                     {/* Clean Terminal Toolbar */}
                     <div className="shrink-0 bg-surface-1 border-b border-surface-2 px-4 py-2 flex items-center justify-between select-none overflow-x-auto">
                       <div className="flex items-center space-x-2 overflow-x-auto">
@@ -813,7 +813,7 @@ function App() {
                     </div>
 
                     {/* Terminal Grid */}
-                    <div className="flex-grow min-h-0 p-0 bg-[#070b12] overflow-hidden">
+                    <div className="flex-grow min-h-0 p-0 bg-[#0a0a0a] overflow-hidden">
                       <TerminalGrid />
                     </div>
                   </div>

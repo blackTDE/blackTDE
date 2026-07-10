@@ -22,17 +22,17 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
       fontSize: 13,
       fontFamily: "'MesloLGS NF', 'Meslo LGS NF', 'MesloLGS Nerd Font', 'JetBrainsMono Nerd Font', 'JetBrains Mono Nerd Font', 'FiraCode Nerd Font', 'Fira Code Nerd Font', 'Hack Nerd Font', 'Symbols Nerd Font Mono', 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace",
       theme: {
-        background: '#0f172a', // Slate 900
-        foreground: '#f8fafc', // Slate 50
-        cursor: '#38bdf8',     // Sky 400
-        black: '#1e293b',
-        red: '#ef4444',
-        green: '#22c55e',
-        yellow: '#eab308',
-        blue: '#3b82f6',
-        magenta: '#a855f7',
-        cyan: '#06b6d4',
-        white: '#cbd5e1',
+        background: '#0a0a0a',
+        foreground: '#fafafa',
+        cursor: '#3794ff',
+        black: '#262626',
+        red: '#ff6568',
+        green: '#86efac',
+        yellow: '#fbbf24',
+        blue: '#3794ff',
+        magenta: '#b66dff',
+        cyan: '#40b0a6',
+        white: '#e5e5e5',
       },
     });
 
@@ -192,7 +192,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
   }, [sessionId]);
 
   return (
-    <div className="w-full h-full bg-[#0f172a] p-3 rounded-lg border border-slate-800/85 flex flex-col">
+    <div className="w-full h-full bg-[#0a0a0a] p-3 rounded-lg border border-slate-800/85 flex flex-col">
       <div ref={containerRef} className="w-full h-full flex-grow min-h-[400px]" />
     </div>
   );

@@ -138,11 +138,11 @@ export const GitPanel: React.FC = () => {
   };
 
   return (
-    <div className="w-full h-full bg-[#0f172a] rounded-lg border border-slate-700 flex flex-col overflow-hidden">
+    <div className="w-full h-full bg-[#1e1e1e] rounded-lg border border-slate-700 flex flex-col overflow-hidden">
       {/* Git Header */}
-      <div className="bg-[#0b0f19] px-3 py-2 border-b border-slate-800 flex items-center justify-between select-none">
+      <div className="bg-[#171717] px-3 py-2 border-b border-slate-800 flex items-center justify-between select-none">
         <div className="flex items-center space-x-2 text-xs font-mono font-bold text-slate-300">
-          <GitBranch size={14} className="text-indigo-400" />
+          <GitBranch size={14} className="text-brand-light" />
           <span>git: {gitBranch}</span>
         </div>
         <button
@@ -162,7 +162,7 @@ export const GitPanel: React.FC = () => {
         <div>
           <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between font-mono">
             <span>Staged Changes</span>
-            <span className="bg-indigo-500/15 text-indigo-400 px-1.5 py-0.2 rounded font-mono text-[9px]">{staged.length}</span>
+            <span className="bg-brand/15 text-brand-light px-1.5 py-0.2 rounded font-mono text-[9px]">{staged.length}</span>
           </h3>
           {staged.length === 0 ? (
             <div className="text-[10px] text-slate-500 italic px-2 py-1 font-mono">No staged changes</div>
@@ -248,7 +248,7 @@ export const GitPanel: React.FC = () => {
         <div>
           <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between font-mono">
             <span>Commit History</span>
-            <span className="bg-indigo-500/15 text-indigo-400 px-1.5 py-0.2 rounded font-mono text-[9px]">{commits.length}</span>
+            <span className="bg-brand/15 text-brand-light px-1.5 py-0.2 rounded font-mono text-[9px]">{commits.length}</span>
           </h3>
           {commits.length === 0 ? (
             <div className="text-[10px] text-slate-500 italic px-2 py-1 font-mono">No commit history found</div>
@@ -259,7 +259,7 @@ export const GitPanel: React.FC = () => {
                 const files = commitFiles[commit.hash] || [];
 
                 return (
-                  <div key={commit.hash} className="border border-slate-800 rounded bg-[#0b0f19]/30 overflow-hidden">
+                  <div key={commit.hash} className="border border-slate-800 rounded bg-[#171717]/30 overflow-hidden">
                     {/* Commit Row */}
                     <div
                       onClick={() => handleCommitClick(commit.hash)}
@@ -268,7 +268,7 @@ export const GitPanel: React.FC = () => {
                       }`}
                     >
                       <div className="flex items-center justify-between text-xs font-mono">
-                        <div className="flex items-center space-x-1 font-bold text-indigo-400">
+                        <div className="flex items-center space-x-1 font-bold text-brand-light">
                           {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                           <span>{commit.hash.substring(0, 7)}</span>
                         </div>
@@ -319,13 +319,13 @@ export const GitPanel: React.FC = () => {
       </div>
 
       {/* Bottom Panel: Commit Form */}
-      <div className="bg-[#0b0f19] p-3 border-t border-slate-800 flex items-center space-x-3 select-none shrink-0">
+      <div className="bg-[#171717] p-3 border-t border-slate-800 flex items-center space-x-3 select-none shrink-0">
         <input
           type="text"
           value={commitMessage}
           onChange={(e) => setCommitMessage(e.target.value)}
           placeholder="Type commit message..."
-          className="flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+          className="flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-brand font-mono"
           onKeyDown={(e) => {
             if (e.key === 'Enter') handleCommit();
           }}
@@ -336,7 +336,7 @@ export const GitPanel: React.FC = () => {
           className={`flex items-center space-x-1 text-xs font-semibold px-3 py-1.5 rounded transition ${
             staged.length === 0 || !commitMessage.trim()
               ? 'text-slate-500 bg-slate-800 cursor-default'
-              : 'text-white bg-indigo-500 hover:bg-indigo-600 active:bg-indigo-700 shadow-lg shadow-indigo-500/10'
+              : 'text-white bg-brand hover:bg-brand/80 active:bg-brand/90 shadow-lg shadow-brand/10'
           }`}
         >
           <Send size={12} />
