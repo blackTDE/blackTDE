@@ -34,7 +34,7 @@
 - Produces: `getVisiblePaneCount(type: PaneLayout['type']): number`.
 - Strengthens: `setPaneSessionId(index, sessionId)` so one session ID appears in at most one pane.
 
-- [ ] **Step 1: Add failing regression tests**
+- [x] **Step 1: Add failing regression tests**
 
 Create `tests/sessionUtils.test.ts` with Node's `node:test` and `node:assert/strict`. Test that two Claude rows with the same `cwd`, `agent_type`, and `remote_session_id` collapse to one; an active row wins over a newer terminated row; unrelated shells without remote IDs remain distinct.
 
@@ -46,13 +46,13 @@ Add this script to `package.json`:
 "test": "node --test --experimental-strip-types tests/*.test.ts"
 ```
 
-- [ ] **Step 2: Run tests and verify failure**
+- [x] **Step 2: Run tests and verify failure**
 
 Run: `npm test`
 
 Expected: FAIL because `src/sessionUtils.ts` and the pane invariant do not exist yet.
 
-- [ ] **Step 3: Implement canonical session loading**
+- [x] **Step 3: Implement canonical session loading**
 
 Create `src/sessionUtils.ts` with:
 
@@ -88,13 +88,13 @@ In `loadPastSessions`, call `dedupeSessions(list)` once and use that canonical l
 
 Change the resume selector value from `s.remote_session_id` to `s.id`. In `handleCreateSession`, if a recorded local ID is selected, close the modal and call `handleSelectSession` for that existing row without invoking `spawn_session`. New sessions continue through the existing spawn path with `resumeSessionId: null`.
 
-- [ ] **Step 4: Enforce pane uniqueness in the shared store**
+- [x] **Step 4: Enforce pane uniqueness in the shared store**
 
 Export `getVisiblePaneCount` from `src/store/workspaceStore.ts` and remove the duplicate implementations from `App.tsx` and `TerminalGrid.tsx`.
 
 Change `setPaneSessionId` to return unchanged state for indexes outside `0..3`; otherwise map every matching session ID in existing panes to `null` before assigning the target index. Keep the existing per-workspace persistence update.
 
-- [ ] **Step 5: Run regression tests and build**
+- [x] **Step 5: Run regression tests and build**
 
 Run: `npm test`
 
@@ -104,7 +104,7 @@ Run: `npm run build`
 
 Expected: TypeScript and Vite build successfully.
 
-- [ ] **Step 6: Commit canonical session behavior**
+- [x] **Step 6: Commit canonical session behavior**
 
 ```bash
 git add package.json src/sessionUtils.ts tests src/App.tsx src/components/TerminalGrid.tsx src/store/workspaceStore.ts
@@ -114,19 +114,21 @@ git commit -m "Prevent duplicate resumed sessions"
 ### Task 2: Restore terminals from live PTY state
 
 **Files:**
+- Create: `src/terminalRestore.ts`
+- Create: `tests/terminalRestore.test.ts`
 - Modify: `src/components/TerminalPane.tsx`
 
 **Interfaces:**
 - Consumes: `list_active_session_ids`, `resize_session`, `write_to_session`, `resume_terminated_session`, and `get_session_history` Tauri commands.
 - Invariant: active session remounts send `[12]` to the PTY and never replay transcript bytes.
 
-- [ ] **Step 1: Reorder terminal initialization around the event listener**
+- [x] **Step 1: Reorder terminal initialization around the event listener**
 
 Keep `isReady = false` and `incomingQueue`. Register `listen('tde-event', ...)` before starting restoration. Queue matching stdout while not ready; write it directly afterward.
 
 Extract one local `fitAndResize()` function that calls `fitAddon.fit()` and invokes `resize_session` only when rows and columns exceed 2. Reuse it in the resize observer, delayed initial fit, and restore flow.
 
-- [ ] **Step 2: Implement active-session redraw**
+- [x] **Step 2: Implement active-session redraw**
 
 After the listener is registered, invoke `list_active_session_ids`.
 
@@ -145,7 +147,7 @@ For a terminated session, reset xterm, display one reconnect message, invoke `re
 
 If active-session lookup fails, invoke `get_session_history`, write it once, mark ready, and flush queued output without calling resume. Keep the existing visible resume error message and console logging.
 
-- [ ] **Step 3: Verify terminal restoration statically and through build**
+- [x] **Step 3: Verify terminal restoration statically and through build**
 
 Run: `rg -n "get_session_history|data: \[12\]|list_active_session_ids|resume_terminated_session" src/components/TerminalPane.tsx`
 
@@ -155,10 +157,10 @@ Run: `npm test && npm run build`
 
 Expected: regression tests and frontend build pass.
 
-- [ ] **Step 4: Commit stable terminal restoration**
+- [x] **Step 4: Commit stable terminal restoration**
 
 ```bash
-git add src/components/TerminalPane.tsx
+git add src/components/TerminalPane.tsx src/terminalRestore.ts tests/terminalRestore.test.ts
 git commit -m "Redraw active terminals after switching"
 ```
 
@@ -178,11 +180,11 @@ git commit -m "Redraw active terminals after switching"
 - Preserves: current terminal split selector and file/diff routing.
 - Produces: a full-width, full-height center content surface with neutral selection states.
 
-- [ ] **Step 1: Replace blue tokens and direct blue styles**
+- [x] **Step 1: Replace blue tokens and direct blue styles**
 
 Set Tailwind `brand.DEFAULT` to `#525252` and `brand.light` to `#a1a1a1`. Set `--primary` to `#737373`. In xterm, set the cursor to `#e5e5e5` and ANSI blue to `#a1a1a1`. Replace `text-blue-400` document icons with `text-zinc-400`.
 
-- [ ] **Step 2: Make the terminal grid full-bleed**
+- [x] **Step 2: Make the terminal grid full-bleed**
 
 Replace `TerminalGrid`'s four duplicated layout returns with one CSS grid whose columns/rows derive from the selected layout, uses `gap-px bg-surface-2`, and has no outer padding.
 
@@ -196,11 +198,11 @@ Change `TerminalPane`'s root to:
 </div>
 ```
 
-- [ ] **Step 3: Make file and diff views full-bleed**
+- [x] **Step 3: Make file and diff views full-bleed**
 
 In `App.tsx`, remove the conditional `p-4` from the tab content area. In `FilePreview` and `GitDiffCompare`, remove outer rounded corners, border, shadow, and fixed `min-h-[300px]` body constraints while retaining toolbar separators and `min-h-0` flex behavior.
 
-- [ ] **Step 4: Remove dead editor code and scan for blue**
+- [x] **Step 4: Remove dead editor code and scan for blue**
 
 Delete `src/components/EditorPane.tsx`, which has no imports or callers.
 
@@ -208,7 +210,7 @@ Run: `rg -n "#1447e6|#3794ff|text-blue|bg-blue|border-blue|border-brand shadow|s
 
 Expected: no visual blue tokens or active blue terminal framing remain.
 
-- [ ] **Step 5: Verify all builds and tests**
+- [x] **Step 5: Verify all builds and tests**
 
 Run: `npm test`
 
@@ -226,7 +228,7 @@ Run: `git diff --check`
 
 Expected: no whitespace errors.
 
-- [ ] **Step 6: Commit the full-bleed gray workbench**
+- [x] **Step 6: Commit the full-bleed gray workbench**
 
 ```bash
 git add src tailwind.config.js
