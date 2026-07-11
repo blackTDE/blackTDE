@@ -3,7 +3,7 @@ export interface TerminalRestoreActions {
   replayHistory: () => Promise<void>;
   reset: () => void;
   resume: () => Promise<void>;
-  fitAndResize: () => void;
+  fitAndResize: () => Promise<void>;
   setReady: () => void;
   redraw: () => Promise<void>;
   onLookupError: (error: unknown) => void;
@@ -26,7 +26,7 @@ export const restoreTerminal = async (actions: TerminalRestoreActions): Promise<
     await actions.resume();
   }
 
-  actions.fitAndResize();
+  await actions.fitAndResize();
   actions.setReady();
   await actions.redraw();
 };

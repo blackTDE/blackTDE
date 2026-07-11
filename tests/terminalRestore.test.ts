@@ -46,3 +46,20 @@ test('replays history without resuming when active lookup fails', async () => {
 
   assert.deepEqual(events, ['lookup', 'error', 'history', 'ready']);
 });
+
+test('waits for resize completion before marking ready and redrawing', async () => {
+  const { actions, events } = createActions(true);
+  let finishResize: (() => void) | undefined;
+  actions.fitAndResize = () => new Promise<void>((resolve) => {
+    events.push('fit');
+    finishResize = resolve;
+  });
+
+  const restoring = restoreTerminal(actions);
+  await Promise.resolve();
+
+  assert.deepEqual(events, ['lookup', 'fit']);
+  finishResize?.();
+  await restoring;
+  assert.deepEqual(events, ['lookup', 'fit', 'ready', 'redraw']);
+});

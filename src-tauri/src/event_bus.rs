@@ -1,8 +1,10 @@
 use std::io::Read;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use portable_pty::MasterPty;
 use tauri::Emitter;
 use sqlx::SqlitePool;
+use crate::process::{remove_active_session, ActiveProcess};
 
 #[derive(Clone, serde::Serialize)]
 pub struct TdeEvent {
@@ -14,6 +16,7 @@ pub struct TdeEvent {
 pub fn start_stdout_reader(
     session_id: String,
     master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
+    active_sessions: Arc<Mutex<HashMap<String, ActiveProcess>>>,
     db_pool: SqlitePool,
     app_handle: tauri::AppHandle,
 ) {
@@ -109,6 +112,8 @@ pub fn start_stdout_reader(
                 }
             }
         }
+
+        remove_active_session(&active_sessions, &session_id_clone);
 
         // Send exit event
         let _ = app_handle_clone.emit(

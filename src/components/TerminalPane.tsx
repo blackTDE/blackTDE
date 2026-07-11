@@ -62,16 +62,16 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
       }
     };
 
-    const fitAndResize = () => {
+    const fitAndResize = async () => {
       if (isDisposed) return;
       try {
         fitAddon.fit();
         if (term.rows > 2 && term.cols > 2) {
-          invoke('resize_session', {
+          await invoke('resize_session', {
             id: sessionId,
             rows: term.rows,
             cols: term.cols,
-          }).catch((err) => console.error('Failed to resize terminal:', err));
+          });
         }
       } catch (err) {
         console.error('Failed to fit terminal:', err);
@@ -169,14 +169,14 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
 
     // Resize tracking
     const resizeObserver = new ResizeObserver(() => {
-      fitAndResize();
+      void fitAndResize();
     });
 
     resizeObserver.observe(containerRef.current);
 
     // Initial resize sync (delayed slightly to allow DOM bounding box to stabilize)
     const resizeTimeout = setTimeout(() => {
-      fitAndResize();
+      void fitAndResize();
     }, 100);
 
     return () => {

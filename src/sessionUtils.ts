@@ -4,6 +4,7 @@ export interface SessionRecord {
   cwd: string;
   remote_session_id?: string | null;
   status?: string;
+  created_at?: string;
 }
 
 export const dedupeSessions = <T extends SessionRecord>(sessions: T[]): T[] => {
@@ -16,7 +17,11 @@ export const dedupeSessions = <T extends SessionRecord>(sessions: T[]): T[] => {
       : `local\u0000${session.id}`;
     const existing = canonical.get(key);
 
-    if (!existing || (existing.status !== 'active' && session.status === 'active')) {
+    const existingIsActive = existing?.status === 'active';
+    const sessionIsActive = session.status === 'active';
+    const isNewer = (session.created_at || '') > (existing?.created_at || '');
+
+    if (!existing || (!existingIsActive && sessionIsActive) || (existingIsActive === sessionIsActive && isNewer)) {
       canonical.set(key, session);
     }
   }

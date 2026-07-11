@@ -278,7 +278,13 @@ async fn spawn_session(
     }
 
     // 8. Start stdout reader loop
-    event_bus::start_stdout_reader(id, master_clone, pool.inner().clone(), app_handle);
+    event_bus::start_stdout_reader(
+        id,
+        master_clone,
+        manager.active_sessions.clone(),
+        pool.inner().clone(),
+        app_handle,
+    );
 
     Ok(())
 }
@@ -486,13 +492,14 @@ pub struct PastSession {
     pub status: String,
     pub provider: Option<String>,
     pub model: Option<String>,
+    pub created_at: String,
 }
 
 #[tauri::command]
 async fn list_past_sessions(
     pool: State<'_, SqlitePool>,
 ) -> Result<Vec<PastSession>, String> {
-    let rows = sqlx::query("SELECT id, agent_type, cwd, remote_session_id, status, provider, model FROM sessions ORDER BY id DESC")
+    let rows = sqlx::query("SELECT id, agent_type, cwd, remote_session_id, status, provider, model, created_at FROM sessions ORDER BY created_at DESC, id DESC")
         .fetch_all(&*pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -506,6 +513,7 @@ async fn list_past_sessions(
         let status: String = row.get("status");
         let provider: Option<String> = row.get("provider");
         let model: Option<String> = row.get("model");
+        let created_at: String = row.get("created_at");
         entries.push(PastSession {
             id,
             agent_type,
@@ -514,6 +522,7 @@ async fn list_past_sessions(
             status,
             provider,
             model,
+            created_at,
         });
     }
     Ok(entries)
@@ -912,7 +921,13 @@ async fn resume_terminated_session(
     }
 
     // 7. Start stdout reader
-    event_bus::start_stdout_reader(id, master_clone, pool.inner().clone(), app_handle);
+    event_bus::start_stdout_reader(
+        id,
+        master_clone,
+        manager.active_sessions.clone(),
+        pool.inner().clone(),
+        app_handle,
+    );
 
     Ok(())
 }

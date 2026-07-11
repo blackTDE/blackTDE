@@ -228,11 +228,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       newPanes[index] = sessionId;
       const newPaneLayout = { ...state.paneLayout, panes: newPanes };
       const wsId = state.activeWorkspace?.id || 'project_default';
+      const cleanedPaneLayouts = Object.fromEntries(
+        Object.entries(state.paneLayoutsByProject).map(([projectId, layout]) => [
+          projectId,
+          sessionId
+            ? { ...layout, panes: layout.panes.map((paneSessionId) => paneSessionId === sessionId ? null : paneSessionId) }
+            : layout,
+        ])
+      );
       return {
         paneLayout: newPaneLayout,
         activeSessionId: sessionId || state.activeSessionId,
         paneLayoutsByProject: {
-          ...state.paneLayoutsByProject,
+          ...cleanedPaneLayouts,
           [wsId]: newPaneLayout
         }
       };

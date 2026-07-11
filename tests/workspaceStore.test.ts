@@ -32,3 +32,23 @@ test('ignores pane indexes outside the four available slots', () => {
 
   assert.deepEqual(useWorkspaceStore.getState().paneLayout.panes, [null, null, null, null]);
 });
+
+test('clears the assigned session from saved layouts for other workspaces', () => {
+  resetPaneState();
+  useWorkspaceStore.setState({
+    paneLayoutsByProject: {
+      other: {
+        type: '1x1',
+        activePaneIndex: 0,
+        panes: ['session-a', null, null, null],
+      },
+    },
+  });
+
+  useWorkspaceStore.getState().setPaneSessionId(1, 'session-a');
+
+  assert.deepEqual(
+    useWorkspaceStore.getState().paneLayoutsByProject.other.panes,
+    [null, null, null, null],
+  );
+});

@@ -15,6 +15,15 @@ pub struct ProcessManager {
     pub active_sessions: Arc<Mutex<HashMap<String, ActiveProcess>>>,
 }
 
+pub fn remove_active_session(
+    active_sessions: &Arc<Mutex<HashMap<String, ActiveProcess>>>,
+    session_id: &str,
+) {
+    if let Ok(mut sessions) = active_sessions.lock() {
+        sessions.remove(session_id);
+    }
+}
+
 pub fn spawn_pty_process(
     command: &str,
     args: Vec<String>,
@@ -91,5 +100,15 @@ mod tests {
             total_output
         );
     }
-}
 
+    #[test]
+    fn test_remove_active_session() {
+        let sessions = Arc::new(Mutex::new(HashMap::new()));
+        let proc = spawn_pty_process("echo", vec!["done".to_string()], ".", 24, 80, Vec::new()).unwrap();
+        sessions.lock().unwrap().insert("finished".to_string(), proc);
+
+        remove_active_session(&sessions, "finished");
+
+        assert!(!sessions.lock().unwrap().contains_key("finished"));
+    }
+}

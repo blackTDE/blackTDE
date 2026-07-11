@@ -31,3 +31,26 @@ test('keeps unrelated local shells without remote IDs', () => {
 
   assert.deepEqual(dedupeSessions(sessions).map((session) => session.id), ['shell-1', 'shell-2']);
 });
+
+test('keeps the newest row when duplicate remote sessions are terminated', () => {
+  const sessions = [
+    {
+      id: 'older',
+      agent_type: 'claude',
+      cwd: '/project',
+      remote_session_id: 'remote-1',
+      status: 'terminated',
+      created_at: '2026-07-01 10:00:00',
+    },
+    {
+      id: 'newer',
+      agent_type: 'claude',
+      cwd: '/project',
+      remote_session_id: 'remote-1',
+      status: 'terminated',
+      created_at: '2026-07-02 10:00:00',
+    },
+  ];
+
+  assert.deepEqual(dedupeSessions(sessions).map((session) => session.id), ['newer']);
+});
