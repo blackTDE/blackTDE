@@ -22,6 +22,7 @@
 **Files:**
 - Create: `src-tauri/icons/black-tde.svg`
 - Modify: `src-tauri/icons/*` generated platform icon assets
+- Modify: `src-tauri/tauri.conf.json`
 - Modify: `src/assets/icon.png`
 
 **Interfaces:**
@@ -45,31 +46,41 @@ Run: `npm run tauri -- icon src-tauri/icons/black-tde.svg`
 
 Expected: command exits successfully and rewrites the PNG, ICO, ICNS, Android, iOS, and Windows icon assets under `src-tauri/icons/`.
 
-- [ ] **Step 3: Reuse the generated 1024 px icon in the frontend**
+- [ ] **Step 3: Declare the desktop bundle icons**
+
+Add `bundle.icon` entries for `icons/32x32.png`, `icons/128x128.png`, `icons/128x128@2x.png`, `icons/icon.icns`, and `icons/icon.ico` in `src-tauri/tauri.conf.json`.
+
+Expected: Tauri copies the platform icon into generated desktop bundles instead of using the empty default icon list.
+
+- [ ] **Step 4: Reuse the generated 1024 px icon in the frontend**
 
 Run: `cp src-tauri/icons/ios/AppIcon-512@2x.png src/assets/icon.png`
 
 Expected: `src/assets/icon.png` is a 1024 x 1024 image matching the generated Tauri mark.
 
-- [ ] **Step 4: Inspect representative outputs**
+- [ ] **Step 5: Inspect representative outputs**
 
 Run: `file src/assets/icon.png src-tauri/icons/32x32.png src-tauri/icons/128x128.png src-tauri/icons/icon.ico src-tauri/icons/icon.icns`
 
 Expected: valid 1024 px, 32 px, and 128 px PNGs plus valid ICO and ICNS files. Visually inspect `src/assets/icon.png`, `src-tauri/icons/128x128.png`, and `src-tauri/icons/32x32.png`; the terminal mark must remain recognizable without clipped strokes.
 
-- [ ] **Step 5: Verify the application build and diff**
+- [ ] **Step 6: Verify the application build and diff**
 
 Run: `npm run build`
 
 Expected: TypeScript and Vite build successfully.
 
+Run: `npm run tauri -- build --debug --bundles app`
+
+Expected: Tauri builds `TDE.app` with `Contents/Resources/icon.icns` present.
+
 Run: `git diff --check`
 
 Expected: no whitespace errors.
 
-- [ ] **Step 6: Commit the generated icon set**
+- [ ] **Step 7: Commit the generated icon set**
 
 ```bash
-git add src/assets/icon.png src-tauri/icons
+git add docs/superpowers/plans/2026-07-11-tech-gray-icon-plan.md src/assets/icon.png src-tauri/icons src-tauri/tauri.conf.json
 git commit -m "Redesign Black TDE app icon"
 ```
