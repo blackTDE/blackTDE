@@ -60,7 +60,7 @@ export default {
         error: "#ff6568",
       },
       fontFamily: {
-        sans: ["Geist", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"],
+        sans: ["-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"],
         mono: ["SF Mono", "SFMono-Regular", "ui-monospace", "Cascadia Code", "Menlo", "Consolas", "monospace"],
       },
     },

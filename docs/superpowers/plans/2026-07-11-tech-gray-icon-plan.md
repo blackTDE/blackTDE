@@ -29,7 +29,7 @@
 - Consumes: Tauri CLI's square SVG icon input.
 - Produces: the platform bundle icon set and the frontend `brandIcon` image already imported by `src/App.tsx`.
 
-- [ ] **Step 1: Add the deterministic SVG source**
+- [x] **Step 1: Add the deterministic SVG source**
 
 ```svg
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
@@ -40,31 +40,31 @@
 </svg>
 ```
 
-- [ ] **Step 2: Generate all platform icons**
+- [x] **Step 2: Generate all platform icons**
 
 Run: `npm run tauri -- icon src-tauri/icons/black-tde.svg`
 
 Expected: command exits successfully and rewrites the PNG, ICO, ICNS, Android, iOS, and Windows icon assets under `src-tauri/icons/`.
 
-- [ ] **Step 3: Declare the desktop bundle icons**
+- [x] **Step 3: Declare the desktop bundle icons**
 
 Add `bundle.icon` entries for `icons/32x32.png`, `icons/128x128.png`, `icons/128x128@2x.png`, `icons/icon.icns`, and `icons/icon.ico` in `src-tauri/tauri.conf.json`.
 
 Expected: Tauri copies the platform icon into generated desktop bundles instead of using the empty default icon list.
 
-- [ ] **Step 4: Reuse the generated 1024 px icon in the frontend**
+- [x] **Step 4: Reuse the generated 1024 px icon in the frontend**
 
 Run: `cp src-tauri/icons/ios/AppIcon-512@2x.png src/assets/icon.png`
 
 Expected: `src/assets/icon.png` is a 1024 x 1024 image matching the generated Tauri mark.
 
-- [ ] **Step 5: Inspect representative outputs**
+- [x] **Step 5: Inspect representative outputs**
 
 Run: `file src/assets/icon.png src-tauri/icons/32x32.png src-tauri/icons/128x128.png src-tauri/icons/icon.ico src-tauri/icons/icon.icns`
 
 Expected: valid 1024 px, 32 px, and 128 px PNGs plus valid ICO and ICNS files. Visually inspect `src/assets/icon.png`, `src-tauri/icons/128x128.png`, and `src-tauri/icons/32x32.png`; the terminal mark must remain recognizable without clipped strokes.
 
-- [ ] **Step 6: Verify the application build and diff**
+- [x] **Step 6: Verify the application build and diff**
 
 Run: `npm run build`
 
@@ -78,7 +78,7 @@ Run: `git diff --check`
 
 Expected: no whitespace errors.
 
-- [ ] **Step 7: Commit the generated icon set**
+- [x] **Step 7: Commit the generated icon set**
 
 ```bash
 git add docs/superpowers/plans/2026-07-11-tech-gray-icon-plan.md src/assets/icon.png src-tauri/icons src-tauri/tauri.conf.json
