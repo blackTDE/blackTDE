@@ -330,8 +330,8 @@ export const FilePreview: React.FC = () => {
       case 'xlsx':
       case 'xls':
         const docColors: Record<string, string> = {
-          docx: 'text-blue-400',
-          doc: 'text-blue-400',
+          docx: 'text-zinc-400',
+          doc: 'text-zinc-400',
           xlsx: 'text-emerald-400',
           xls: 'text-emerald-400',
           pptx: 'text-orange-400',
@@ -377,7 +377,7 @@ export const FilePreview: React.FC = () => {
   return (
     <div
       onKeyDown={handleKeyDown}
-      className="w-full h-full bg-surface rounded-lg border border-surface-2 flex flex-col overflow-hidden shadow-lg select-none"
+      className="w-full h-full min-h-0 bg-surface flex flex-col overflow-hidden select-none"
     >
       {/* Visual Header */}
       <div className="bg-surface-1 px-4 py-3 border-b border-surface-2 flex items-center justify-between">
@@ -414,7 +414,7 @@ export const FilePreview: React.FC = () => {
               className={`flex items-center space-x-1.5 text-xs font-medium px-2.5 py-1 rounded transition border cursor-pointer ${
                 isSaved
                   ? 'text-zinc-500 bg-surface-2/40 border-transparent cursor-default'
-                  : 'text-white bg-brand border-brand/60 hover:bg-brand/90 active:bg-brand shadow-sm shadow-brand/10'
+                  : 'text-white bg-brand border-brand/60 hover:bg-brand/90 active:bg-brand'
               }`}
             >
               <Save size={12} />
@@ -425,7 +425,7 @@ export const FilePreview: React.FC = () => {
       </div>
 
       {/* Render Workspace Content Body */}
-      <div className="flex-1 w-full min-h-[300px]">
+      <div className="flex-1 w-full min-h-0">
         {isEditMode ? (
           <div className="w-full h-full">
             <MonacoEditor

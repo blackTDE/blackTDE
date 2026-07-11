@@ -336,7 +336,7 @@ export const GitPanel: React.FC = () => {
           className={`flex items-center space-x-1 text-xs font-semibold px-3 py-1.5 rounded transition ${
             staged.length === 0 || !commitMessage.trim()
               ? 'text-slate-500 bg-slate-800 cursor-default'
-              : 'text-white bg-brand hover:bg-brand/80 active:bg-brand/90 shadow-lg shadow-brand/10'
+              : 'text-white bg-brand hover:bg-brand/80 active:bg-brand/90'
           }`}
         >
           <Send size={12} />

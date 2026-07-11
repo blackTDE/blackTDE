@@ -17,18 +17,14 @@ export const TerminalGrid: React.FC = () => {
       <div
         key={index}
         onClick={() => setActivePaneIndex(index)}
-        className={`relative w-full h-full rounded border flex flex-col overflow-hidden transition-all duration-200 ${
-          isActive 
-            ? 'border-brand shadow-md shadow-brand/5' 
-            : 'border-slate-800 hover:border-slate-700 bg-slate-900/10'
+        className={`relative w-full h-full min-w-0 min-h-0 flex flex-col overflow-hidden ${
+          isActive ? 'bg-surface-1' : 'bg-surface'
         }`}
       >
         {/* Cell Header */}
-        <div className={`px-2 py-1 flex items-center justify-between text-[10px] font-mono select-none ${
-          isActive ? 'bg-brand/40 border-b border-brand/20' : 'bg-slate-950/20 border-b border-slate-850'
-        }`}>
+        <div className="px-2 py-1 flex items-center justify-between text-[10px] font-mono select-none bg-surface-1 border-b border-surface-2">
           <div className="flex items-center space-x-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-brand-light animate-pulse' : 'bg-slate-600'}`} />
+            <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-zinc-300' : 'bg-zinc-600'}`} />
             <span className="text-[10px] text-slate-400 font-bold uppercase">Pane {index + 1}</span>
             {session && (
               <span className="text-slate-500 text-[9px] font-semibold bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700 max-w-[120px] truncate">
@@ -51,7 +47,7 @@ export const TerminalGrid: React.FC = () => {
         </div>
 
         {/* Cell Content */}
-        <div className="flex-grow min-h-0 bg-[#1e1e1e]">
+        <div className="flex-grow min-h-0 bg-[#0a0a0a]">
           {sessId ? (
             <TerminalPane sessionId={sessId} />
           ) : (
@@ -89,42 +85,16 @@ export const TerminalGrid: React.FC = () => {
     );
   };
 
-  // Render grids by active layout type
-  switch (paneLayout.type) {
-    case '1x1':
-      return (
-        <div className="w-full h-full p-1">
-          {renderCell(0)}
-        </div>
-      );
-    case '1x2':
-      return (
-        <div className="w-full h-full flex flex-row p-1 space-x-2">
-          <div className="flex-1 min-w-0 h-full">{renderCell(0)}</div>
-          <div className="flex-1 min-w-0 h-full">{renderCell(1)}</div>
-        </div>
-      );
-    case '2x1':
-      return (
-        <div className="w-full h-full flex flex-col p-1 space-y-2">
-          <div className="flex-1 min-h-0 w-full">{renderCell(0)}</div>
-          <div className="flex-1 min-h-0 w-full">{renderCell(1)}</div>
-        </div>
-      );
-    case '2x2':
-      return (
-        <div className="w-full h-full flex flex-col p-1 space-y-2">
-          <div className="flex-1 min-h-0 w-full flex flex-row space-x-2">
-            <div className="flex-1 min-w-0 h-full">{renderCell(0)}</div>
-            <div className="flex-1 min-w-0 h-full">{renderCell(1)}</div>
-          </div>
-          <div className="flex-1 min-h-0 w-full flex flex-row space-x-2">
-            <div className="flex-1 min-w-0 h-full">{renderCell(2)}</div>
-            <div className="flex-1 min-w-0 h-full">{renderCell(3)}</div>
-          </div>
-        </div>
-      );
-    default:
-      return <div className="p-4 text-xs text-rose-500 font-mono">Unsupported Layout Type: {paneLayout.type}</div>;
-  }
+  const gridClass = {
+    '1x1': 'grid-cols-1 grid-rows-1',
+    '1x2': 'grid-cols-2 grid-rows-1',
+    '2x1': 'grid-cols-1 grid-rows-2',
+    '2x2': 'grid-cols-2 grid-rows-2',
+  }[paneLayout.type];
+
+  return (
+    <div className={`grid w-full h-full min-h-0 gap-px bg-surface-2 ${gridClass}`}>
+      {Array.from({ length: visibleCount }, (_, index) => renderCell(index))}
+    </div>
+  );
 };

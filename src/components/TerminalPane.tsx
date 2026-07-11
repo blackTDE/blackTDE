@@ -25,12 +25,12 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
       theme: {
         background: '#0a0a0a',
         foreground: '#fafafa',
-        cursor: '#3794ff',
+        cursor: '#e5e5e5',
         black: '#262626',
         red: '#ff6568',
         green: '#86efac',
         yellow: '#fbbf24',
-        blue: '#3794ff',
+        blue: '#a1a1a1',
         magenta: '#b66dff',
         cyan: '#40b0a6',
         white: '#e5e5e5',
@@ -195,8 +195,8 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
   }, [sessionId]);
 
   return (
-    <div className="w-full h-full bg-[#0a0a0a] p-3 rounded-lg border border-slate-800/85 flex flex-col">
-      <div ref={containerRef} className="w-full h-full flex-grow min-h-[400px]" />
+    <div className="w-full h-full min-h-0 bg-[#0a0a0a] overflow-hidden">
+      <div ref={containerRef} className="w-full h-full min-h-0" />
     </div>
   );
 };

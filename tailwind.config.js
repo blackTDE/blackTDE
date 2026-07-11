@@ -14,8 +14,8 @@ export default {
           3: "#404040",
         },
         brand: {
-          DEFAULT: "#1447e6",
-          light: "#3794ff",
+          DEFAULT: "#525252",
+          light: "#a1a1a1",
         },
         slate: {
           50: "#fafafa",

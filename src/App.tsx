@@ -491,7 +491,7 @@ function App() {
                 <div className="flex space-x-2 pt-1">
                   <button
                     onClick={handleCreateProject}
-                    className="flex-1 bg-brand text-white font-semibold py-1.5 rounded text-[11px] hover:bg-brand/90 cursor-pointer transition shadow shadow-brand/10"
+                    className="flex-1 bg-brand text-white font-semibold py-1.5 rounded text-[11px] hover:bg-brand/90 cursor-pointer transition"
                   >
                     Save
                   </button>
@@ -748,7 +748,7 @@ function App() {
               </div>
 
               {/* Tab content area */}
-              <div className={`flex-grow min-h-0 overflow-hidden ${activeFileTab === null ? 'p-0' : 'p-4'}`}>
+              <div className="flex-grow min-h-0 overflow-hidden">
                 {activeFileTab === null ? (
                   <div className="w-full h-full flex flex-col bg-[#0a0a0a] overflow-hidden">
                     {/* Clean Terminal Toolbar */}
@@ -1092,7 +1092,7 @@ function App() {
               </button>
               <button
                 onClick={handleCreateSession}
-                className="bg-brand text-white font-semibold px-4 py-1.5 rounded text-xs hover:bg-brand/90 cursor-pointer transition shadow shadow-brand/20"
+                className="bg-brand text-white font-semibold px-4 py-1.5 rounded text-xs hover:bg-brand/90 cursor-pointer transition"
               >
                 Spawn Session
               </button>

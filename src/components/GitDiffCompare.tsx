@@ -87,7 +87,7 @@ export const GitDiffCompare: React.FC<GitDiffCompareProps> = ({ tabPath }) => {
 
   if (isLoading) {
     return (
-      <div className="w-full h-full bg-[#1e1e1e] rounded-lg border border-slate-700 flex items-center justify-center text-slate-500 font-mono text-xs">
+      <div className="w-full h-full bg-[#1e1e1e] flex items-center justify-center text-slate-500 font-mono text-xs">
         <span className="w-4 h-4 rounded-full border-2 border-brand-light border-t-transparent animate-spin mr-2"></span>
         <span>Loading comparison diff...</span>
       </div>
@@ -96,7 +96,7 @@ export const GitDiffCompare: React.FC<GitDiffCompareProps> = ({ tabPath }) => {
 
   if (error) {
     return (
-      <div className="w-full h-full bg-[#1e1e1e] rounded-lg border border-slate-700 flex flex-col items-center justify-center p-6 text-center font-mono">
+      <div className="w-full h-full bg-[#1e1e1e] flex flex-col items-center justify-center p-6 text-center font-mono">
         <AlertCircle size={32} className="text-rose-400 mb-2" />
         <h3 className="text-sm font-bold text-slate-200 mb-1">Failed to Load Diff</h3>
         <p className="text-[10px] text-slate-500 max-w-md">{error}</p>
@@ -105,7 +105,7 @@ export const GitDiffCompare: React.FC<GitDiffCompareProps> = ({ tabPath }) => {
   }
 
   return (
-    <div className="w-full h-full bg-[#1e1e1e] rounded-lg border border-slate-700 flex flex-col overflow-hidden shadow-lg select-none">
+    <div className="w-full h-full min-h-0 bg-[#1e1e1e] flex flex-col overflow-hidden select-none">
       {/* Header bar */}
       <div className="bg-[#171717] px-4 py-2.5 border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center space-x-2 truncate">
@@ -123,7 +123,7 @@ export const GitDiffCompare: React.FC<GitDiffCompareProps> = ({ tabPath }) => {
       </div>
 
       {/* Monaco Diff Editor */}
-      <div className="flex-1 w-full min-h-[300px]">
+      <div className="flex-1 w-full min-h-0">
         <DiffEditor
           height="100%"
           original={originalContent}

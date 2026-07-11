@@ -325,7 +325,7 @@ export const SettingsPanel: React.FC = () => {
                 onClick={() => setActiveTab(t.id as any)}
                 className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold font-mono border transition ${
                   activeTab === t.id
-                    ? 'bg-brand/10 text-brand-light border-brand/25 font-bold shadow-md shadow-brand/5'
+                    ? 'bg-brand/10 text-brand-light border-brand/25 font-bold'
                     : 'text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40'
                 }`}
               >
@@ -445,7 +445,7 @@ export const SettingsPanel: React.FC = () => {
                   <div 
                     key={p.name} 
                     className={`p-4 rounded-xl border flex flex-col justify-between transition bg-[#171717]/35 ${
-                      p.is_default ? 'border-brand/40 shadow shadow-brand/5' : 'border-slate-800/80 hover:border-slate-700'
+                      p.is_default ? 'border-brand/40' : 'border-slate-800/80 hover:border-slate-700'
                     }`}
                   >
                     <div>
