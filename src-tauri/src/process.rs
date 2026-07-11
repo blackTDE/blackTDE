@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, Mutex as AsyncMutex, OwnedMutexGuard};
 use uuid::Uuid;
 
 pub struct ActiveProcess {
@@ -15,8 +15,10 @@ pub struct ActiveProcess {
 #[derive(Default)]
 pub struct ProcessManager {
     pub active_sessions: Arc<Mutex<HashMap<String, ActiveProcess>>>,
-    pub resuming_sessions: Arc<Mutex<HashSet<String>>>,
+    pub resume_locks: ResumeLocks,
 }
+
+pub type ResumeLocks = Arc<AsyncMutex<HashMap<String, Arc<AsyncMutex<()>>>>>;
 
 pub fn remove_active_session(
     active_sessions: &Arc<Mutex<HashMap<String, ActiveProcess>>>,
@@ -30,33 +32,19 @@ pub fn remove_active_session(
     }
 }
 
-pub struct ResumeReservation {
-    reservations: Arc<Mutex<HashSet<String>>>,
-    session_id: String,
-}
-
-impl Drop for ResumeReservation {
-    fn drop(&mut self) {
-        if let Ok(mut reservations) = self.reservations.lock() {
-            reservations.remove(&self.session_id);
-        }
-    }
-}
-
-pub fn reserve_resume(
-    reservations: &Arc<Mutex<HashSet<String>>>,
+pub async fn lock_session_resume(
+    locks: &ResumeLocks,
     session_id: &str,
-) -> Option<ResumeReservation> {
-    let mut locked = reservations.lock().ok()?;
-    if !locked.insert(session_id.to_string()) {
-        return None;
-    }
-    drop(locked);
+) -> OwnedMutexGuard<()> {
+    let session_lock = {
+        let mut locks = locks.lock().await;
+        locks
+            .entry(session_id.to_string())
+            .or_insert_with(|| Arc::new(AsyncMutex::new(())))
+            .clone()
+    };
 
-    Some(ResumeReservation {
-        reservations: reservations.clone(),
-        session_id: session_id.to_string(),
-    })
+    session_lock.lock_owned().await
 }
 
 pub fn spawn_pty_process(
@@ -113,7 +101,6 @@ pub fn spawn_pty_process(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
     use std::io::Read;
 
     #[test]
@@ -153,14 +140,19 @@ mod tests {
         assert!(!sessions.lock().unwrap().contains_key("finished"));
     }
 
-    #[test]
-    fn test_resume_reservation_is_exclusive_and_released_on_drop() {
-        let reservations = Arc::new(Mutex::new(HashSet::new()));
+    #[tokio::test]
+    async fn test_concurrent_resume_waits_for_the_session_lock() {
+        let locks = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        let first = lock_session_resume(&locks, "session").await;
+        let waiting_locks = locks.clone();
+        let waiter = tokio::spawn(async move {
+            let _second = lock_session_resume(&waiting_locks, "session").await;
+        });
 
-        let first = reserve_resume(&reservations, "session").expect("first reservation");
-        assert!(reserve_resume(&reservations, "session").is_none());
+        tokio::task::yield_now().await;
+        assert!(!waiter.is_finished());
 
         drop(first);
-        assert!(reserve_resume(&reservations, "session").is_some());
+        waiter.await.unwrap();
     }
 }

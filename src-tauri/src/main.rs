@@ -742,8 +742,14 @@ async fn resume_terminated_session(
         }
     }
 
-    let _resume_reservation = process::reserve_resume(&manager.resuming_sessions, &id)
-        .ok_or_else(|| format!("Session {} is already resuming", id))?;
+    let _resume_lock = process::lock_session_resume(&manager.resume_locks, &id).await;
+
+    {
+        let active_sessions = manager.active_sessions.lock().map_err(|e| e.to_string())?;
+        if active_sessions.contains_key(&id) {
+            return Ok(());
+        }
+    }
 
     // 2. Fetch session details from SQLite
     let session_row = sqlx::query(
