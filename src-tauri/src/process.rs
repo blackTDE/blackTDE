@@ -1,9 +1,11 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use tokio::sync::oneshot;
+use uuid::Uuid;
 
 pub struct ActiveProcess {
+    pub instance_id: Uuid,
     pub master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
     pub writer: Arc<Mutex<Box<dyn std::io::Write + Send>>>,
     pub child: Arc<Mutex<Box<dyn Child + Send + Sync>>>,
@@ -13,15 +15,48 @@ pub struct ActiveProcess {
 #[derive(Default)]
 pub struct ProcessManager {
     pub active_sessions: Arc<Mutex<HashMap<String, ActiveProcess>>>,
+    pub resuming_sessions: Arc<Mutex<HashSet<String>>>,
 }
 
 pub fn remove_active_session(
     active_sessions: &Arc<Mutex<HashMap<String, ActiveProcess>>>,
     session_id: &str,
+    instance_id: Uuid,
 ) {
     if let Ok(mut sessions) = active_sessions.lock() {
-        sessions.remove(session_id);
+        if sessions.get(session_id).map(|process| process.instance_id) == Some(instance_id) {
+            sessions.remove(session_id);
+        }
     }
+}
+
+pub struct ResumeReservation {
+    reservations: Arc<Mutex<HashSet<String>>>,
+    session_id: String,
+}
+
+impl Drop for ResumeReservation {
+    fn drop(&mut self) {
+        if let Ok(mut reservations) = self.reservations.lock() {
+            reservations.remove(&self.session_id);
+        }
+    }
+}
+
+pub fn reserve_resume(
+    reservations: &Arc<Mutex<HashSet<String>>>,
+    session_id: &str,
+) -> Option<ResumeReservation> {
+    let mut locked = reservations.lock().ok()?;
+    if !locked.insert(session_id.to_string()) {
+        return None;
+    }
+    drop(locked);
+
+    Some(ResumeReservation {
+        reservations: reservations.clone(),
+        session_id: session_id.to_string(),
+    })
 }
 
 pub fn spawn_pty_process(
@@ -67,6 +102,7 @@ pub fn spawn_pty_process(
     let writer = pair.master.take_writer()?;
 
     Ok(ActiveProcess {
+        instance_id: Uuid::new_v4(),
         master: Arc::new(Mutex::new(pair.master)),
         writer: Arc::new(Mutex::new(writer)),
         child: Arc::new(Mutex::new(child)),
@@ -77,6 +113,7 @@ pub fn spawn_pty_process(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
     use std::io::Read;
 
     #[test]
@@ -105,10 +142,25 @@ mod tests {
     fn test_remove_active_session() {
         let sessions = Arc::new(Mutex::new(HashMap::new()));
         let proc = spawn_pty_process("echo", vec!["done".to_string()], ".", 24, 80, Vec::new()).unwrap();
+        let instance_id = proc.instance_id;
         sessions.lock().unwrap().insert("finished".to_string(), proc);
 
-        remove_active_session(&sessions, "finished");
+        remove_active_session(&sessions, "finished", uuid::Uuid::new_v4());
+        assert!(sessions.lock().unwrap().contains_key("finished"));
+
+        remove_active_session(&sessions, "finished", instance_id);
 
         assert!(!sessions.lock().unwrap().contains_key("finished"));
+    }
+
+    #[test]
+    fn test_resume_reservation_is_exclusive_and_released_on_drop() {
+        let reservations = Arc::new(Mutex::new(HashSet::new()));
+
+        let first = reserve_resume(&reservations, "session").expect("first reservation");
+        assert!(reserve_resume(&reservations, "session").is_none());
+
+        drop(first);
+        assert!(reserve_resume(&reservations, "session").is_some());
     }
 }

@@ -5,6 +5,7 @@ use portable_pty::MasterPty;
 use tauri::Emitter;
 use sqlx::SqlitePool;
 use crate::process::{remove_active_session, ActiveProcess};
+use uuid::Uuid;
 
 #[derive(Clone, serde::Serialize)]
 pub struct TdeEvent {
@@ -16,6 +17,7 @@ pub struct TdeEvent {
 pub fn start_stdout_reader(
     session_id: String,
     master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
+    process_instance_id: Uuid,
     active_sessions: Arc<Mutex<HashMap<String, ActiveProcess>>>,
     db_pool: SqlitePool,
     app_handle: tauri::AppHandle,
@@ -113,7 +115,7 @@ pub fn start_stdout_reader(
             }
         }
 
-        remove_active_session(&active_sessions, &session_id_clone);
+        remove_active_session(&active_sessions, &session_id_clone, process_instance_id);
 
         // Send exit event
         let _ = app_handle_clone.emit(

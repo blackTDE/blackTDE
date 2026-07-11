@@ -270,6 +270,7 @@ async fn spawn_session(
         .map_err(|e| e.to_string())?;
 
     let master_clone = active_process.master.clone();
+    let process_instance_id = active_process.instance_id;
 
     // 7. Register active session in process manager
     {
@@ -281,6 +282,7 @@ async fn spawn_session(
     event_bus::start_stdout_reader(
         id,
         master_clone,
+        process_instance_id,
         manager.active_sessions.clone(),
         pool.inner().clone(),
         app_handle,
@@ -740,6 +742,9 @@ async fn resume_terminated_session(
         }
     }
 
+    let _resume_reservation = process::reserve_resume(&manager.resuming_sessions, &id)
+        .ok_or_else(|| format!("Session {} is already resuming", id))?;
+
     // 2. Fetch session details from SQLite
     let session_row = sqlx::query(
         "SELECT workspace_id, agent_type, cwd, remote_session_id, provider, model FROM sessions WHERE id = $1"
@@ -913,6 +918,7 @@ async fn resume_terminated_session(
         .map_err(|e| e.to_string())?;
 
     let master_clone = active_process.master.clone();
+    let process_instance_id = active_process.instance_id;
 
     // 6. Register in process manager
     {
@@ -920,10 +926,28 @@ async fn resume_terminated_session(
         active_sessions.insert(id.clone(), active_process);
     }
 
+    if let Err(error) = sqlx::query(
+        "UPDATE sessions SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = $1"
+    )
+    .bind(&id)
+    .execute(&*pool)
+    .await
+    {
+        if let Ok(mut active_sessions) = manager.active_sessions.lock() {
+            if let Some(process) = active_sessions.remove(&id) {
+                if let Ok(mut child) = process.child.lock() {
+                    let _ = child.kill();
+                }
+            }
+        }
+        return Err(error.to_string());
+    }
+
     // 7. Start stdout reader
     event_bus::start_stdout_reader(
         id,
         master_clone,
+        process_instance_id,
         manager.active_sessions.clone(),
         pool.inner().clone(),
         app_handle,
