@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
+import { restoreTerminal } from '../terminalRestore';
 import '@xterm/xterm/css/xterm.css';
 
 interface TerminalPaneProps {
@@ -50,68 +51,32 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
       console.error('Fit error on mount:', e);
     }
 
-    let isHistoryLoaded = false;
+    let isReady = false;
+    let isDisposed = false;
     const incomingQueue: Uint8Array[] = [];
 
-    // Fetch past session history first from database transcripts
-    invoke<number[]>('get_session_history', { id: sessionId })
-      .then((historyBytes) => {
-        if (historyBytes && historyBytes.length > 0) {
-          term.write(new Uint8Array(historyBytes));
-        }
-        isHistoryLoaded = true;
-        // Flush any events queued during the fetch
-        while (incomingQueue.length > 0) {
-          const chunk = incomingQueue.shift();
-          if (chunk) {
-            term.write(chunk);
-          }
-        }
+    const flushIncoming = () => {
+      while (incomingQueue.length > 0) {
+        const chunk = incomingQueue.shift();
+        if (chunk) term.write(chunk);
+      }
+    };
 
-        // Check if the PTY process is currently active in the backend process manager
-        invoke<string[]>('list_active_session_ids')
-          .then((activeIds) => {
-            if (!activeIds.includes(sessionId)) {
-              // Fetch remote session ID to print it before resuming
-              invoke<string | null>('get_remote_session_id', { id: sessionId })
-                .then((remoteId) => {
-                  const displayId = remoteId || "None (fresh shell)";
-                  term.write(`\r\n\x1b[1;33m[Session disconnected - auto resuming agent/shell with remote ID: ${displayId}]\x1b[0m\r\n`);
-                  
-                  // Reset xterm context to prevent overlapping character mess
-                  term.reset();
-                  term.write(`\x1b[1;33m[Session disconnected - auto resuming agent/shell with remote ID: ${displayId}]\x1b[0m\r\n`);
-                  term.write('\x1b[1;30m(Note: Re-connecting to PTY process and cleaning screen context...)\x1b[0m\r\n\r\n');
-
-                  invoke('resume_terminated_session', { id: sessionId })
-                    .then(() => {
-                      term.write('\x1b[1;32m[Session resumed successfully]\x1b[0m\r\n\r\n');
-                    })
-                    .catch((err) => {
-                      term.write(`\r\n\x1b[1;31m[Auto resume failed: ${err}]\x1b[0m\r\n`);
-                    });
-                })
-                .catch((err) => {
-                  console.error('Failed to get remote session id:', err);
-                  // Fallback without printing remote ID
-                  term.reset();
-                  term.write('\x1b[1;33m[Session disconnected - auto resuming agent/shell...]\x1b[0m\r\n');
-                  invoke('resume_terminated_session', { id: sessionId })
-                    .then(() => {
-                      term.write('\x1b[1;32m[Session resumed successfully]\x1b[0m\r\n\r\n');
-                    })
-                    .catch((resumeErr) => {
-                      term.write(`\r\n\x1b[1;31m[Auto resume failed: ${resumeErr}]\x1b[0m\r\n`);
-                    });
-                });
-            }
-          })
-          .catch((err) => console.error('Failed to query active session list:', err));
-      })
-      .catch((err) => {
-        console.error('Failed to load session history:', err);
-        isHistoryLoaded = true;
-      });
+    const fitAndResize = () => {
+      if (isDisposed) return;
+      try {
+        fitAddon.fit();
+        if (term.rows > 2 && term.cols > 2) {
+          invoke('resize_session', {
+            id: sessionId,
+            rows: term.rows,
+            cols: term.cols,
+          }).catch((err) => console.error('Failed to resize terminal:', err));
+        }
+      } catch (err) {
+        console.error('Failed to fit terminal:', err);
+      }
+    };
 
     // Listen to stdout event stream from tauri event bus
     let unlistenFn: (() => void) | null = null;
@@ -120,7 +85,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
       if (payload.session_id === sessionId) {
         if (payload.event_type === 'stdout') {
           const dataBytes = new Uint8Array(payload.data);
-          if (isHistoryLoaded) {
+          if (isReady) {
             term.write(dataBytes);
           } else {
             incomingQueue.push(dataBytes);
@@ -130,7 +95,68 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
         }
       }
     }).then((fn) => {
+      if (isDisposed) {
+        fn();
+        return;
+      }
       unlistenFn = fn;
+
+      restoreTerminal({
+        lookupActive: async () => {
+          const activeIds = await invoke<string[]>('list_active_session_ids');
+          return activeIds.includes(sessionId);
+        },
+        replayHistory: async () => {
+          const historyBytes = await invoke<number[]>('get_session_history', { id: sessionId });
+          if (!isDisposed && historyBytes.length > 0) {
+            term.write(new Uint8Array(historyBytes));
+          }
+        },
+        reset: () => {
+          if (!isDisposed) term.reset();
+        },
+        resume: async () => {
+          let displayId = 'None (fresh shell)';
+          try {
+            displayId = await invoke<string | null>('get_remote_session_id', { id: sessionId }) || displayId;
+          } catch (error) {
+            console.error('Failed to get remote session id:', error);
+          }
+
+          if (!isDisposed) {
+            term.write(`\x1b[1;33m[Session disconnected - resuming remote ID: ${displayId}]\x1b[0m\r\n`);
+          }
+
+          try {
+            await invoke('resume_terminated_session', { id: sessionId });
+          } catch (error) {
+            if (!isDisposed) {
+              term.write(`\r\n\x1b[1;31m[Auto resume failed: ${error}]\x1b[0m\r\n`);
+            }
+          }
+        },
+        fitAndResize,
+        setReady: () => {
+          if (isDisposed) return;
+          isReady = true;
+          flushIncoming();
+        },
+        redraw: async () => {
+          if (isDisposed) return;
+          try {
+            await invoke('write_to_session', { id: sessionId, data: [12] });
+          } catch (error) {
+            console.error('Failed to redraw terminal:', error);
+          }
+        },
+        onLookupError: (error) => console.error('Failed to query active session list:', error),
+      }).catch((error) => {
+        console.error('Failed to restore terminal:', error);
+        if (!isDisposed) {
+          isReady = true;
+          flushIncoming();
+        }
+      });
     });
 
     // Handle user keyboard/mouse input
@@ -143,41 +169,18 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
 
     // Resize tracking
     const resizeObserver = new ResizeObserver(() => {
-      try {
-        fitAddon.fit();
-        if (term.rows > 2 && term.cols > 2) {
-          invoke('resize_session', {
-            id: sessionId,
-            rows: term.rows,
-            cols: term.cols,
-          }).catch((err) => {
-            console.error('Failed to resize terminal:', err);
-          });
-        }
-      } catch (err) {
-        console.error(err);
-      }
+      fitAndResize();
     });
 
     resizeObserver.observe(containerRef.current);
 
     // Initial resize sync (delayed slightly to allow DOM bounding box to stabilize)
     const resizeTimeout = setTimeout(() => {
-      try {
-        fitAddon.fit();
-        if (term.rows > 2 && term.cols > 2) {
-          invoke('resize_session', {
-            id: sessionId,
-            rows: term.rows,
-            cols: term.cols,
-          }).catch((err) => console.error(err));
-        }
-      } catch (e) {
-        console.error(e);
-      }
+      fitAndResize();
     }, 100);
 
     return () => {
+      isDisposed = true;
       clearTimeout(resizeTimeout);
       resizeObserver.disconnect();
       dataDisposer.dispose();
