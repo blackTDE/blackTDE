@@ -408,7 +408,7 @@ function App() {
           {/* Header */}
           <div className="p-4 border-b border-surface-2 flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <img src={brandIcon} alt="Black TDE Logo" className="w-8 h-8 rounded shadow-md shadow-brand/20 object-cover" />
+              <img src={brandIcon} alt="Black TDE Logo" className="w-8 h-8 rounded object-cover" />
               <div>
                 <h1 className="font-bold text-xs tracking-wider text-zinc-100 font-mono uppercase">TDE Cockpit</h1>
                 <p className="text-[9px] text-zinc-500 font-mono">v1.2.0 (Crest Visuals)</p>
