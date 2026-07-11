@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useWorkspaceStore } from './store/workspaceStore';
+import { getVisiblePaneCount, useWorkspaceStore } from './store/workspaceStore';
+import { dedupeSessions } from './sessionUtils';
 import { TerminalGrid } from './components/TerminalGrid';
 import { SettingsPanel } from './components/SettingsPanel';
 import { FileTree } from './components/FileTree';
@@ -45,15 +46,6 @@ const getInitials = (name: string): string => {
     return clean.slice(0, 2).toUpperCase();
   }
   return clean.slice(0, 1).toUpperCase() || 'AG';
-};
-
-const getVisiblePaneCount = (layoutType: '1x1' | '1x2' | '2x1' | '2x2'): number => {
-  switch (layoutType) {
-    case '1x1': return 1;
-    case '1x2': return 2;
-    case '2x1': return 2;
-    case '2x2': return 4;
-  }
 };
 
 const brandIcon = new URL('./assets/icon.png', import.meta.url).href;
@@ -116,12 +108,13 @@ function App() {
   const loadPastSessions = async () => {
     try {
       const list = await invoke<any[]>('list_past_sessions');
+      const canonicalSessions = dedupeSessions(list);
       // Filter for resume dropdown list (needs remote conversation ID)
-      setPastSessions(list.filter(s => s.remote_session_id));
+      setPastSessions(canonicalSessions.filter(s => s.remote_session_id));
 
       // Populate Zustand store sessions to persist them across app restarts
       const sessionsMap: Record<string, any> = {};
-      for (const s of list) {
+      for (const s of canonicalSessions) {
         sessionsMap[s.id] = {
           id: s.id,
           agentType: s.agent_type,
@@ -293,6 +286,19 @@ function App() {
   }, [activeFileTab]);
 
   const handleCreateSession = async () => {
+    if (resumeSessionId) {
+      const existingSession = pastSessions.find((session) => session.id === resumeSessionId);
+      if (!existingSession) {
+        alert('The selected session is no longer available.');
+        return;
+      }
+
+      handleSelectSession(modalTargetProject || activeWorkspace, existingSession.id);
+      setResumeSessionId('');
+      setShowNewSessionModal(false);
+      return;
+    }
+
     const newSessionId = 'session_' + Math.random().toString(36).substring(2, 11);
     const mockWorkspaceId = modalTargetProject?.id || activeWorkspace?.id || 'project_default';
     const args = argsInput.trim() ? argsInput.split(/\s+/) : [];
@@ -308,7 +314,7 @@ function App() {
         rows: 24,
         cols: 80,
         provider: spawnProvider,
-        resumeSessionId: resumeSessionId || null,
+        resumeSessionId: null,
         privileged: privileged,
       });
 
@@ -1053,7 +1059,7 @@ function App() {
                   >
                     <option value="">Start Fresh (No Resume)</option>
                     {getFilteredPastSessions(modalTargetProject?.path || '').map(s => (
-                      <option key={s.id} value={s.remote_session_id}>
+                      <option key={s.id} value={s.id}>
                         {s.agent_type} - {s.remote_session_id.substring(0, 8)}...
                       </option>
                     ))}

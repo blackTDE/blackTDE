@@ -27,6 +27,12 @@ export interface PaneLayout {
   panes: (string | null)[]; // 4 slots max for sessionId
 }
 
+export const getVisiblePaneCount = (type: PaneLayout['type']): number => {
+  if (type === '2x2') return 4;
+  if (type === '1x1') return 1;
+  return 2;
+};
+
 interface WorkspaceState {
   activeWorkspace: WorkspaceEntry | null;
   workspaces: WorkspaceEntry[];
@@ -214,7 +220,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   setPaneSessionId: (index, sessionId) =>
     set((state) => {
-      const newPanes = [...state.paneLayout.panes];
+      if (index < 0 || index >= state.paneLayout.panes.length) return state;
+
+      const newPanes = state.paneLayout.panes.map((paneSessionId) =>
+        sessionId && paneSessionId === sessionId ? null : paneSessionId
+      );
       newPanes[index] = sessionId;
       const newPaneLayout = { ...state.paneLayout, panes: newPanes };
       const wsId = state.activeWorkspace?.id || 'project_default';
