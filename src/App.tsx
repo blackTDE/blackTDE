@@ -48,6 +48,17 @@ const getInitials = (name: string): string => {
   return clean.slice(0, 1).toUpperCase() || 'AG';
 };
 
+const getFriendlySshHost = (sshHost?: string): string => {
+  if (!sshHost) return 'ssh';
+  let hostPart = sshHost;
+  if (sshHost.includes('@')) {
+    hostPart = sshHost.split('@')[1];
+  }
+  hostPart = hostPart.split('-p')[0].trim();
+  hostPart = hostPart.split(/\s+/)[0];
+  return `ssh (${hostPart})`;
+};
+
 const brandIcon = new URL('./assets/icon.png', import.meta.url).href;
 
 function App() {
