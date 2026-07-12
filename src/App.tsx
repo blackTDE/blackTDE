@@ -24,7 +24,9 @@ import {
   ChevronRight,
   PlusCircle,
   PlayCircle,
-  FolderOpen
+  FolderOpen,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 
 const getAgentIconClass = (name: string): string => {
