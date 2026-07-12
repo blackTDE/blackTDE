@@ -25,7 +25,7 @@ interface SearchResult {
 }
 
 export const SearchPanel: React.FC = () => {
-  const { activeWorkspace, openFile } = useWorkspaceStore();
+  const { activeWorkspace, openFile, triggerFileUpdate } = useWorkspaceStore();
   const [query, setQuery] = useState('');
   const [replaceText, setReplaceText] = useState('');
   const [isReplaceOpen, setIsReplaceOpen] = useState(true);
@@ -99,6 +99,8 @@ export const SearchPanel: React.FC = () => {
         replaceStr: replaceText,
       });
       setReplaceSuccessMessage(`Successfully replaced in ${filesModified} file(s)`);
+      // Trigger file refresh to sync latest content with open tab
+      triggerFileUpdate();
       // Refresh search
       handleSearch();
     } catch (err: any) {
