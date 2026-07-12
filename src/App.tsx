@@ -486,7 +486,8 @@ function App() {
       <div className="flex flex-1 min-h-0 w-full overflow-hidden">
         
         {/* Left Sidebar Panel (Projects Tree Viewer) */}
-        <div className="w-80 shrink-0 border-r border-surface-2 bg-surface-1 flex flex-col select-none overflow-hidden font-sans">
+        {isLeftPanelVisible && (
+          <div className="w-80 shrink-0 border-r border-surface-2 bg-surface-1 flex flex-col select-none overflow-hidden font-sans">
           {/* Header */}
           <div className="p-4 border-b border-surface-2 flex items-center justify-between">
             <div className="flex items-center space-x-2">
@@ -690,11 +691,21 @@ function App() {
             </div>
           </div>
         </div>
+      )}
 
         {/* Center Panel (Swappable Workbench) */}
         <div className="flex-grow flex flex-col min-w-0 bg-surface">
           {/* Level 1: Father Tabs (Projects/Workspaces list + Settings Tab) */}
           <div className="shrink-0 flex items-center border-b border-surface-2 bg-surface-2/20 overflow-x-auto select-none">
+            {/* Toggle Sidebar Button */}
+            <button
+              onClick={() => setIsLeftPanelVisible(!isLeftPanelVisible)}
+              className="flex items-center justify-center px-3 py-3 border-r border-surface-2 hover:bg-surface-2/15 transition cursor-pointer text-zinc-500 hover:text-zinc-200 shrink-0"
+              title={isLeftPanelVisible ? "Hide Project Tree Panel" : "Show Project Tree Panel"}
+            >
+              {isLeftPanelVisible ? <PanelLeftClose size={13} /> : <PanelLeftOpen size={13} />}
+            </button>
+
             {/* Settings button on the far left of Level 1 */}
             <button
               onClick={() => {
