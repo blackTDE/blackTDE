@@ -27,6 +27,7 @@ async fn spawn_session(
     provider: String,
     resume_session_id: Option<String>,
     privileged: bool,
+    ssh_host: Option<String>,
     pool: State<'_, SqlitePool>,
     manager: State<'_, process::ProcessManager>,
     app_handle: tauri::AppHandle,
@@ -242,9 +243,17 @@ async fn spawn_session(
         }
     }
 
+    // If SSH host is provided, append its components to command_args
+    if let Some(ref host) = ssh_host {
+        if !host.trim().is_empty() {
+            let host_parts: Vec<String> = host.split_whitespace().map(|s| s.to_string()).collect();
+            command_args.extend(host_parts);
+        }
+    }
+
     // 5. Insert session record to DB
     sqlx::query(
-        "INSERT INTO sessions (id, workspace_id, agent_type, cwd, status, provider, model, remote_session_id) VALUES ($1, $2, $3, $4, 'active', $5, $6, $7)"
+        "INSERT INTO sessions (id, workspace_id, agent_type, cwd, status, provider, model, remote_session_id, ssh_host) VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8)"
     )
     .bind(&id)
     .bind(&workspace_id)
@@ -253,13 +262,16 @@ async fn spawn_session(
     .bind(&provider)
     .bind(&model_override)
     .bind(&initial_remote_id)
+    .bind(&ssh_host)
     .execute(&*pool)
     .await
     .map_err(|e| e.to_string())?;
 
     // 6. Spawn PTY process with injected environment variables
     let mut resolved_command = command.clone();
-    if command == "zsh" {
+    if ssh_host.is_some() {
+        resolved_command = "ssh".to_string();
+    } else if command == "zsh" {
         resolved_command = "/bin/zsh".to_string();
     } else if command == "bash" {
         resolved_command = "/bin/bash".to_string();
