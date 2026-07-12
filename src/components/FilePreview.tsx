@@ -5,7 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Save, FileText, Edit3, Eye, FileCode } from 'lucide-react';
 
 export const FilePreview: React.FC = () => {
-  const { activeFilePath, setActiveFileContent } = useWorkspaceStore();
+  const { activeFilePath, setActiveFileContent, fileUpdateCounter } = useWorkspaceStore();
   const [isEditMode, setIsEditMode] = useState(false);
   const [editorVal, setEditorVal] = useState<string>('');
   const [isSaved, setIsSaved] = useState(true);
@@ -72,7 +72,7 @@ export const FilePreview: React.FC = () => {
     };
 
     loadData();
-  }, [activeFilePath]);
+  }, [activeFilePath, fileUpdateCounter]);
 
   if (!activeFilePath) {
     return (
