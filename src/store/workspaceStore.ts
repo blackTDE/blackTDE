@@ -61,6 +61,8 @@ interface WorkspaceState {
   // Storage of pane layouts grouped by project workspace ID
   paneLayoutsByProject: Record<string, PaneLayout>;
 
+  fileUpdateCounter: number;
+
   // Actions
   setWorkspace: (ws: WorkspaceEntry | null) => void;
   setWorkspaces: (wsList: WorkspaceEntry[]) => void;
@@ -84,6 +86,7 @@ interface WorkspaceState {
   openFile: (path: string, name: string) => void;
   closeFile: (path: string) => void;
   setActiveFileTab: (tab: string | null) => void;
+  triggerFileUpdate: () => void;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
@@ -110,6 +113,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   openFilesByProject: {},
   activeFileTabByProject: {},
   paneLayoutsByProject: {},
+  fileUpdateCounter: 0,
 
   setWorkspace: (ws) =>
     set((state) => {
@@ -205,6 +209,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setActiveRightPanel: (panel) => set({ activeRightPanel: panel }),
   setGitFiles: (files) => set({ gitFiles: files }),
   setGitBranch: (branch) => set({ gitBranch: branch }),
+  triggerFileUpdate: () => set((state) => ({ fileUpdateCounter: state.fileUpdateCounter + 1 })),
 
   setPaneLayoutType: (type) =>
     set((state) => {
