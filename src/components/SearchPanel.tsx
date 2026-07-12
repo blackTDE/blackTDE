@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Search, Loader2, FileText, ChevronRight, CornerDownRight } from 'lucide-react';
+import { Search, Loader2, FileText, CornerDownRight } from 'lucide-react';
 import { useWorkspaceStore } from '../store/workspaceStore';
 
 interface SearchMatch {
