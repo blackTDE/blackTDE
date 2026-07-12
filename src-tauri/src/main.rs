@@ -1079,7 +1079,9 @@ fn main() {
             ssh_sftp::get_ssh_config_hosts,
             ssh_sftp::sftp_list_dir,
             ssh_sftp::sftp_download_file,
-            ssh_sftp::sftp_upload_file
+            ssh_sftp::sftp_upload_file,
+            ssh_sftp::select_local_file_to_upload,
+            ssh_sftp::select_local_download_destination
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
