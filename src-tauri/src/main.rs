@@ -1048,6 +1048,7 @@ fn main() {
             file_manager::write_file_content,
             file_manager::read_file_base64,
             file_manager::search_project,
+            file_manager::replace_in_project,
             git_runner::get_git_status,
             git_runner::get_git_diff,
             git_runner::git_stage_file,
