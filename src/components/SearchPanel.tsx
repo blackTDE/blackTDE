@@ -82,6 +82,7 @@ export const SearchPanel: React.FC = () => {
           <input
             type="text"
             value={query}
+            autoFocus
             onChange={(e) => {
               setQuery(e.target.value);
               handleSearch(e.target.value);
