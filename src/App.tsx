@@ -315,6 +315,17 @@ function App() {
       .then(setDetectedClis)
       .catch((err) => console.error('Failed to detect CLIs:', err));
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+      if (isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setIsRightPaneExpanded(true);
+        setActiveRightPanel('search');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
     const unlistenPromise = listen('tde-event', (event: any) => {
       const payload = event.payload;
       if (payload.event_type === 'exit') {
@@ -323,6 +334,7 @@ function App() {
     });
 
     return () => {
+      window.removeEventListener('keydown', handleKeyDown);
       unlistenPromise.then((unlisten) => unlisten());
     };
   }, []);
