@@ -246,6 +246,8 @@ async fn spawn_session(
     // If SSH host is provided, append its components to command_args
     if let Some(ref host) = ssh_host {
         if !host.trim().is_empty() {
+            command_args.push("-o".to_string());
+            command_args.push("StrictHostKeyChecking=accept-new".to_string());
             let host_parts: Vec<String> = host.split_whitespace().map(|s| s.to_string()).collect();
             command_args.extend(host_parts);
         }
