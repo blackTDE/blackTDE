@@ -13,6 +13,7 @@ export interface SessionInfo {
   provider: string; // "anthropic" | "openai" | "gemini" | "deepseek"
   cmd: string;
   args: string[];
+  ssh_host?: string;
 }
 
 export interface GitFileStatus {
