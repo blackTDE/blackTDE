@@ -103,6 +103,28 @@ function App() {
   const [detectedClis, setDetectedClis] = useState<string[]>([]);
   const [privileged, setPrivileged] = useState(true);
 
+  // SSH Session Spawner state
+  const [sessionType, setSessionType] = useState<'local' | 'ssh'>('local');
+  const [sshHostSelect, setSshHostSelect] = useState('manual');
+  const [sshHostManual, setSshHostManual] = useState('');
+  const [sshUser, setSshUser] = useState('');
+  const [sshPort, setSshPort] = useState('');
+  const [sshConfigHosts, setSshConfigHosts] = useState<string[]>([]);
+
+  const fetchSshConfigHosts = async () => {
+    try {
+      const hosts = await invoke<string[]>('get_ssh_config_hosts');
+      setSshConfigHosts(hosts);
+      if (hosts.length > 0) {
+        setSshHostSelect(hosts[0]);
+      } else {
+        setSshHostSelect('manual');
+      }
+    } catch (err) {
+      console.error('Failed to get ssh hosts:', err);
+    }
+  };
+
   const workspacePath = '/Users/ray/git-repo/black_tde';
 
   const loadPastSessions = async () => {
@@ -255,6 +277,12 @@ function App() {
     setCmdInput('/bin/zsh');
     setArgsInput('');
     setResumeSessionId('');
+    setSessionType('local');
+    setSshHostSelect('manual');
+    setSshHostManual('');
+    setSshUser('');
+    setSshPort('');
+    fetchSshConfigHosts();
     setShowNewSessionModal(true);
   };
 
@@ -304,27 +332,56 @@ function App() {
     const args = argsInput.trim() ? argsInput.split(/\s+/) : [];
     const targetCwd = modalTargetProject?.path || cwdInput || workspacePath;
 
+    let finalCommand = cmdInput;
+    let finalArgs = args;
+    let finalSshHost: string | null = null;
+    let finalAgentType = cmdInput.split('/').pop() || cmdInput;
+
+    if (sessionType === 'ssh') {
+      finalCommand = 'ssh';
+      finalArgs = [];
+      if (sshHostSelect === 'manual') {
+        if (!sshHostManual) {
+          alert('Please enter an SSH host or IP address.');
+          return;
+        }
+        let hostString = sshHostManual;
+        if (sshUser.trim()) {
+          hostString = `${sshUser.trim()}@${hostString}`;
+        }
+        if (sshPort.trim()) {
+          hostString = `${hostString} -p ${sshPort.trim()}`;
+        }
+        finalSshHost = hostString;
+      } else {
+        finalSshHost = sshHostSelect;
+      }
+      finalAgentType = `ssh (${finalSshHost})`;
+    }
+
     try {
       await invoke('spawn_session', {
         id: newSessionId,
         workspaceId: mockWorkspaceId,
-        command: cmdInput,
-        args: args,
+        command: finalCommand,
+        args: finalArgs,
         cwd: targetCwd,
         rows: 24,
         cols: 80,
         provider: spawnProvider,
         resumeSessionId: null,
         privileged: privileged,
+        sshHost: finalSshHost,
       });
 
       addSession({
         id: newSessionId,
-        agentType: cmdInput.split('/').pop() || cmdInput,
+        agentType: finalAgentType,
         cwd: targetCwd,
         provider: spawnProvider,
-        cmd: cmdInput,
-        args: args,
+        cmd: finalCommand,
+        args: finalArgs,
+        ssh_host: finalSshHost || undefined,
       });
 
       setPaneSessionId(paneLayout.activePaneIndex, newSessionId);
