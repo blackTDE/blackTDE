@@ -43,7 +43,7 @@ interface WorkspaceState {
   // File details preview
   activeFilePath: string | null;
   activeFileContent: string | null;
-  activeRightPanel: 'files' | 'git' | 'settings' | 'none';
+  activeRightPanel: 'files' | 'git' | 'settings' | 'search' | 'none';
   gitFiles: GitFileStatus[];
   gitBranch: string;
 
@@ -73,7 +73,7 @@ interface WorkspaceState {
   
   setActiveFilePath: (path: string | null) => void;
   setActiveFileContent: (content: string | null) => void;
-  setActiveRightPanel: (panel: 'files' | 'git' | 'settings' | 'none') => void;
+  setActiveRightPanel: (panel: 'files' | 'git' | 'settings' | 'search' | 'none') => void;
   setGitFiles: (files: GitFileStatus[]) => void;
   setGitBranch: (branch: string) => void;
 
