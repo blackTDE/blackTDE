@@ -537,13 +537,14 @@ pub struct PastSession {
     pub provider: Option<String>,
     pub model: Option<String>,
     pub created_at: String,
+    pub ssh_host: Option<String>,
 }
 
 #[tauri::command]
 async fn list_past_sessions(
     pool: State<'_, SqlitePool>,
 ) -> Result<Vec<PastSession>, String> {
-    let rows = sqlx::query("SELECT id, agent_type, cwd, remote_session_id, status, provider, model, created_at FROM sessions ORDER BY created_at DESC, id DESC")
+    let rows = sqlx::query("SELECT id, agent_type, cwd, remote_session_id, status, provider, model, created_at, ssh_host FROM sessions ORDER BY created_at DESC, id DESC")
         .fetch_all(&*pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -558,6 +559,7 @@ async fn list_past_sessions(
         let provider: Option<String> = row.get("provider");
         let model: Option<String> = row.get("model");
         let created_at: String = row.get("created_at");
+        let ssh_host: Option<String> = row.get("ssh_host");
         entries.push(PastSession {
             id,
             agent_type,
@@ -567,6 +569,7 @@ async fn list_past_sessions(
             provider,
             model,
             created_at,
+            ssh_host,
         });
     }
     Ok(entries)
