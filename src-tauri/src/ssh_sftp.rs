@@ -195,3 +195,20 @@ pub fn sftp_upload_file(host: String, local_path: String, remote_path: String) -
         Err(e) => Err(e.to_string()),
     }
 }
+
+#[tauri::command]
+pub async fn select_local_file_to_upload() -> Result<Option<String>, String> {
+    let file = rfd::AsyncFileDialog::new()
+        .pick_file()
+        .await;
+    Ok(file.map(|f| f.path().to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+pub async fn select_local_download_destination(file_name: String) -> Result<Option<String>, String> {
+    let file = rfd::AsyncFileDialog::new()
+        .set_file_name(&file_name)
+        .save_file()
+        .await;
+    Ok(file.map(|f| f.path().to_string_lossy().to_string()))
+}
