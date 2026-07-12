@@ -1072,7 +1072,11 @@ fn main() {
             detect_available_clis,
             create_workspace,
             delete_workspace,
-            select_directory
+            select_directory,
+            ssh_sftp::get_ssh_config_hosts,
+            ssh_sftp::sftp_list_dir,
+            ssh_sftp::sftp_download_file,
+            ssh_sftp::sftp_upload_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
