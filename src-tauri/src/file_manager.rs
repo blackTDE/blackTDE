@@ -127,22 +127,88 @@ fn recursive_search(
 }
 
 #[tauri::command]
-pub fn search_project(root_path: String, query: String) -> Result<Vec<SearchResult>, String> {
-    let root = Path::new(&root_path);
-    if !root.is_dir() {
-        return Err("Project path is not a directory".into());
-    }
-    
-    let query_trimmed = query.trim();
-    if query_trimmed.is_empty() {
-        return Ok(Vec::new());
-    }
-    
-    let query_lower = query_trimmed.to_lowercase();
-    let mut results = Vec::new();
-    recursive_search(root, &query_lower, &mut results).map_err(|e| e.to_string())?;
-    
-    // Sort results alphabetically by file name
-    results.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    Ok(results)
+pub async fn search_project(root_path: String, query: String) -> Result<Vec<SearchResult>, String> {
+    tokio::task::spawn_blocking(move || {
+        let root = Path::new(&root_path);
+        if !root.is_dir() {
+            return Err("Project path is not a directory".into());
+        }
+        
+        let query_trimmed = query.trim();
+        if query_trimmed.is_empty() {
+            return Ok(Vec::new());
+        }
+        
+        let query_lower = query_trimmed.to_lowercase();
+        let mut results = Vec::new();
+        recursive_search(root, &query_lower, &mut results).map_err(|e| e.to_string())?;
+        
+        // Sort results alphabetically by file name
+        results.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        Ok(results)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn replace_in_project(
+    root_path: String,
+    query: String,
+    replace_str: String,
+) -> Result<usize, String> {
+    tokio::task::spawn_blocking(move || {
+        let root = Path::new(&root_path);
+        if !root.is_dir() {
+            return Err("Project path is not a directory".into());
+        }
+        
+        let query_trimmed = query.trim();
+        if query_trimmed.is_empty() {
+            return Ok(0);
+        }
+        
+        let mut files_modified = 0;
+        
+        fn recursive_replace(
+            dir: &Path,
+            query: &str,
+            replace_str: &str,
+            files_modified: &mut usize,
+        ) -> Result<(), std::io::Error> {
+            if !dir.is_dir() {
+                return Ok(());
+            }
+            
+            for entry in fs::read_dir(dir)? {
+                let entry = entry?;
+                let name = entry.file_name().to_string_lossy().to_string();
+                
+                if name == ".git" || name == "node_modules" || name == "target" || name == ".DS_Store" || name == "dist" || name == "build" {
+                    continue;
+                }
+                
+                let path = entry.path();
+                if path.is_dir() {
+                    recursive_replace(&path, query, replace_str, files_modified)?;
+                } else {
+                    if let Ok(content) = fs::read_to_string(&path) {
+                        if content.contains(query) {
+                            let new_content = content.replace(query, replace_str);
+                            fs::write(&path, new_content)?;
+                            *files_modified += 1;
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+        
+        recursive_replace(root, query_trimmed, &replace_str, &mut files_modified)
+            .map_err(|e| e.to_string())?;
+            
+        Ok(files_modified)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
