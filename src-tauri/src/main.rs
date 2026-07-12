@@ -955,7 +955,13 @@ async fn resume_terminated_session(
 
     // 5. Spawn PTY process
     let mut resolved_command = command.clone();
-    if command == "zsh" {
+    if let Some(ref host) = ssh_host {
+        if !host.trim().is_empty() {
+            resolved_command = "ssh".to_string();
+            let host_parts: Vec<String> = host.split_whitespace().map(|s| s.to_string()).collect();
+            command_args.extend(host_parts);
+        }
+    } else if command == "zsh" {
         resolved_command = "/bin/zsh".to_string();
     } else if command == "bash" {
         resolved_command = "/bin/bash".to_string();
