@@ -148,9 +148,13 @@ function App() {
       // Populate Zustand store sessions to persist them across app restarts
       const sessionsMap: Record<string, any> = {};
       for (const s of canonicalSessions) {
+        let displayAgentType = s.agent_type;
+        if (s.ssh_host) {
+          displayAgentType = getFriendlySshHost(s.ssh_host);
+        }
         sessionsMap[s.id] = {
           id: s.id,
-          agentType: s.agent_type,
+          agentType: displayAgentType,
           cwd: s.cwd,
           provider: s.provider || 'none',
           cmd: s.agent_type,
