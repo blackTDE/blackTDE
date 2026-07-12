@@ -8,7 +8,6 @@ import {
   Replace, 
   FolderSearch, 
   CornerDownRight, 
-  Search,
   CheckCheck
 } from 'lucide-react';
 import { useWorkspaceStore } from '../store/workspaceStore';
