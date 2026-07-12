@@ -795,7 +795,7 @@ async fn resume_terminated_session(
 
     // 2. Fetch session details from SQLite
     let session_row = sqlx::query(
-        "SELECT workspace_id, agent_type, cwd, remote_session_id, provider, model FROM sessions WHERE id = $1"
+        "SELECT workspace_id, agent_type, cwd, remote_session_id, provider, model, ssh_host FROM sessions WHERE id = $1"
     )
     .bind(&id)
     .fetch_optional(&*pool)
@@ -813,6 +813,7 @@ async fn resume_terminated_session(
     let remote_session_id: Option<String> = row.get("remote_session_id");
     let provider: String = row.get("provider");
     let model: Option<String> = row.get("model");
+    let ssh_host: Option<String> = row.get("ssh_host");
 
     let clean_cmd = command.split(|c| c == '/' || c == '\\').last().unwrap_or(&command).to_lowercase();
 
