@@ -7,6 +7,7 @@ import { FileTree } from './components/FileTree';
 import { FilePreview } from './components/FilePreview';
 import { GitPanel } from './components/GitPanel';
 import { GitDiffCompare } from './components/GitDiffCompare';
+import { SearchPanel } from './components/SearchPanel';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { 
@@ -26,7 +27,8 @@ import {
   PlayCircle,
   FolderOpen,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  Search
 } from 'lucide-react';
 
 const getAgentIconClass = (name: string): string => {
