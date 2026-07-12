@@ -144,6 +144,7 @@ function App() {
           provider: s.provider || 'none',
           cmd: s.agent_type,
           args: [],
+          ssh_host: s.ssh_host,
         };
       }
       useWorkspaceStore.getState().setSessions(sessionsMap);
