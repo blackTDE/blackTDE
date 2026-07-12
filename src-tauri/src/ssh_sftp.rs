@@ -11,6 +11,32 @@ pub struct RemoteFile {
     pub mtime: u64,
 }
 
+fn parse_ssh_host_args(host_str: &str) -> (String, Vec<String>) {
+    let parts: Vec<&str> = host_str.split_whitespace().collect();
+    let mut clean_host = String::new();
+    let mut extra_args = Vec::new();
+    
+    let mut i = 0;
+    while i < parts.len() {
+        if parts[i] == "-p" && i + 1 < parts.len() {
+            extra_args.push("-o".to_string());
+            extra_args.push(format!("Port={}", parts[i + 1]));
+            i += 2;
+        } else {
+            if clean_host.is_empty() {
+                clean_host = parts[i].to_string();
+            } else {
+                extra_args.push(parts[i].to_string());
+            }
+            i += 1;
+        }
+    }
+    if clean_host.is_empty() {
+        clean_host = host_str.to_string();
+    }
+    (clean_host, extra_args)
+}
+
 #[tauri::command]
 pub fn get_ssh_config_hosts() -> Result<Vec<String>, String> {
     let mut hosts = Vec::new();
@@ -70,14 +96,17 @@ pub fn sftp_list_dir(host: String, path: String) -> Result<Vec<RemoteFile>, Stri
         target_path.replace("'", "\\'")
     );
 
-    let output = Command::new("ssh")
-        .arg("-o")
-        .arg("BatchMode=yes")
-        .arg("-o")
-        .arg("ConnectTimeout=5")
-        .arg(&host)
-        .arg(&python_cmd)
-        .output();
+    let (clean_host, extra_args) = parse_ssh_host_args(&host);
+
+    let mut cmd = Command::new("ssh");
+    cmd.arg("-o").arg("BatchMode=yes")
+       .arg("-o").arg("StrictHostKeyChecking=accept-new")
+       .arg("-o").arg("ConnectTimeout=5");
+    for arg in &extra_args {
+        cmd.arg(arg);
+    }
+    cmd.arg(&clean_host).arg(&python_cmd);
+    let output = cmd.output();
 
     if let Ok(out) = output {
         if out.status.success() {
@@ -101,14 +130,15 @@ pub fn sftp_list_dir(host: String, path: String) -> Result<Vec<RemoteFile>, Stri
 
     // Fallback: parse `ls -ap`
     let fallback_cmd = format!("ls -ap '{}'", target_path.replace("'", "\\'"));
-    let output = Command::new("ssh")
-        .arg("-o")
-        .arg("BatchMode=yes")
-        .arg("-o")
-        .arg("ConnectTimeout=5")
-        .arg(&host)
-        .arg(&fallback_cmd)
-        .output();
+    let mut cmd = Command::new("ssh");
+    cmd.arg("-o").arg("BatchMode=yes")
+       .arg("-o").arg("StrictHostKeyChecking=accept-new")
+       .arg("-o").arg("ConnectTimeout=5");
+    for arg in &extra_args {
+        cmd.arg(arg);
+    }
+    cmd.arg(&clean_host).arg(&fallback_cmd);
+    let output = cmd.output();
 
     match output {
         Ok(out) => {
@@ -154,12 +184,17 @@ pub fn sftp_list_dir(host: String, path: String) -> Result<Vec<RemoteFile>, Stri
 
 #[tauri::command]
 pub fn sftp_download_file(host: String, remote_path: String, local_path: String) -> Result<(), String> {
-    let output = Command::new("scp")
-        .arg("-o")
-        .arg("BatchMode=yes")
-        .arg(format!("{}:{}", host, remote_path))
-        .arg(local_path)
-        .output();
+    let (clean_host, extra_args) = parse_ssh_host_args(&host);
+
+    let mut cmd = Command::new("scp");
+    cmd.arg("-o").arg("BatchMode=yes")
+       .arg("-o").arg("StrictHostKeyChecking=accept-new");
+    for arg in &extra_args {
+        cmd.arg(arg);
+    }
+    cmd.arg(format!("{}:{}", clean_host, remote_path))
+       .arg(local_path);
+    let output = cmd.output();
 
     match output {
         Ok(out) => {
@@ -176,12 +211,17 @@ pub fn sftp_download_file(host: String, remote_path: String, local_path: String)
 
 #[tauri::command]
 pub fn sftp_upload_file(host: String, local_path: String, remote_path: String) -> Result<(), String> {
-    let output = Command::new("scp")
-        .arg("-o")
-        .arg("BatchMode=yes")
-        .arg(local_path)
-        .arg(format!("{}:{}", host, remote_path))
-        .output();
+    let (clean_host, extra_args) = parse_ssh_host_args(&host);
+
+    let mut cmd = Command::new("scp");
+    cmd.arg("-o").arg("BatchMode=yes")
+       .arg("-o").arg("StrictHostKeyChecking=accept-new");
+    for arg in &extra_args {
+        cmd.arg(arg);
+    }
+    cmd.arg(local_path)
+       .arg(format!("{}:{}", clean_host, remote_path));
+    let output = cmd.output();
 
     match output {
         Ok(out) => {
