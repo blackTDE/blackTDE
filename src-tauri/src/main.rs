@@ -5,6 +5,7 @@ mod file_manager;
 mod git_runner;
 mod provider;
 mod settings;
+mod ssh_sftp;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
