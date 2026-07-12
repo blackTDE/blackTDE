@@ -372,7 +372,7 @@ function App() {
       } else {
         finalSshHost = sshHostSelect;
       }
-      finalAgentType = `ssh (${finalSshHost})`;
+      finalAgentType = getFriendlySshHost(finalSshHost);
     }
 
     try {
