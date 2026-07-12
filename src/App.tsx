@@ -91,6 +91,7 @@ function App() {
   const [isRightPaneExpanded, setIsRightPaneExpanded] = useState(true);
   const [isSettingsFatherTabOpen, setIsSettingsFatherTabOpen] = useState(false);
   const [activeFatherTabId, setActiveFatherTabId] = useState('');
+  const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(true);
 
   // Expanded/Collapsed state for projects in Left Panel
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({
