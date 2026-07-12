@@ -79,12 +79,34 @@ pub struct SearchResult {
 
 fn recursive_search(
     dir: &Path,
-    query_lower: &str,
+    query: &str,
+    match_case: bool,
+    whole_word: bool,
     results: &mut Vec<SearchResult>,
 ) -> Result<(), std::io::Error> {
     if !dir.is_dir() {
         return Ok(());
     }
+    
+    let is_match = |text: &str, q: &str| -> bool {
+        if match_case {
+            if whole_word {
+                text.split(|c: char| !c.is_alphanumeric() && c != '_')
+                    .any(|word| word == q)
+            } else {
+                text.contains(q)
+            }
+        } else {
+            let text_lower = text.to_lowercase();
+            let q_lower = q.to_lowercase();
+            if whole_word {
+                text_lower.split(|c: char| !c.is_alphanumeric() && c != '_')
+                    .any(|word| word == q_lower)
+            } else {
+                text_lower.contains(&q_lower)
+            }
+        }
+    };
     
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
@@ -97,14 +119,14 @@ fn recursive_search(
         
         let path = entry.path();
         if path.is_dir() {
-            recursive_search(&path, query_lower, results)?;
+            recursive_search(&path, query, match_case, whole_word, results)?;
         } else {
-            let matches_filename = name.to_lowercase().contains(query_lower);
+            let matches_filename = is_match(&name, query);
             let mut matches_content = Vec::new();
             
             if let Ok(content) = fs::read_to_string(&path) {
                 for (idx, line) in content.lines().enumerate() {
-                    if line.to_lowercase().contains(query_lower) {
+                    if is_match(line, query) {
                         matches_content.push(SearchMatch {
                             line_number: idx + 1,
                             line_content: line.trim().to_string(),
@@ -127,7 +149,12 @@ fn recursive_search(
 }
 
 #[tauri::command]
-pub async fn search_project(root_path: String, query: String) -> Result<Vec<SearchResult>, String> {
+pub async fn search_project(
+    root_path: String,
+    query: String,
+    match_case: bool,
+    whole_word: bool,
+) -> Result<Vec<SearchResult>, String> {
     tokio::task::spawn_blocking(move || {
         let root = Path::new(&root_path);
         if !root.is_dir() {
@@ -139,9 +166,9 @@ pub async fn search_project(root_path: String, query: String) -> Result<Vec<Sear
             return Ok(Vec::new());
         }
         
-        let query_lower = query_trimmed.to_lowercase();
         let mut results = Vec::new();
-        recursive_search(root, &query_lower, &mut results).map_err(|e| e.to_string())?;
+        recursive_search(root, query_trimmed, match_case, whole_word, &mut results)
+            .map_err(|e| e.to_string())?;
         
         // Sort results alphabetically by file name
         results.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
