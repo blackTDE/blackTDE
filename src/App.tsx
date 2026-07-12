@@ -987,6 +987,32 @@ function App() {
               </button>
             </div>
 
+            {/* Tab selector */}
+            <div className="flex border-b border-surface-3 bg-surface-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setSessionType('local')}
+                className={`flex-1 py-2 text-center font-mono font-bold border-b-2 transition cursor-pointer ${
+                  sessionType === 'local'
+                    ? 'border-brand text-brand-light bg-surface'
+                    : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                LOCAL SESSION
+              </button>
+              <button
+                type="button"
+                onClick={() => setSessionType('ssh')}
+                className={`flex-1 py-2 text-center font-mono font-bold border-b-2 transition cursor-pointer ${
+                  sessionType === 'ssh'
+                    ? 'border-brand text-brand-light bg-surface'
+                    : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                REMOTE SSH SESSION
+              </button>
+            </div>
+
             {/* Modal Body */}
             <div className="p-5 space-y-4 text-xs">
               <div className="bg-surface-2/40 p-3 rounded-lg border border-surface-3/50 text-[11px] text-zinc-400 font-mono space-y-1">
@@ -994,149 +1020,204 @@ function App() {
                 <p className="truncate">Directory: <span className="text-zinc-300">{modalTargetProject?.path}</span></p>
               </div>
 
-              <div className="space-y-3">
-                <div>
-                  <div className="flex space-x-2">
-                    <div className="flex-grow">
-                      <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-semibold">AGENT CLI COMMAND / SHELL</label>
-                      <input
-                        type="text"
-                        value={cmdInput}
-                        onChange={(e) => setCmdInput(e.target.value)}
-                        className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono"
-                      />
-                    </div>
-                    {detectedClis.length > 0 && (
-                      <div className="w-32">
-                        <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-semibold">PRESETS</label>
-                        <select
-                          value={detectedClis.includes(cmdInput) ? cmdInput : ""}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (val) {
-                              setCmdInput(val);
-                              const lower = val.toLowerCase();
-                              if (lower.includes('claude')) {
-                                setSpawnProvider('anthropic');
-                              } else if (lower.includes('aider')) {
-                                setSpawnProvider('openai');
-                              } else {
-                                setSpawnProvider('none');
+              {sessionType === 'local' ? (
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex space-x-2">
+                      <div className="flex-grow">
+                        <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-semibold">AGENT CLI COMMAND / SHELL</label>
+                        <input
+                          type="text"
+                          value={cmdInput}
+                          onChange={(e) => setCmdInput(e.target.value)}
+                          className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono"
+                        />
+                      </div>
+                      {detectedClis.length > 0 && (
+                        <div className="w-32">
+                          <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-semibold">PRESETS</label>
+                          <select
+                            value={detectedClis.includes(cmdInput) ? cmdInput : ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val) {
+                                setCmdInput(val);
+                                const lower = val.toLowerCase();
+                                if (lower.includes('claude')) {
+                                  setSpawnProvider('anthropic');
+                                } else if (lower.includes('aider')) {
+                                  setSpawnProvider('openai');
+                                } else {
+                                  setSpawnProvider('none');
+                                }
                               }
-                            }
-                          }}
-                          className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono cursor-pointer text-xs"
-                        >
-                          <option value="">-- Select --</option>
-                          {detectedClis.map(cli => (
-                            <option key={cli} value={cli}>{cli}</option>
-                          ))}
-                        </select>
+                            }}
+                            className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono cursor-pointer text-xs"
+                          >
+                            <option value="">-- Select --</option>
+                            {detectedClis.map(cli => (
+                              <option key={cli} value={cli}>{cli}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+
+                    {detectedClis.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <span className="text-[9px] text-zinc-500 font-mono self-center mr-1">Detected CLIs:</span>
+                        {detectedClis.map(cli => {
+                          const isSelected = cmdInput === cli;
+                          return (
+                            <button
+                              key={cli}
+                              type="button"
+                              onClick={() => {
+                                setCmdInput(cli);
+                                const lower = cli.toLowerCase();
+                                if (lower.includes('claude')) {
+                                  setSpawnProvider('anthropic');
+                                } else if (lower.includes('aider')) {
+                                  setSpawnProvider('openai');
+                                } else {
+                                  setSpawnProvider('none');
+                                }
+                              }}
+                              className={`text-[9px] font-mono px-2 py-0.5 rounded border transition cursor-pointer ${
+                                isSelected
+                                  ? 'bg-brand/20 border-brand/50 text-brand-light font-bold'
+                                  : 'bg-surface-3/50 border-surface-3 text-zinc-400 hover:text-zinc-200'
+                              }`}
+                            >
+                              {cli}
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-semibold">ARGS</label>
+                      <input
+                        type="text"
+                        value={argsInput}
+                        onChange={(e) => setArgsInput(e.target.value)}
+                        placeholder="e.g. -l"
+                        className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-semibold">PROVIDER</label>
+                      <select
+                        value={spawnProvider}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSpawnProvider(val);
+                          if (val === 'anthropic') {
+                            setCmdInput('claude');
+                          } else if (val === 'openai') {
+                            setCmdInput('aider');
+                          } else if (val === 'none') {
+                            setCmdInput('/bin/zsh');
+                          }
+                        }}
+                        className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono cursor-pointer"
+                      >
+                        <option value="none">None (Shell)</option>
+                        <option value="anthropic">Anthropic (Claude)</option>
+                        <option value="openai">OpenAI (Aider)</option>
+                        <option value="gemini">Google Gemini</option>
+                        <option value="deepseek">DeepSeek API</option>
+                      </select>
+                    </div>
+                  </div>
 
-                  {detectedClis.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      <span className="text-[9px] text-zinc-500 font-mono self-center mr-1">Detected CLIs:</span>
-                      {detectedClis.map(cli => {
-                        const isSelected = cmdInput === cli;
-                        return (
-                          <button
-                            key={cli}
-                            type="button"
-                            onClick={() => {
-                              setCmdInput(cli);
-                              const lower = cli.toLowerCase();
-                              if (lower.includes('claude')) {
-                                setSpawnProvider('anthropic');
-                              } else if (lower.includes('aider')) {
-                                setSpawnProvider('openai');
-                              } else {
-                                setSpawnProvider('none');
-                              }
-                            }}
-                            className={`text-[9px] font-mono px-2 py-0.5 rounded border transition cursor-pointer ${
-                              isSelected
-                                ? 'bg-brand/20 border-brand/50 text-brand-light font-bold'
-                                : 'bg-surface-3/50 border-surface-3 text-zinc-400 hover:text-zinc-200'
-                            }`}
-                          >
-                            {cli}
-                          </button>
-                        );
-                      })}
+                  {/* Resume past conversation */}
+                  <div>
+                    <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-bold">RESUME PAST CONVERSATION</label>
+                    <select
+                      value={resumeSessionId}
+                      onChange={(e) => setResumeSessionId(e.target.value)}
+                      className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono cursor-pointer"
+                    >
+                      <option value="">Start Fresh (No Resume)</option>
+                      {getFilteredPastSessions(modalTargetProject?.path || '').map(s => (
+                        <option key={s.id} value={s.id}>
+                          {s.agent_type} - {s.remote_session_id?.substring(0, 8)}...
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Privileged Mode Checkbox */}
+                  <div className="flex items-center space-x-2 pt-1.5">
+                    <input
+                      type="checkbox"
+                      id="privilegedMode"
+                      checked={privileged}
+                      onChange={(e) => setPrivileged(e.target.checked)}
+                      className="accent-brand rounded border-surface-3 bg-surface-2 h-3.5 w-3.5 cursor-pointer"
+                    />
+                    <label htmlFor="privilegedMode" className="text-zinc-400 font-mono text-[10px] select-none cursor-pointer font-semibold uppercase tracking-wider">
+                      Privileged Mode (Skip agent prompts)
+                    </label>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-semibold">SELECT SSH HOST FROM CONFIG</label>
+                    <select
+                      value={sshHostSelect}
+                      onChange={(e) => setSshHostSelect(e.target.value)}
+                      className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono cursor-pointer"
+                    >
+                      {sshConfigHosts.map(host => (
+                        <option key={host} value={host}>{host}</option>
+                      ))}
+                      <option value="manual">-- Manual Input / Custom Host --</option>
+                    </select>
+                  </div>
+
+                  {sshHostSelect === 'manual' && (
+                    <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-150">
+                      <div>
+                        <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-semibold">HOST / IP ADDRESS</label>
+                        <input
+                          type="text"
+                          value={sshHostManual}
+                          onChange={(e) => setSshHostManual(e.target.value)}
+                          placeholder="e.g. 192.168.1.100"
+                          className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-semibold">USERNAME (OPTIONAL)</label>
+                          <input
+                            type="text"
+                            value={sshUser}
+                            onChange={(e) => setSshUser(e.target.value)}
+                            placeholder="e.g. ubuntu"
+                            className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-semibold">PORT (OPTIONAL)</label>
+                          <input
+                            type="text"
+                            value={sshPort}
+                            onChange={(e) => setSshPort(e.target.value)}
+                            placeholder="e.g. 22"
+                            className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono"
+                          />
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-semibold">ARGS</label>
-                    <input
-                      type="text"
-                      value={argsInput}
-                      onChange={(e) => setArgsInput(e.target.value)}
-                      placeholder="e.g. -l"
-                      className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-semibold">PROVIDER</label>
-                    <select
-                      value={spawnProvider}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setSpawnProvider(val);
-                        if (val === 'anthropic') {
-                          setCmdInput('claude');
-                        } else if (val === 'openai') {
-                          setCmdInput('aider');
-                        } else if (val === 'none') {
-                          setCmdInput('/bin/zsh');
-                        }
-                      }}
-                      className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono cursor-pointer"
-                    >
-                      <option value="none">None (Shell)</option>
-                      <option value="anthropic">Anthropic (Claude)</option>
-                      <option value="openai">OpenAI (Aider)</option>
-                      <option value="gemini">Google Gemini</option>
-                      <option value="deepseek">DeepSeek API</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Resume past conversation */}
-                <div>
-                  <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-bold">RESUME PAST CONVERSATION</label>
-                  <select
-                    value={resumeSessionId}
-                    onChange={(e) => setResumeSessionId(e.target.value)}
-                    className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono cursor-pointer"
-                  >
-                    <option value="">Start Fresh (No Resume)</option>
-                    {getFilteredPastSessions(modalTargetProject?.path || '').map(s => (
-                      <option key={s.id} value={s.id}>
-                        {s.agent_type} - {s.remote_session_id.substring(0, 8)}...
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Privileged Mode Checkbox */}
-                <div className="flex items-center space-x-2 pt-1.5">
-                  <input
-                    type="checkbox"
-                    id="privilegedMode"
-                    checked={privileged}
-                    onChange={(e) => setPrivileged(e.target.checked)}
-                    className="accent-brand rounded border-surface-3 bg-surface-2 h-3.5 w-3.5 cursor-pointer"
-                  />
-                  <label htmlFor="privilegedMode" className="text-zinc-400 font-mono text-[10px] select-none cursor-pointer font-semibold uppercase tracking-wider">
-                    Privileged Mode (Skip agent prompts)
-                  </label>
-                </div>
-              </div>
+              )}
             </div>
 
             {/* Modal Footer */}
