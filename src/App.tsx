@@ -954,6 +954,17 @@ function App() {
                 <span>Git</span>
               </button>
               <button
+                onClick={() => setActiveRightPanel('search')}
+                className={`flex-1 flex items-center justify-center space-x-1.5 py-2.5 text-xs font-semibold border-b-2 transition ${
+                  activeRightPanel === 'search'
+                    ? 'border-brand text-zinc-100 bg-surface/30'
+                    : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                <Search size={13} />
+                <span>Search</span>
+              </button>
+              <button
                 onClick={() => setIsRightPaneExpanded(false)}
                 className="px-3 text-zinc-500 hover:text-zinc-300 transition cursor-pointer"
                 title="Collapse Panel"
@@ -973,9 +984,11 @@ function App() {
                 </div>
               ) : activeRightPanel === 'git' ? (
                 <GitPanel />
+              ) : activeRightPanel === 'search' ? (
+                <SearchPanel />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center text-zinc-500 font-mono text-[10px]">
-                  <Sparkles size={20} className="mb-1.5 text-zinc-600" />
+                  <Sparkles size={20} className="mb-1.5 text-zinc-650" />
                   <span>Select a tab above</span>
                 </div>
               )}
