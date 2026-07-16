@@ -1,10 +1,10 @@
-use std::io::Read;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use portable_pty::MasterPty;
-use tauri::Emitter;
-use sqlx::SqlitePool;
 use crate::process::{remove_active_session, ActiveProcess};
+use portable_pty::MasterPty;
+use sqlx::SqlitePool;
+use std::collections::HashMap;
+use std::io::Read;
+use std::sync::{Arc, Mutex};
+use tauri::Emitter;
 use uuid::Uuid;
 
 #[derive(Clone, serde::Serialize)]
@@ -48,7 +48,14 @@ pub fn start_stdout_reader(
 
                     // Scan chunk for remote session_id/conversation_id (e.g. from Claude Code, Codex, OpenCode, Pi Agent stream payloads)
                     if let Ok(text) = std::str::from_utf8(&data_chunk) {
-                        let keys = vec!["\"session_id\"", "\"sessionId\"", "\"conversation_id\"", "\"conversationId\"", "\"run_id\"", "\"runId\""];
+                        let keys = vec![
+                            "\"session_id\"",
+                            "\"sessionId\"",
+                            "\"conversation_id\"",
+                            "\"conversationId\"",
+                            "\"run_id\"",
+                            "\"runId\"",
+                        ];
                         let mut found_sid = None;
                         for key in keys {
                             if let Some(idx) = text.find(key) {
@@ -71,7 +78,7 @@ pub fn start_stdout_reader(
                             let s_id = session_id_clone.clone();
                             tauri::async_runtime::spawn(async move {
                                 let _ = sqlx::query(
-                                    "UPDATE sessions SET remote_session_id = $1 WHERE id = $2"
+                                    "UPDATE sessions SET remote_session_id = $1 WHERE id = $2",
                                 )
                                 .bind(captured_sid)
                                 .bind(s_id)
@@ -95,7 +102,7 @@ pub fn start_stdout_reader(
                     let pool = db_pool_clone.clone();
                     let s_id = session_id_clone.clone();
                     let chunk = data_chunk.clone();
-                    
+
                     // Start an async task on tokio runner to insert data
                     tauri::async_runtime::spawn(async move {
                         let _ = sqlx::query(
@@ -115,7 +122,11 @@ pub fn start_stdout_reader(
             }
         }
 
-        remove_active_session(&active_sessions, &session_id_clone, process_instance_id);
+        // A session can be replaced before the old reader reaches EOF. Only
+        // the current PTY instance may publish exit/status for this session.
+        if !remove_active_session(&active_sessions, &session_id_clone, process_instance_id) {
+            return;
+        }
 
         // Send exit event
         let _ = app_handle_clone.emit(
