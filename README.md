@@ -4,6 +4,20 @@
 
 TDE is built with Tauri, Rust, React, xterm.js, SQLite, and Monaco. Your commands run locally in a real PTY; the desktop UI handles the workspace, terminal layout, files, Git, and session recovery around them.
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/workspace-terminal.png" alt="Black TDE workspace with multiple agent sessions and a persistent shell" width="900" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/agent-session.png" alt="Black TDE running an agent session beside the workspace file tree" width="900" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/markdown-preview.png" alt="Black TDE rendering the project README with a Markdown table" width="900" />
+</p>
+
 ## Why TDE
 
 Terminal workflows are fast, expressive, and easy to compose, but managing several coding agents across projects is not. TDE keeps those workflows intact and adds the structure they usually lack:
@@ -140,4 +154,4 @@ The next practical milestones are:
 
 ## License
 
-This repository does not currently declare a license. Add one before distributing Black TDE outside your organization.
+Black TDE is available under the [MIT License](LICENSE).
