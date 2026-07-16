@@ -491,7 +491,7 @@ function App() {
               <img src={brandIcon} alt="Black TDE Logo" className="w-8 h-8 rounded object-cover" />
               <div>
                 <h1 className="font-bold text-xs tracking-wider text-zinc-100 font-mono uppercase">TDE Cockpit</h1>
-                <p className="text-[9px] text-zinc-500 font-mono">v1.2.0 (Crest Visuals)</p>
+                <p className="text-[9px] text-zinc-500 font-mono">v1.2.0</p>
               </div>
             </div>
             <div className="flex items-center space-x-1 text-success text-[10px] font-semibold bg-success/10 px-2 py-0.5 rounded-full border border-success/20">
