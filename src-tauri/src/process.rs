@@ -1,6 +1,6 @@
+use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use tokio::sync::{oneshot, Mutex as AsyncMutex, OwnedMutexGuard};
 use uuid::Uuid;
 
@@ -24,18 +24,17 @@ pub fn remove_active_session(
     active_sessions: &Arc<Mutex<HashMap<String, ActiveProcess>>>,
     session_id: &str,
     instance_id: Uuid,
-) {
+) -> bool {
     if let Ok(mut sessions) = active_sessions.lock() {
         if sessions.get(session_id).map(|process| process.instance_id) == Some(instance_id) {
             sessions.remove(session_id);
+            return true;
         }
     }
+    false
 }
 
-pub async fn lock_session_resume(
-    locks: &ResumeLocks,
-    session_id: &str,
-) -> OwnedMutexGuard<()> {
+pub async fn lock_session_resume(locks: &ResumeLocks, session_id: &str) -> OwnedMutexGuard<()> {
     let session_lock = {
         let mut locks = locks.lock().await;
         locks
@@ -105,11 +104,19 @@ mod tests {
 
     #[test]
     fn test_spawn_pty_process() {
-        let proc = spawn_pty_process("echo", vec!["hello-pty".to_string()], ".", 24, 80, Vec::new()).unwrap();
+        let proc = spawn_pty_process(
+            "echo",
+            vec!["hello-pty".to_string()],
+            ".",
+            24,
+            80,
+            Vec::new(),
+        )
+        .unwrap();
         let mut reader = proc.master.lock().unwrap().try_clone_reader().unwrap();
         let mut buf = [0u8; 1024];
         let mut total_output = String::new();
-        
+
         // Read until EOF
         while let Ok(n) = reader.read(&mut buf) {
             if n == 0 {
@@ -128,14 +135,22 @@ mod tests {
     #[test]
     fn test_remove_active_session() {
         let sessions = Arc::new(Mutex::new(HashMap::new()));
-        let proc = spawn_pty_process("echo", vec!["done".to_string()], ".", 24, 80, Vec::new()).unwrap();
+        let proc =
+            spawn_pty_process("echo", vec!["done".to_string()], ".", 24, 80, Vec::new()).unwrap();
         let instance_id = proc.instance_id;
-        sessions.lock().unwrap().insert("finished".to_string(), proc);
+        sessions
+            .lock()
+            .unwrap()
+            .insert("finished".to_string(), proc);
 
-        remove_active_session(&sessions, "finished", uuid::Uuid::new_v4());
+        assert!(!remove_active_session(
+            &sessions,
+            "finished",
+            uuid::Uuid::new_v4()
+        ));
         assert!(sessions.lock().unwrap().contains_key("finished"));
 
-        remove_active_session(&sessions, "finished", instance_id);
+        assert!(remove_active_session(&sessions, "finished", instance_id));
 
         assert!(!sessions.lock().unwrap().contains_key("finished"));
     }

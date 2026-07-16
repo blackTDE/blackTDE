@@ -15,6 +15,7 @@ import {
   Info
 } from 'lucide-react';
 import { ProviderVault } from './ProviderVault';
+import { AgentIcon } from './AgentIcon';
 
 interface ProxyProvider {
   name: string;
@@ -36,27 +37,6 @@ interface McpServerEntry {
   command: string;
   args: string;
 }
-
-const getAgentIconClass = (name: string): string => {
-  const lower = name.toLowerCase();
-  if (lower.includes('claude')) return 'from-orange-500 to-amber-600';
-  if (lower.includes('gemini')) return 'from-brand to-brand-light';
-  if (lower.includes('codex')) return 'from-emerald-500 to-teal-600';
-  if (lower.includes('aider')) return 'from-brand to-slate-500';
-  return 'from-brand to-slate-600';
-};
-
-const getInitials = (name: string): string => {
-  const clean = name.replace(/[^a-zA-Z0-9\s-]/g, '').trim();
-  const parts = clean.split(/[\s-]+/);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
-  if (clean.length >= 2) {
-    return clean.slice(0, 2).toUpperCase();
-  }
-  return clean.slice(0, 1).toUpperCase() || 'AG';
-};
 
 export const SettingsPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'vault' | 'virtual-models' | 'providers' | 'mcp' | 'versions'>('virtual-models');
@@ -379,9 +359,7 @@ export const SettingsPanel: React.FC = () => {
                       <tr key={v.name} className="border-b border-slate-800/50 hover:bg-slate-800/10 transition">
                         <td className="px-4 py-3">
                           <div className="flex items-center space-x-2.5">
-                            <div className={`flex items-center justify-center w-7 h-7 rounded-full bg-gradient-to-tr ${getAgentIconClass(v.name)} text-white font-extrabold text-[9px] shadow select-none`}>
-                              {getInitials(v.name)}
-                            </div>
+                            <AgentIcon name={v.name} size={28} />
                             <span className="font-bold text-slate-200">{v.name}</span>
                           </div>
                         </td>

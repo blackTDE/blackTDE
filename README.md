@@ -1,155 +1,143 @@
-# TDE — Terminal Development Environment
+# Black TDE
 
-TDE (Terminal Development Environment) is a persistent, visual, multi-agent workspace desktop application designed for terminal-native AI coding agents (such as Claude Code, Aider, Codex CLI, etc.). It brings IDE-grade session management, provider abstraction, visual file operations, and remote control capabilities to terminal-centric workflows.
+**Black TDE** is a desktop Terminal Development Environment for people who build with shells and AI coding agents. It gives local terminals, Claude Code, Codex, Gemini, Aider, OpenCode, and SSH sessions a shared visual workspace without turning them into a web IDE.
 
-## Sub-Project 1: Core Shell & Rust/Tauri Skeleton
+TDE is built with Tauri, Rust, React, xterm.js, SQLite, and Monaco. Your commands run locally in a real PTY; the desktop UI handles the workspace, terminal layout, files, Git, and session recovery around them.
 
-The initial release establishes the foundational cockpit shell, database layer, PTY process runner, and interactive React webview integration.
+## Why TDE
 
-### Core Architecture
+Terminal workflows are fast, expressive, and easy to compose, but managing several coding agents across projects is not. TDE keeps those workflows intact and adds the structure they usually lack:
 
-```mermaid
-graph TD
-    subgraph Frontend (React + Vite)
-        UI[Workspace UI Cockpit]
-        Term[xterm.js Terminal Panel]
-        Store[Zustand State Store]
-    end
+- Keep up to four terminal sessions visible in a project workspace.
+- Resume local `zsh`, `bash`, and `sh` sessions after restarting TDE when `tmux` is available.
+- Reopen supported AI-agent sessions using their provider session IDs.
+- Browse, create, rename, delete, preview, and edit project files without leaving the terminal workspace.
+- Read Markdown, tables, and Mermaid diagrams directly in the file preview.
+- Review Git status and diffs alongside the work that produced them.
 
-    subgraph Tauri IPC Bridge
-        Cmd[Tauri Commands]
-        Evt[Tauri Event Emitter]
-    end
+The result is a focused control surface for terminal-native development: fewer terminal windows, less context switching, and no requirement to give up your preferred CLI tools.
 
-    subgraph Backend (Rust)
-        EB[Event Bus]
-        PM[Process Manager]
-        DB[SQLite / SQLx Connection Pool]
-    end
+## What You Can Do with Black TDE
 
-    subgraph OS Processes
-        PTY[portable-pty Master]
-        Shell[Shell/Agent Binary Process]
-    end
+| Area | Capabilities |
+| --- | --- |
+| Terminals | Start local shells, AI coding CLIs, and SSH sessions; arrange up to four panes; keep terminal output persisted locally. |
+| Session recovery | Reattach persistent local shell sessions through tmux; resume supported agent conversations; keep inactive panes mounted while switching views. |
+| Files | Browse a workspace tree, create files or directories, rename or delete paths, edit text in Monaco, and preview images, HTML, Markdown, PDFs, and Office files. |
+| Documentation | Render GitHub-flavored Markdown tables and Mermaid fenced diagrams in the preview pane. |
+| Git | Inspect repository status and diffs, stage or unstage files, and create commits. |
+| Providers | Configure proxy providers, virtual model aliases, API keys, local proxies, MCP servers, and check installed CLI versions. |
+| Workspaces | Group sessions by project, restore saved layouts, and move sessions between panes without duplicating them. |
 
-    UI -->|mount/resize| Cmd
-    Term -->|keyboard input| Cmd
-    Cmd -->|write/resize| PM
-    PM -->|write stdin| PTY
-
-    PTY -->|read stdout/stderr| EB
-    EB -->|insert transcript| DB
-    EB -->|tde-event payload| Evt
-    Evt -->|stream data| Term
-    Store -->|select active session| Term
-```
-
----
-
-## Features Implemented
-
-* **Crest Visual Layout**: Spreads the PTY terminal splits to the full width and height of the center main panel (zero padding) for a focused native shell experience.
-* **Smart Visual File Previews**: Opens files in a read-only visual previewer by default (supporting markdown rendering, sandboxed html iframes, base64 images, and office/PDF metadata cards) with a toggle to switch to editable Monaco Editor mode.
-* **Overlay Dialog Spawning Modal**: Hides spawn configurations from the sidebar, opening them inside an interactive, backdrop-blurred overlay modal when triggering new sessions.
-* **Hierarchical Project-Session Tree Nodes**: Groups workspaces as parent nodes in the left panel list. Expanding a project node displays its active nested processes and session triggers.
-* **Auto-detected Project Names**: Automatically parses inputted local host directories to extract and apply the base folder name as the project workspace name.
-* **Terminal splits cockpit (up to 4 screens)**: Supports layouts matching 1x1, 1x2, 2x1, and 2x2 grid cell divisions in the frontend with focus tracking.
-* **Session Auto-Capture & Resumption**: Backend scans stdout logs on the fly to capture remote session ID tokens (e.g. from Claude Code stream-json output) and auto-injects `--resume <session_id>` flag to recover conversations.
-* **Advanced Settings Panel**: Full configurations UI managing Model Context Protocol (MCP) server inputs, local LLM proxies (Ollama, LM Studio overrides), credentials vault keys, and CLI version checkers.
-* **PTY Process Execution**: Runs shells and interactive CLI tools within a cross-platform pseudo-terminal (PTY) using `portable-pty` in Rust.
-* **Credentials Vault (API Keys)**: Securely stores credentials for multiple AI models (Anthropic, OpenAI, Google Gemini, DeepSeek) in the local SQLite database.
-* **Environment Variable Injection**: Pre-injects provider API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) automatically when spawning processes.
-* **Workspace File Explorer**: Recursive, dynamic tree browsing of directories in the active workspace.
-* **Embedded Code Editor**: Hosts Microsoft's Monaco Editor (`@monaco-editor/react`) for code editing with auto syntax detection and diff rendering.
-* **Visual Git Operations**: Displays porcelain status, renders unified diff patches, stages/unstages changed files, and commits directly.
-* **SQLite Database & Auto-Migrations**: Manages workspaces, session states, and persists raw binary terminal streams (ANSI style code compliant) using `sqlx` and dynamic SQLite connection pool.
-* **xterm.js Console View**: Renders real-time stream logs with canvas acceleration and forwards keyboard input/dimensions to PTY processes.
-
----
-
-## Project Structure
-
-```text
-black_tde/
-├── docs/
-│   ├── prd-v1.md
-│   └── superpowers/
-│       ├── specs/            # Design spec documents
-│       └── plans/            # Feature implementation plans
-├── src-tauri/                # Tauri Rust desktop backend
-│   ├── Cargo.toml
-│   ├── tauri.conf.json       # Tauri v2 window and security settings
-│   ├── build.rs              # Build scripts
-│   ├── capabilities/         # Default application permissions
-│   ├── migrations/           # SQLite database schema migration scripts
-│   └── src/
-│       ├── main.rs           # Tauri entrypoint and IPC router
-│       ├── db.rs             # SQLite pool initialization
-│       ├── process.rs        # PTY spawn controller
-│       ├── event_bus.rs      # Stdout read thread & DB broadcaster
-│       ├── file_manager.rs   # Directory listing and read/write file commands
-│       ├── git_runner.rs     # Git diff, porcelain status, and commit commands
-│       └── provider.rs       # Credentials vault save/list commands
-├── src/                      # Vite + React + TypeScript frontend
-│   ├── main.tsx              # React mounting root
-│   ├── App.tsx               # Cockpit layout interface
-│   ├── components/
-│   │   ├── TerminalPane.tsx  # xterm.js terminal panel mount
-│   │   ├── FileTree.tsx      # Folder navigation tree
-│   │   ├── EditorPane.tsx    # Monaco Editor text editor
-│   │   ├── GitPanel.tsx      # Staged changes diff viewer
-│   │   └── ProviderVault.tsx # Credentials vault editor
-│   ├── store/
-│   │   └── workspaceStore.ts # Zustand global state manager
-│   └── index.css             # Tailwind base styling
-├── package.json              # NPM script configuration
-└── vite.config.ts            # Vite compile settings
-```
-
----
-
-## Getting Started
+## Quick Start
 
 ### Prerequisites
 
-* **Node.js** (v18+) and **NPM** (v9+)
-* **Rust** (v1.75+ or latest stable) and **Cargo**
-* Standard desktop C++ compile toolchains (`Xcode Command Line Tools` on macOS, `Build Tools for Visual Studio` on Windows, or `build-essential` on Linux).
+- Node.js 18+ and npm
+- Rust stable with Cargo
+- Platform build tools: Xcode Command Line Tools (macOS), Build Tools for Visual Studio (Windows), or `build-essential` and WebKitGTK dependencies (Linux)
+- `tmux` for persistent local shell recovery (optional; TDE falls back to a normal fresh shell if it is unavailable)
 
-### Installation
-
-1. Clone the repository and navigate to the project directory:
-   ```bash
-   git clone <repo-url>
-   cd black_tde
-   ```
-
-2. Install NPM packages:
-   ```bash
-   npm install
-   ```
-
-### Running Locally
-
-To launch the desktop application in development mode with hot-reloading:
+### Install and run
 
 ```bash
+git clone <repo-url>
+cd black_tde
+npm install
 npm run tauri dev
 ```
 
-### Running Tests
-
-To verify backend database migrations and PTY process spawning on your local operating system:
+Create a production bundle with:
 
 ```bash
-cd src-tauri
-cargo test
+npm run tauri build
 ```
 
----
+## User Manual
 
-## Future Roadmap
+### 1. Create or open a workspace
 
-* **Phase 4**: Agent adapter scripts to run Claude Code, Aider, and custom CLI agents with pre-execution safety filters.
-* **Phase 5**: Agent Orchestration dashboard (swarms, delegation panels) and mobile/web remote control.
+Use the project controls in the left sidebar to choose a local directory. TDE associates sessions, open files, and pane layout with that workspace.
 
+### 2. Start a session
+
+Open the new-session dialog, select a shell or installed agent CLI, enter any arguments, and choose an optional SSH host when needed. The active workspace becomes the working directory.
+
+- Use `zsh`, `bash`, or `sh` for an ordinary local terminal.
+- Use an agent CLI such as Claude Code, Codex, Gemini, Aider, OpenCode, or Agy for an agent session.
+- Enter an SSH host to run the selected command remotely.
+
+Local shells are placed in a named tmux session. Closing and reopening TDE reconnects to that shell instead of creating the misleading “remote ID: None” fresh session. Its saved terminal transcript is restored before the session reconnects.
+
+### 3. Work across panes
+
+Select a one-, two-, or four-pane layout. Choose a session for each pane from the terminal toolbar. TDE keeps the active terminal mounted while you open files or switch panes, so switching views does not reset the live screen.
+
+### 4. Manage files
+
+Open the right-hand **Files** tab and select a project directory.
+
+- Click a file to preview it; switch to edit mode for supported text files.
+- Use the file-tree controls to create a file or directory.
+- Hover a path to rename or delete it. Delete asks for confirmation and is irreversible.
+- Save an edited file with the save control or `Cmd/Ctrl+S`. If the path was deleted externally, TDE asks before recreating it.
+
+Markdown previews support headings, lists, tables, links, fenced code blocks, and Mermaid diagrams. Mermaid is rendered only from a fenced `mermaid` code block.
+
+### 5. Configure providers and tools
+
+Open **Settings** to add API keys, proxy providers, virtual model aliases, and MCP servers. Use the versions section to see whether common CLI tools are installed. Provider configuration is local to this TDE installation.
+
+### 6. Review Git work
+
+Use the Git tab to inspect changed files and diffs. Stage or unstage files as needed, then create commits from the same workspace.
+
+## Session Recovery Details
+
+| Session type | Recovery behavior |
+| --- | --- |
+| Local `zsh`, `bash`, `sh` | TDE attaches to a deterministic tmux session. The same shell process, cwd, environment, and jobs continue when tmux is installed. |
+| Supported agent CLI | TDE uses the provider’s saved session identifier and provider-specific resume arguments. |
+| SSH | TDE starts a new SSH client session; remote process persistence depends on the remote host and tools such as tmux. |
+
+Deleting a local shell session also terminates its corresponding tmux session. TDE does not delete a tmux session merely because the desktop app closes.
+
+## Safety Notes
+
+- TDE runs commands and agent CLIs with the permissions of the local user.
+- File deletion is recursive for directories and cannot be undone by TDE.
+- API keys and provider settings are stored in TDE’s local SQLite database. Treat the machine account and TDE data directory as sensitive.
+- Review agent arguments and privileged-mode settings before starting a session.
+
+## Development
+
+```bash
+npm test
+npm run build
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+Useful source locations:
+
+```text
+src/                         React desktop interface
+src/components/              terminal, files, editor, Git, and settings panels
+src/store/                   workspace and layout state
+src-tauri/src/               Tauri commands, PTY lifecycle, SQLite, and file/Git services
+src-tauri/src/shell_session.rs  persistent local-shell adapter
+tests/                       frontend behavior tests
+```
+
+## Development Targets
+
+The next practical milestones are:
+
+1. Add in-app diagnostics for tmux availability and session-recovery failures.
+2. Add safer file operations: trash integration, multi-file actions, and a clear undo path where the platform supports it.
+3. Expand agent adapters with explicit capability detection, richer resume verification, and per-agent status reporting.
+4. Add end-to-end desktop tests for PTY lifecycle, workspace switching, and file operations.
+5. Harden local settings storage and document backup/export of workspaces, session metadata, and provider configuration.
+
+## License
+
+This repository does not currently declare a license. Add one before distributing Black TDE outside your organization.

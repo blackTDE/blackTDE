@@ -8,6 +8,7 @@ import { FilePreview } from './components/FilePreview';
 import { GitPanel } from './components/GitPanel';
 import { GitDiffCompare } from './components/GitDiffCompare';
 import { SearchPanel } from './components/SearchPanel';
+import { AgentIcon } from './components/AgentIcon';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { 
@@ -30,27 +31,6 @@ import {
   PanelLeftOpen,
   Search
 } from 'lucide-react';
-
-const getAgentIconClass = (name: string): string => {
-  const lower = name.toLowerCase();
-  if (lower.includes('claude')) return 'from-orange-500 to-amber-600';
-  if (lower.includes('gemini')) return 'from-brand to-brand-light';
-  if (lower.includes('codex')) return 'from-emerald-500 to-teal-600';
-  if (lower.includes('aider')) return 'from-brand to-slate-500';
-  return 'from-brand to-slate-600';
-};
-
-const getInitials = (name: string): string => {
-  const clean = name.replace(/[^a-zA-Z0-9\s-]/g, '').trim();
-  const parts = clean.split(/[\s-]+/);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
-  if (clean.length >= 2) {
-    return clean.slice(0, 2).toUpperCase();
-  }
-  return clean.slice(0, 1).toUpperCase() || 'AG';
-};
 
 const getFriendlySshHost = (sshHost?: string): string => {
   if (!sshHost) return 'ssh';
@@ -103,6 +83,8 @@ function App() {
   // Modal Dialog spawner state
   const [showNewSessionModal, setShowNewSessionModal] = useState(false);
   const [modalTargetProject, setModalTargetProject] = useState<any>(null);
+  const [pendingDeleteSessionId, setPendingDeleteSessionId] = useState<string | null>(null);
+  const [sessionDeleteError, setSessionDeleteError] = useState<string | null>(null);
 
   // New Project Form parameters
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
@@ -426,20 +408,20 @@ function App() {
     }
   };
 
-  const handleDeleteSession = async (id: string) => {
+  const handleDeleteSession = async (id: string, confirmed = false) => {
     try {
       const activeIds = await invoke<string[]>('list_active_session_ids');
       const isAlive = activeIds.includes(id);
 
-      if (isAlive) {
-        const confirmDelete = window.confirm(
-          "This session is currently active/running. Are you sure you want to terminate and delete it?"
-        );
-        if (!confirmDelete) return;
+      if (isAlive && !confirmed) {
+        setPendingDeleteSessionId(id);
+        return;
       }
 
       await invoke('delete_session', { id });
       removeSession(id);
+      setPendingDeleteSessionId(null);
+      setSessionDeleteError(null);
 
       const state = useWorkspaceStore.getState();
       if (state.activeSessionId === id) {
@@ -449,7 +431,8 @@ function App() {
       loadPastSessions();
     } catch (error) {
       console.error('Failed to delete session:', error);
-      removeSession(id);
+      setSessionDeleteError(String(error));
+      setPendingDeleteSessionId(null);
     }
   };
 
@@ -508,7 +491,7 @@ function App() {
               <img src={brandIcon} alt="Black TDE Logo" className="w-8 h-8 rounded object-cover" />
               <div>
                 <h1 className="font-bold text-xs tracking-wider text-zinc-100 font-mono uppercase">TDE Cockpit</h1>
-                <p className="text-[9px] text-zinc-500 font-mono">v1.2.0 (Crest Visuals)</p>
+                <p className="text-[9px] text-zinc-500 font-mono">v1.2.0</p>
               </div>
             </div>
             <div className="flex items-center space-x-1 text-success text-[10px] font-semibold bg-success/10 px-2 py-0.5 rounded-full border border-success/20">
@@ -667,23 +650,28 @@ function App() {
                             }`}
                           >
                             <div className="flex items-center space-x-2 truncate">
-                              <div className={`flex items-center justify-center w-5 h-5 rounded-full bg-gradient-to-tr ${getAgentIconClass(session.agentType)} text-white font-extrabold text-[8px] shadow-sm select-none shrink-0`}>
-                                {getInitials(session.agentType)}
-                              </div>
+                              <AgentIcon name={session.agentType} size={20} />
                               <div className="truncate font-mono">
                                 <span>{session.agentType}</span>
                                 <span className="text-[9px] text-zinc-650 ml-1.5">({session.id.substring(8, 14)})</span>
                               </div>
                             </div>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteSession(session.id);
-                              }}
-                              className="p-0.5 hover:bg-error/25 hover:text-error text-zinc-550 rounded transition cursor-pointer"
-                            >
-                              <Trash2 size={11} />
-                            </button>
+                            {pendingDeleteSessionId === session.id ? (
+                              <span className="flex items-center gap-1 text-[9px] text-rose-300">
+                                Delete?
+                                <button onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id, true); }} className="text-rose-400">✓</button>
+                                <button onClick={(e) => { e.stopPropagation(); setPendingDeleteSessionId(null); }} className="text-zinc-500">×</button>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id); }}
+                                className="p-0.5 hover:bg-error/25 hover:text-error text-zinc-550 rounded transition cursor-pointer"
+                                title="Delete session"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            )}
                           </div>
                         ))}
 
@@ -849,14 +837,17 @@ function App() {
               </div>
 
               {/* Tab content area */}
-              <div className="flex-grow min-h-0 overflow-hidden">
-                {activeFileTab === null ? (
-                  <div className="w-full h-full flex flex-col bg-[#0a0a0a] overflow-hidden">
+              <div className="relative flex-grow min-h-0 overflow-hidden">
+                  <div
+                    className={`absolute inset-0 flex flex-col bg-[#0a0a0a] overflow-hidden ${activeFileTab === null ? '' : 'invisible pointer-events-none'}`}
+                    aria-hidden={activeFileTab !== null}
+                  >
                     {/* Clean Terminal Toolbar */}
                     <div className="shrink-0 bg-surface-1 border-b border-surface-2 px-4 py-2 flex items-center justify-between select-none overflow-x-auto">
                       <div className="flex items-center space-x-2 overflow-x-auto">
                         <SquareTerminal size={14} className="text-brand-light shrink-0" />
                         <span className="text-[10px] text-zinc-450 font-mono uppercase tracking-wider font-semibold mr-1.5 shrink-0">PTY Sessions:</span>
+                        {sessionDeleteError && <span className="text-[9px] text-rose-400 truncate" title={sessionDeleteError}>{sessionDeleteError}</span>}
                         {activeProjectSessions.map((session) => {
                           const isSelected = activeSessionId === session.id;
                           return (
@@ -872,22 +863,25 @@ function App() {
                                 onClick={() => handleSelectSession(activeWorkspace, session.id)}
                                 className="flex items-center space-x-1.5 cursor-pointer py-0.5"
                               >
-                                <div className={`flex items-center justify-center w-4 h-4 rounded-full bg-gradient-to-tr ${getAgentIconClass(session.agentType)} text-white font-extrabold text-[7px] shadow-sm select-none shrink-0`}>
-                                  {getInitials(session.agentType)}
-                                </div>
+                                <AgentIcon name={session.agentType} size={16} />
                                 <span>{session.agentType}</span>
                                 <span className="text-[8px] text-zinc-500 font-normal">({session.id.substring(8, 12)})</span>
                               </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteSession(session.id);
-                                }}
-                                className="p-0.5 hover:bg-red-500/20 hover:text-red-400 text-zinc-550 rounded transition cursor-pointer"
-                                title="Delete Session"
-                              >
-                                <X size={10} />
-                              </button>
+                              {pendingDeleteSessionId === session.id ? (
+                                <span className="flex items-center gap-1 text-[9px] text-rose-300">
+                                  <button type="button" onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id, true); }} className="text-rose-400">✓</button>
+                                  <button type="button" onClick={(e) => { e.stopPropagation(); setPendingDeleteSessionId(null); }} className="text-zinc-500">×</button>
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id); }}
+                                  className="p-0.5 hover:bg-red-500/20 hover:text-red-400 text-zinc-550 rounded transition cursor-pointer"
+                                  title="Delete Session"
+                                >
+                                  <X size={10} />
+                                </button>
+                              )}
                             </div>
                           );
                         })}
@@ -924,14 +918,16 @@ function App() {
                       <TerminalGrid />
                     </div>
                   </div>
-                ) : activeFileTab.startsWith('git-diff:') ? (
-                  <div className="w-full h-full">
-                    <GitDiffCompare tabPath={activeFileTab} />
-                  </div>
-                ) : (
-                  <div className="w-full h-full">
-                    <FilePreview />
-                  </div>
+                {activeFileTab !== null && (
+                  activeFileTab.startsWith('git-diff:') ? (
+                    <div className="absolute inset-0">
+                      <GitDiffCompare tabPath={activeFileTab} />
+                    </div>
+                  ) : (
+                    <div className="absolute inset-0">
+                      <FilePreview />
+                    </div>
+                  )
                 )}
               </div>
             </>
