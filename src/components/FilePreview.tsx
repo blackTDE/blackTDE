@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import MonacoEditor from '@monaco-editor/react';
+import React, { useState, useEffect, useRef } from 'react';
+import MonacoEditor, { type OnMount } from '@monaco-editor/react';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import { invoke } from '@tauri-apps/api/core';
 import { Save, FileText, Edit3, Eye, FileCode } from 'lucide-react';
@@ -9,7 +9,8 @@ import { MermaidBlock } from './MermaidBlock';
 import { isMermaidClass } from '../markdown';
 
 export const FilePreview: React.FC = () => {
-  const { activeFilePath, setActiveFileContent, fileUpdateCounter } = useWorkspaceStore();
+  const { activeFilePath, activeFileLine, fileNavigationCounter, setActiveFileContent, fileUpdateCounter } = useWorkspaceStore();
+  const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editorVal, setEditorVal] = useState<string>('');
   const [isSaved, setIsSaved] = useState(true);
@@ -40,7 +41,7 @@ export const FilePreview: React.FC = () => {
     if (!activeFilePath) return;
 
     // Reset editing state on file swap
-    setIsEditMode(isPreviewable ? false : true);
+    setIsEditMode(activeFileLine ? true : !isPreviewable);
     setLoadError(null);
     setConfirmCreate(false);
     setSaveError(null);
@@ -81,6 +82,22 @@ export const FilePreview: React.FC = () => {
 
     loadData();
   }, [activeFilePath, fileUpdateCounter]);
+
+  useEffect(() => {
+    if (!activeFileLine || isLoading) return;
+    setIsEditMode(true);
+    editorRef.current?.setPosition({ lineNumber: activeFileLine, column: 1 });
+    editorRef.current?.revealLineInCenter(activeFileLine);
+  }, [activeFileLine, fileNavigationCounter, isLoading]);
+
+  const handleEditorMount: OnMount = (editor) => {
+    editorRef.current = editor;
+    if (activeFileLine) {
+      editor.setPosition({ lineNumber: activeFileLine, column: 1 });
+      editor.revealLineInCenter(activeFileLine);
+      editor.focus();
+    }
+  };
 
   if (!activeFilePath) {
     return (
@@ -396,6 +413,7 @@ export const FilePreview: React.FC = () => {
               height="100%"
               language={getLanguage(activeFilePath)}
               value={editorVal}
+              onMount={handleEditorMount}
               onChange={handleEditorChange}
               theme="vs-dark"
               options={{

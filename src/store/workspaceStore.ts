@@ -43,6 +43,8 @@ interface WorkspaceState {
   
   // File details preview
   activeFilePath: string | null;
+  activeFileLine: number | null;
+  fileNavigationCounter: number;
   activeFileContent: string | null;
   activeRightPanel: 'files' | 'git' | 'settings' | 'search' | 'none';
   gitFiles: GitFileStatus[];
@@ -84,7 +86,7 @@ interface WorkspaceState {
   setPaneSessionId: (index: number, sessionId: string | null) => void;
   setActivePaneIndex: (index: number) => void;
 
-  openFile: (path: string, name: string) => void;
+  openFile: (path: string, name: string, line?: number) => void;
   closeFile: (path: string) => void;
   setActiveFileTab: (tab: string | null) => void;
   triggerFileUpdate: () => void;
@@ -97,6 +99,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
   activeSessionId: null,
   
   activeFilePath: null,
+  activeFileLine: null,
+  fileNavigationCounter: 0,
   activeFileContent: null,
   activeRightPanel: 'none',
   gitFiles: [],
@@ -123,6 +127,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
           activeWorkspace: null,
           openFiles: [],
           activeFileTab: null,
+          activeFileLine: null,
           paneLayout: {
             type: '1x1',
             activePaneIndex: 0,
@@ -148,6 +153,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
         openFiles: wsOpenFiles,
         activeFileTab: wsActiveFileTab,
         activeFilePath: wsActiveFileTab,
+        activeFileLine: null,
         paneLayout: wsPaneLayout,
         activeSessionId: activeSessId,
       };
@@ -267,7 +273,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
       };
     }),
 
-  openFile: (path, name) =>
+  openFile: (path, name, line) =>
     set((state) => {
       const wsId = state.activeWorkspace?.id || 'project_default';
       const currentWsOpenFiles = state.openFilesByProject[wsId] || [];
@@ -287,6 +293,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
         openFiles: newOpenFiles,
         activeFileTab: path,
         activeFilePath: path,
+        activeFileLine: line ?? null,
+        fileNavigationCounter: line ? state.fileNavigationCounter + 1 : state.fileNavigationCounter,
         openFilesByProject: newOpenFilesByProj,
         activeFileTabByProject: newActiveFileTabByProj
       };
@@ -317,6 +325,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
         openFiles: newOpenFiles,
         activeFileTab: newActiveTab,
         activeFilePath: newActiveTab,
+        activeFileLine: null,
         openFilesByProject: newOpenFilesByProj,
         activeFileTabByProject: newActiveFileTabByProj
       };
@@ -332,6 +341,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
       return {
         activeFileTab: tab,
         activeFilePath: tab,
+        activeFileLine: null,
         activeFileTabByProject: newActiveFileTabByProj
       };
     }),

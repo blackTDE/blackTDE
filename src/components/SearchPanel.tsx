@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { 
   ChevronRight, 
@@ -24,6 +24,11 @@ interface SearchResult {
   matches_filename: boolean;
 }
 
+interface SearchResponse {
+  results: SearchResult[];
+  truncated: boolean;
+}
+
 export const SearchPanel: React.FC = () => {
   const { activeWorkspace, openFile, triggerFileUpdate } = useWorkspaceStore();
   const [query, setQuery] = useState('');
@@ -34,27 +39,32 @@ export const SearchPanel: React.FC = () => {
   const [useRegex, setUseRegex] = useState(false); // UI toggle
   
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   // Tracking expanded state of each file's matches
   const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>({});
   const [replaceSuccessMessage, setReplaceSuccessMessage] = useState<string | null>(null);
+  const searchRequestId = useRef(0);
 
   const rootPath = activeWorkspace?.path || '/Users/ray/git-repo/black_tde';
 
   // Debounced search trigger
   useEffect(() => {
+    searchRequestId.current += 1;
     const delayDebounceFn = setTimeout(() => {
       if (query.trim()) {
         handleSearch();
       } else {
         setResults([]);
+        setTruncated(false);
+        setLoading(false);
       }
     }, 300);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [query, matchCase, wholeWord]);
+  }, [query, matchCase, wholeWord, rootPath]);
 
   const handleSearch = async () => {
     const trimmed = query.trim();
@@ -62,28 +72,32 @@ export const SearchPanel: React.FC = () => {
       setResults([]);
       return;
     }
+    const requestId = ++searchRequestId.current;
     setLoading(true);
     setError(null);
     setReplaceSuccessMessage(null);
     try {
-      const res = await invoke<SearchResult[]>('search_project', {
+      const response = await invoke<SearchResponse>('search_project', {
         rootPath,
         query: trimmed,
         matchCase,
         wholeWord,
       });
-      setResults(res);
+      if (requestId !== searchRequestId.current) return;
+      setResults(response.results);
+      setTruncated(response.truncated);
       
       // Auto-expand all files on new search
       const expanded: Record<string, boolean> = {};
-      res.forEach(item => {
+      response.results.forEach(item => {
         expanded[item.path] = true;
       });
       setExpandedFiles(expanded);
     } catch (err: any) {
+      if (requestId !== searchRequestId.current) return;
       setError(err?.toString() || 'Search failed');
     } finally {
-      setLoading(false);
+      if (requestId === searchRequestId.current) setLoading(false);
     }
   };
 
@@ -172,6 +186,7 @@ export const SearchPanel: React.FC = () => {
               setQuery('');
               setReplaceText('');
               setResults([]);
+              setTruncated(false);
               setReplaceSuccessMessage(null);
             }}
             className="text-zinc-550 hover:text-zinc-300 transition cursor-pointer p-1 rounded hover:bg-surface-2"
@@ -297,6 +312,12 @@ export const SearchPanel: React.FC = () => {
           </div>
         )}
 
+        {truncated && (
+          <div className="text-amber-400 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded font-mono text-[10px]">
+            Showing the first 2,000 matches. Refine the search to see more.
+          </div>
+        )}
+
         {!loading && results.length === 0 && query.trim() && (
           <div className="text-zinc-550 font-mono text-[10px] text-center py-6">
             No matches found
@@ -359,7 +380,7 @@ export const SearchPanel: React.FC = () => {
                   {result.matches_content.map((m) => (
                     <div
                       key={m.line_number}
-                      onClick={() => openFile(result.path, result.name)}
+                      onClick={() => openFile(result.path, result.name, m.line_number)}
                       className="flex items-start space-x-1.5 py-0.5 px-2 hover:bg-surface-3/35 rounded transition cursor-pointer select-none"
                     >
                       <CornerDownRight size={10} className="text-zinc-650 mt-1 shrink-0" />

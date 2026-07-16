@@ -324,7 +324,6 @@ function App() {
   useEffect(() => {
     if (activeFileTab) {
       setIsRightPaneExpanded(true);
-      setActiveRightPanel('files');
     }
   }, [activeFileTab]);
 
@@ -935,8 +934,7 @@ function App() {
         </div>
 
         {/* Right Panel (Inspector tabs) */}
-        {isRightPaneExpanded && (
-          <div className="w-80 border-l border-surface-2 bg-surface-1 flex flex-col overflow-hidden">
+        <div className={isRightPaneExpanded ? "w-80 border-l border-surface-2 bg-surface-1 flex flex-col overflow-hidden" : "hidden"}>
             {/* Swappable Panel Tabs */}
             <div className="shrink-0 flex border-b border-surface-2 select-none bg-surface-1/40">
               <button
@@ -992,17 +990,17 @@ function App() {
                 </div>
               ) : activeRightPanel === 'git' ? (
                 <GitPanel />
-              ) : activeRightPanel === 'search' ? (
-                <SearchPanel />
-              ) : (
+              ) : activeRightPanel !== 'search' ? (
                 <div className="w-full h-full flex flex-col items-center justify-center text-zinc-500 font-mono text-[10px]">
                   <Sparkles size={20} className="mb-1.5 text-zinc-650" />
                   <span>Select a tab above</span>
                 </div>
-              )}
+              ) : null}
+              <div className={activeRightPanel === 'search' ? 'h-full' : 'hidden'}>
+                <SearchPanel />
+              </div>
             </div>
           </div>
-        )}
 
         {/* Expand Right Pane Trigger */}
         {!isRightPaneExpanded && (

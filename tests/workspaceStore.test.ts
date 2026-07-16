@@ -52,3 +52,17 @@ test('clears the assigned session from saved layouts for other workspaces', () =
     [null, null, null, null],
   );
 });
+
+test('opens a search result at its target line and clears it for normal navigation', () => {
+  resetPaneState();
+
+  useWorkspaceStore.getState().openFile('/project/src/app.ts', 'app.ts', 42);
+  assert.equal(useWorkspaceStore.getState().activeFileLine, 42);
+  const firstNavigation = useWorkspaceStore.getState().fileNavigationCounter;
+
+  useWorkspaceStore.getState().openFile('/project/src/app.ts', 'app.ts', 42);
+  assert.equal(useWorkspaceStore.getState().fileNavigationCounter, firstNavigation + 1);
+
+  useWorkspaceStore.getState().openFile('/project/src/app.ts', 'app.ts');
+  assert.equal(useWorkspaceStore.getState().activeFileLine, null);
+});
