@@ -12,42 +12,51 @@ const createActions = (active: boolean | Error) => {
         if (active instanceof Error) throw active;
         return active;
       },
-      replayHistory: async () => { events.push('history'); },
       reset: () => { events.push('reset'); },
       resume: async () => { events.push('resume'); },
       fitAndResize: () => { events.push('fit'); },
       setReady: () => { events.push('ready'); },
-      redraw: async () => { events.push('redraw'); },
       onLookupError: () => { events.push('error'); },
     },
   };
 };
 
-test('redraws an active terminal without replaying transcript history', async () => {
+test('keeps an active terminal screen without replaying raw PTY history', async () => {
   const { actions, events } = createActions(true);
 
   await restoreTerminal(actions);
 
-  assert.deepEqual(events, ['lookup', 'fit', 'ready', 'redraw']);
+  assert.deepEqual(events, ['lookup', 'fit', 'ready']);
 });
 
-test('resumes a terminated terminal before redrawing it', async () => {
+test('resumes a terminated terminal after measuring it', async () => {
   const { actions, events } = createActions(false);
 
   await restoreTerminal(actions);
 
-  assert.deepEqual(events, ['lookup', 'reset', 'resume', 'fit', 'ready', 'redraw']);
+  assert.deepEqual(events, ['lookup', 'reset', 'fit', 'resume', 'fit', 'ready']);
 });
 
-test('replays history without resuming when active lookup fails', async () => {
+test('replays local shell history after reset and before resume', async () => {
+  const { actions, events } = createActions(false);
+  Object.assign(actions, {
+    replayHistory: async () => { events.push('history'); },
+  });
+
+  await restoreTerminal(actions);
+
+  assert.deepEqual(events, ['lookup', 'reset', 'fit', 'history', 'resume', 'fit', 'ready']);
+});
+
+test('does not replay raw PTY history when active lookup fails', async () => {
   const { actions, events } = createActions(new Error('lookup failed'));
 
   await restoreTerminal(actions);
 
-  assert.deepEqual(events, ['lookup', 'error', 'history', 'ready']);
+  assert.deepEqual(events, ['lookup', 'error', 'fit', 'ready']);
 });
 
-test('waits for resize completion before marking ready and redrawing', async () => {
+test('waits for resize completion before marking ready', async () => {
   const { actions, events } = createActions(true);
   let finishResize: (() => void) | undefined;
   actions.fitAndResize = () => new Promise<void>((resolve) => {
@@ -56,10 +65,10 @@ test('waits for resize completion before marking ready and redrawing', async () 
   });
 
   const restoring = restoreTerminal(actions);
-  await Promise.resolve();
-
-  assert.deepEqual(events, ['lookup', 'fit']);
-  finishResize?.();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  assert.equal(events.includes('ready'), false);
+  assert.ok(finishResize);
+  finishResize();
   await restoring;
-  assert.deepEqual(events, ['lookup', 'fit', 'ready', 'redraw']);
+  assert.deepEqual(events, ['lookup', 'fit', 'ready']);
 });

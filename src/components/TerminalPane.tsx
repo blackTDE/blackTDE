@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { restoreTerminal } from '../terminalRestore';
+import { isLocalShell, shellResumeMessage, type ShellResumeKind } from '../shellRestore';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import {
   Folder,
@@ -21,15 +22,23 @@ import '@xterm/xterm/css/xterm.css';
 
 interface TerminalPaneProps {
   sessionId: string;
+  isVisible: boolean;
 }
 
-export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
+export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const isVisibleRef = useRef(isVisible);
+  const fitAndResizeRef = useRef<((resize?: boolean) => Promise<void>) | null>(null);
+  isVisibleRef.current = isVisible;
   const [sftpHeight, setSftpHeight] = useState(180);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const session = useWorkspaceStore((state) => state.sessions[sessionId]);
   const sshHost = session?.ssh_host;
+
+  useEffect(() => {
+    if (isVisible) void fitAndResizeRef.current?.();
+  }, [isVisible]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -72,6 +81,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
     let isReady = false;
     let isDisposed = false;
     const incomingQueue: Uint8Array[] = [];
+    const localShell = isLocalShell(session?.agentType, session?.ssh_host);
 
     const flushIncoming = () => {
       while (incomingQueue.length > 0) {
@@ -80,11 +90,11 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
       }
     };
 
-    const fitAndResize = async () => {
-      if (isDisposed) return;
+    const fitAndResize = async (resize = true) => {
+      if (isDisposed || !isVisibleRef.current) return;
       try {
         fitAddon.fit();
-        if (term.rows > 2 && term.cols > 2) {
+        if (resize && term.rows > 2 && term.cols > 2) {
           await invoke('resize_session', {
             id: sessionId,
             rows: term.rows,
@@ -95,6 +105,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
         console.error('Failed to fit terminal:', err);
       }
     };
+    fitAndResizeRef.current = fitAndResize;
 
     // Listen to stdout event stream from tauri event bus
     let unlistenFn: (() => void) | null = null;
@@ -124,29 +135,37 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
           const activeIds = await invoke<string[]>('list_active_session_ids');
           return activeIds.includes(sessionId);
         },
-        replayHistory: async () => {
-          const historyBytes = await invoke<number[]>('get_session_history', { id: sessionId });
-          if (!isDisposed && historyBytes.length > 0) {
-            term.write(new Uint8Array(historyBytes));
-          }
-        },
         reset: () => {
           if (!isDisposed) term.reset();
         },
-        resume: async () => {
-          let displayId = 'None (fresh shell)';
+        replayHistory: localShell ? async () => {
+          const history = await invoke<number[]>('get_session_history', { id: sessionId });
+          if (!isDisposed && history.length > 0) term.write(new Uint8Array(history));
+        } : undefined,
+        resume: async (rows = term.rows, cols = term.cols) => {
           try {
-            displayId = await invoke<string | null>('get_remote_session_id', { id: sessionId }) || displayId;
-          } catch (error) {
-            console.error('Failed to get remote session id:', error);
-          }
+            if (localShell) {
+              const outcome = await invoke<{ kind: ShellResumeKind }>('resume_terminated_session', {
+                id: sessionId,
+                rows,
+                cols,
+              });
+              if (!isDisposed) {
+                term.write(`\r\n\x1b[1;33m[${shellResumeMessage(outcome.kind)}]\x1b[0m\r\n`);
+              }
+              return;
+            }
 
-          if (!isDisposed) {
-            term.write(`\x1b[1;33m[Session disconnected - resuming remote ID: ${displayId}]\x1b[0m\r\n`);
-          }
-
-          try {
-            await invoke('resume_terminated_session', { id: sessionId });
+            let displayId = 'None';
+            try {
+              displayId = await invoke<string | null>('get_remote_session_id', { id: sessionId }) || displayId;
+            } catch (error) {
+              console.error('Failed to get remote session id:', error);
+            }
+            if (!isDisposed) {
+              term.write(`\x1b[1;33m[Session disconnected - resuming remote ID: ${displayId}]\x1b[0m\r\n`);
+            }
+            await invoke('resume_terminated_session', { id: sessionId, rows, cols });
           } catch (error) {
             if (!isDisposed) {
               term.write(`\r\n\x1b[1;31m[Auto resume failed: ${error}]\x1b[0m\r\n`);
@@ -158,14 +177,6 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
           if (isDisposed) return;
           isReady = true;
           flushIncoming();
-        },
-        redraw: async () => {
-          if (isDisposed) return;
-          try {
-            await invoke('write_to_session', { id: sessionId, data: [12] });
-          } catch (error) {
-            console.error('Failed to redraw terminal:', error);
-          }
         },
         onLookupError: (error) => console.error('Failed to query active session list:', error),
       }).catch((error) => {
@@ -199,6 +210,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId }) => {
 
     return () => {
       isDisposed = true;
+      fitAndResizeRef.current = null;
       clearTimeout(resizeTimeout);
       resizeObserver.disconnect();
       dataDisposer.dispose();
