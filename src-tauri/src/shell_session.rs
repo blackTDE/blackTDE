@@ -176,4 +176,20 @@ mod tests {
             .args(["-L", &socket, "kill-server"])
             .status();
     }
+
+    #[test]
+    fn production_adapter_creates_then_reattaches_the_same_shell() {
+        if find_tmux().is_none() {
+            return;
+        }
+        let id = format!("test-{}", uuid::Uuid::new_v4());
+
+        let created = prepare_shell(&id, "/bin/sh", &[], "/tmp").unwrap();
+        assert!(!created.reattached);
+        assert_eq!(created.args, attach_args(&tmux_session_name(&id)));
+
+        let resumed = prepare_shell(&id, "/bin/sh", &[], "/tmp").unwrap();
+        assert!(resumed.reattached);
+        kill_shell_session(&id);
+    }
 }
