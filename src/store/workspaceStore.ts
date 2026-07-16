@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 export interface WorkspaceEntry {
   id: string;
@@ -89,7 +90,7 @@ interface WorkspaceState {
   triggerFileUpdate: () => void;
 }
 
-export const useWorkspaceStore = create<WorkspaceState>((set) => ({
+export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
   activeWorkspace: null,
   workspaces: [],
   sessions: {},
@@ -334,4 +335,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         activeFileTabByProject: newActiveFileTabByProj
       };
     }),
+}), {
+  name: 'black-tde-workspace',
+  storage: createJSONStorage(() => typeof window === 'undefined'
+    ? {
+        getItem: () => null,
+        setItem: () => undefined,
+        removeItem: () => undefined,
+      }
+    : window.localStorage),
+  partialize: (state) => ({
+    openFilesByProject: state.openFilesByProject,
+    activeFileTabByProject: state.activeFileTabByProject,
+    paneLayoutsByProject: state.paneLayoutsByProject,
+  }),
 }));

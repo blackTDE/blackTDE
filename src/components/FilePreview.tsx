@@ -3,6 +3,10 @@ import MonacoEditor from '@monaco-editor/react';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import { invoke } from '@tauri-apps/api/core';
 import { Save, FileText, Edit3, Eye, FileCode } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { MermaidBlock } from './MermaidBlock';
+import { isMermaidClass } from '../markdown';
 
 export const FilePreview: React.FC = () => {
   const { activeFilePath, setActiveFileContent, fileUpdateCounter } = useWorkspaceStore();
@@ -15,6 +19,8 @@ export const FilePreview: React.FC = () => {
   const [base64Content, setBase64Content] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [confirmCreate, setConfirmCreate] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const ext = activeFilePath ? activeFilePath.split('.').pop()?.toLowerCase() || '' : '';
 
@@ -36,6 +42,8 @@ export const FilePreview: React.FC = () => {
     // Reset editing state on file swap
     setIsEditMode(isPreviewable ? false : true);
     setLoadError(null);
+    setConfirmCreate(false);
+    setSaveError(null);
     setIsLoading(true);
     setTextContent('');
     setBase64Content('');
@@ -118,16 +126,24 @@ export const FilePreview: React.FC = () => {
     setIsSaved(val === textContent);
   };
 
-  const handleSave = async () => {
+  const saveFile = async (allowCreate = false) => {
     try {
+      if (!allowCreate && !(await invoke<boolean>('path_exists', { path: activeFilePath }))) {
+        setConfirmCreate(true);
+        return;
+      }
       await invoke('write_file_content', { path: activeFilePath, content: editorVal });
       setTextContent(editorVal);
       setActiveFileContent(editorVal);
       setIsSaved(true);
+      setConfirmCreate(false);
+      setSaveError(null);
     } catch (err: any) {
-      alert('Failed to save file: ' + err);
+      setSaveError(String(err));
     }
   };
+
+  const handleSave = () => { void saveFile(); };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 's') {
@@ -136,95 +152,6 @@ export const FilePreview: React.FC = () => {
         handleSave();
       }
     }
-  };
-
-  // Simple Markdown renderer
-  const renderMarkdown = (text: string) => {
-    const lines = text.split('\n');
-    let insideCodeBlock = false;
-    let codeBlockContent: string[] = [];
-
-    return (
-      <div className="space-y-3 text-sm text-zinc-200 leading-relaxed font-sans max-w-3xl mx-auto py-4">
-        {lines.map((line, idx) => {
-          const trimmed = line.trim();
-
-          // Code blocks
-          if (trimmed.startsWith('```')) {
-            if (insideCodeBlock) {
-              insideCodeBlock = false;
-              const content = codeBlockContent.join('\n');
-              codeBlockContent = [];
-              return (
-                <pre key={idx} className="bg-surface-2 p-3.5 rounded-lg border border-surface-3 font-mono text-xs overflow-x-auto text-brand-light my-2 select-text shadow-sm">
-                  <code>{content}</code>
-                </pre>
-              );
-            } else {
-              insideCodeBlock = true;
-              return null;
-            }
-          }
-
-          if (insideCodeBlock) {
-            codeBlockContent.push(line);
-            return null;
-          }
-
-          // Headers
-          if (trimmed.startsWith('# ')) {
-            return <h1 key={idx} className="text-2xl font-bold border-b border-surface-3 pb-1.5 mt-5 mb-3 text-zinc-100">{trimmed.substring(2)}</h1>;
-          }
-          if (trimmed.startsWith('## ')) {
-            return <h2 key={idx} className="text-xl font-semibold border-b border-surface-2 pb-1 mt-4 mb-2 text-zinc-150">{trimmed.substring(3)}</h2>;
-          }
-          if (trimmed.startsWith('### ')) {
-            return <h3 key={idx} className="text-lg font-medium mt-3 mb-1 text-zinc-200">{trimmed.substring(4)}</h3>;
-          }
-
-          // Blockquotes
-          if (trimmed.startsWith('> ')) {
-            return (
-              <blockquote key={idx} className="border-l-4 border-brand bg-surface-2/40 px-3.5 py-2 my-2 text-zinc-400 italic rounded-r font-sans text-xs">
-                {trimmed.substring(2)}
-              </blockquote>
-            );
-          }
-
-          // Bullet points
-          if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-            return (
-              <ul key={idx} className="list-disc pl-5 my-1 space-y-0.5">
-                <li className="text-zinc-300 font-sans">{trimmed.substring(2)}</li>
-              </ul>
-            );
-          }
-
-          // Numbered lists
-          const numMatch = trimmed.match(/^\d+\.\s(.*)/);
-          if (numMatch) {
-            return (
-              <ol key={idx} className="list-decimal pl-5 my-1 space-y-0.5">
-                <li className="text-zinc-300 font-sans">{numMatch[1]}</li>
-              </ol>
-            );
-          }
-
-          // Horizontal Rule
-          if (trimmed === '---') {
-            return <hr key={idx} className="border-surface-3 my-4" />;
-          }
-
-          // Render empty spacing
-          if (trimmed === '') {
-            return <div key={idx} className="h-2" />;
-          }
-
-          // Normal paragraphs
-          return <p key={idx} className="my-1.5 text-zinc-300 text-sm font-sans select-text">{trimmed}</p>;
-        })}
-      </div>
-    );
   };
 
   // Main Preview Content router
@@ -251,7 +178,34 @@ export const FilePreview: React.FC = () => {
       case 'md':
         return (
           <div className="h-full overflow-y-auto px-6 py-4 bg-surface select-text">
-            {renderMarkdown(textContent)}
+            <div className="mx-auto max-w-3xl space-y-3 py-4 text-sm leading-relaxed text-zinc-300">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                h1: ({ children }) => <h1 className="mt-5 border-b border-surface-3 pb-1.5 text-2xl font-bold text-zinc-100">{children}</h1>,
+                h2: ({ children }) => <h2 className="mt-4 border-b border-surface-2 pb-1 text-xl font-semibold text-zinc-100">{children}</h2>,
+                h3: ({ children }) => <h3 className="mt-3 text-lg font-medium text-zinc-200">{children}</h3>,
+                p: ({ children }) => <p className="my-2">{children}</p>,
+                ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-6">{children}</ul>,
+                ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-6">{children}</ol>,
+                blockquote: ({ children }) => <blockquote className="my-2 rounded-r border-l-4 border-brand bg-surface-2/40 px-3.5 py-2 text-zinc-400">{children}</blockquote>,
+                table: ({ children }) => <div className="my-3 overflow-x-auto"><table className="w-full border-collapse text-left">{children}</table></div>,
+                th: ({ children }) => <th className="border border-surface-3 bg-surface-2 px-3 py-2 font-semibold text-zinc-100">{children}</th>,
+                td: ({ children }) => <td className="border border-surface-3 px-3 py-2">{children}</td>,
+                a: ({ href, children }) => <a href={href} className="text-brand-light underline" target="_blank" rel="noreferrer">{children}</a>,
+                pre: ({ children }) => {
+                  const child = React.Children.toArray(children)[0];
+                  if (React.isValidElement<{ className?: string }>(child) && isMermaidClass(child.props.className)) return <>{children}</>;
+                  return <pre className="my-3 overflow-x-auto rounded-lg border border-surface-3 bg-surface-2 p-3.5 font-mono text-xs text-brand-light">{children}</pre>;
+                },
+                code: ({ className, children }) => isMermaidClass(className)
+                  ? <MermaidBlock source={String(children).replace(/\n$/, '')} />
+                  : <code className={className}>{children}</code>,
+                }}
+              >
+                {textContent}
+              </ReactMarkdown>
+            </div>
           </div>
         );
       case 'html':
@@ -423,6 +377,16 @@ export const FilePreview: React.FC = () => {
           )}
         </div>
       </div>
+      {confirmCreate && (
+        <div className="flex items-center justify-between gap-3 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-[11px] text-amber-200">
+          <span>“{activeFilePath.split('/').pop()}” was deleted. Create it and save your changes?</span>
+          <div className="flex shrink-0 gap-2">
+            <button type="button" onClick={() => void saveFile(true)} className="rounded bg-amber-500/20 px-2 py-1 hover:bg-amber-500/30">Create &amp; Save</button>
+            <button type="button" onClick={() => setConfirmCreate(false)} className="px-2 py-1 text-zinc-400 hover:text-zinc-200">Cancel</button>
+          </div>
+        </div>
+      )}
+      {saveError && <div className="border-b border-error/20 bg-error/5 px-4 py-1 text-[10px] text-error">Save failed: {saveError}</div>}
 
       {/* Render Workspace Content Body */}
       <div className="flex-1 w-full min-h-0">
