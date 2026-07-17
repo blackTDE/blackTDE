@@ -51,3 +51,13 @@ input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--primary);
 }
+
+/* Keep Monaco's find controls above its overlay scrollbar hit area. */
+.monaco-editor .find-widget {
+  z-index: 100;
+}
+
+.monaco-editor .find-widget > .button.codicon-widget-close {
+  z-index: 1;
+  pointer-events: auto;
+}
