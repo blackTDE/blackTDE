@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { GitBranch, RefreshCw, Plus, Minus, Send, ChevronDown, ChevronRight, FileText, Clock, User } from 'lucide-react';
+import { GitBranch, RefreshCw, Plus, Minus, Send, ChevronDown, ChevronRight, FileText, Clock, User, Download, Upload } from 'lucide-react';
 import { useWorkspaceStore, GitFileStatus } from '../store/workspaceStore';
 
 interface GitCommit {
@@ -15,11 +15,22 @@ interface GitUser {
   email: string;
 }
 
+interface GitRemoteStatus {
+  remote_name: string;
+  remote_url: string;
+  upstream: string;
+  ahead: number;
+  behind: number;
+}
+
 export const GitPanel: React.FC = () => {
   const { gitFiles, setGitFiles, gitBranch, setGitBranch, activeWorkspace, openFile } = useWorkspaceStore();
   const [commitMessage, setCommitMessage] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [gitUser, setGitUser] = useState<GitUser>({ name: '', email: '' });
+  const [remoteStatus, setRemoteStatus] = useState<GitRemoteStatus>({ remote_name: '', remote_url: '', upstream: '', ahead: 0, behind: 0 });
+  const [activeOperation, setActiveOperation] = useState<string | null>(null);
+  const [operationMessage, setOperationMessage] = useState<{ error: boolean; text: string } | null>(null);
 
   // Git Commit History States
   const [commits, setCommits] = useState<GitCommit[]>([]);
@@ -31,20 +42,37 @@ export const GitPanel: React.FC = () => {
   const loadGitStatus = async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
     try {
-      const [statusFiles, branchName, log, user] = await Promise.all([
+      const [statusFiles, branchName, log, user, remote] = await Promise.all([
         invoke<GitFileStatus[]>('get_git_status', { cwd: workspacePath }),
         invoke<string>('get_git_branch', { cwd: workspacePath }),
         invoke<GitCommit[]>('get_git_commit_log', { cwd: workspacePath }),
         invoke<GitUser>('get_git_user', { cwd: workspacePath }),
+        invoke<GitRemoteStatus>('get_git_remote_status', { cwd: workspacePath }),
       ]);
       setGitFiles(statusFiles);
       setGitBranch(branchName);
       setCommits(log);
       setGitUser(user);
+      setRemoteStatus(remote);
     } catch (err) {
       console.error('Failed to load Git status/history:', err);
     } finally {
       if (showLoading) setIsLoading(false);
+    }
+  };
+
+  const runGitOperation = async (command: string, label: string) => {
+    if (activeOperation) return;
+    setActiveOperation(command);
+    setOperationMessage(null);
+    try {
+      const output = await invoke<string>(command, { cwd: workspacePath });
+      setOperationMessage({ error: false, text: output || `${label} complete` });
+      await loadGitStatus(false);
+    } catch (err) {
+      setOperationMessage({ error: true, text: `${label} failed: ${err}` });
+    } finally {
+      setActiveOperation(null);
     }
   };
 
@@ -157,6 +185,43 @@ export const GitPanel: React.FC = () => {
 
       {/* Main content list */}
       <div className="flex-grow overflow-y-auto p-3 space-y-4">
+        {/* Remote Status and Operations */}
+        <div className="rounded border border-slate-800 bg-[#171717]/40 p-2 font-mono">
+          {remoteStatus.remote_name ? (
+            <>
+              <div className="flex items-center justify-between gap-2 text-[10px]">
+                <span className="truncate font-bold text-slate-300" title={remoteStatus.remote_url}>
+                  {remoteStatus.remote_name}{remoteStatus.upstream ? ` · ${remoteStatus.upstream}` : ''}
+                </span>
+                <span className="shrink-0 text-slate-500">
+                  <span className={remoteStatus.ahead ? 'text-emerald-400' : ''}>↑{remoteStatus.ahead}</span>
+                  {' '}
+                  <span className={remoteStatus.behind ? 'text-amber-400' : ''}>↓{remoteStatus.behind}</span>
+                </span>
+              </div>
+              <div className="mt-1 truncate text-[9px] text-slate-600" title={remoteStatus.remote_url}>{remoteStatus.remote_url}</div>
+              <div className="mt-2 grid grid-cols-3 gap-1">
+                <button type="button" onClick={() => void runGitOperation('git_fetch_remote', 'Fetch')} disabled={!!activeOperation} className="flex items-center justify-center gap-1 rounded bg-slate-800 px-1 py-1 text-[9px] text-slate-300 hover:bg-slate-700 disabled:opacity-50">
+                  <RefreshCw size={10} className={activeOperation === 'git_fetch_remote' ? 'animate-spin' : ''} /> Fetch
+                </button>
+                <button type="button" onClick={() => void runGitOperation('git_pull_remote', 'Pull')} disabled={!!activeOperation} className="flex items-center justify-center gap-1 rounded bg-slate-800 px-1 py-1 text-[9px] text-slate-300 hover:bg-slate-700 disabled:opacity-50">
+                  <Download size={10} /> Pull
+                </button>
+                <button type="button" onClick={() => void runGitOperation('git_push_remote', 'Push')} disabled={!!activeOperation} className="flex items-center justify-center gap-1 rounded bg-slate-800 px-1 py-1 text-[9px] text-slate-300 hover:bg-slate-700 disabled:opacity-50">
+                  <Upload size={10} /> Push
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="text-[10px] italic text-slate-500">No Git remote configured</div>
+          )}
+          {operationMessage && (
+            <div className={`mt-2 break-words text-[9px] ${operationMessage.error ? 'text-rose-400' : 'text-emerald-400'}`}>
+              {operationMessage.text}
+            </div>
+          )}
+        </div>
+
         {/* Commit Form */}
         <div className="flex items-center space-x-2 select-none">
           <input
@@ -187,7 +252,10 @@ export const GitPanel: React.FC = () => {
         <div>
           <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between font-mono">
             <span>Staged Changes</span>
-            <span className="bg-brand/15 text-brand-light px-1.5 py-0.2 rounded font-mono text-[9px]">{staged.length}</span>
+            <span className="flex items-center gap-1">
+              <button type="button" onClick={() => void runGitOperation('git_unstage_all', 'Unstage all')} disabled={staged.length === 0 || !!activeOperation} className="rounded p-0.5 text-slate-500 hover:bg-slate-800 hover:text-rose-400 disabled:opacity-40" title="Unstage all"><Minus size={10} /></button>
+              <span className="bg-brand/15 text-brand-light px-1.5 py-0.2 rounded font-mono text-[9px]">{staged.length}</span>
+            </span>
           </h3>
           {staged.length === 0 ? (
             <div className="text-[10px] text-slate-500 italic px-2 py-1 font-mono">No staged changes</div>
@@ -225,7 +293,10 @@ export const GitPanel: React.FC = () => {
         <div>
           <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between font-mono">
             <span>Unstaged Changes</span>
-            <span className="bg-amber-500/15 text-amber-400 px-1.5 py-0.2 rounded font-mono text-[9px]">{unstaged.length}</span>
+            <span className="flex items-center gap-1">
+              <button type="button" onClick={() => void runGitOperation('git_stage_all', 'Stage all')} disabled={unstaged.length === 0 || !!activeOperation} className="rounded p-0.5 text-slate-500 hover:bg-slate-800 hover:text-emerald-400 disabled:opacity-40" title="Stage all"><Plus size={10} /></button>
+              <span className="bg-amber-500/15 text-amber-400 px-1.5 py-0.2 rounded font-mono text-[9px]">{unstaged.length}</span>
+            </span>
           </h3>
           {unstaged.length === 0 ? (
             <div className="text-[10px] text-slate-500 italic px-2 py-1 font-mono">No unstaged changes</div>
