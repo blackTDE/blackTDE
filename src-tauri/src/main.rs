@@ -740,9 +740,15 @@ fn find_latest_file_in_dir(dir: &Path, extension: &str) -> Option<PathBuf> {
 }
 
 fn privileged_agent_args(command: &str, privileged: bool) -> Vec<String> {
-    (privileged && matches!(command, "claude" | "agy"))
-        .then(|| vec!["--dangerously-skip-permissions".to_string()])
-        .unwrap_or_default()
+    if !privileged {
+        return Vec::new();
+    }
+
+    match command {
+        "codex" => vec!["--dangerously-bypass-approvals-and-sandbox".to_string()],
+        "claude" | "agy" => vec!["--dangerously-skip-permissions".to_string()],
+        _ => Vec::new(),
+    }
 }
 
 fn resolve_codex_session_id(home: &Path, cwd: &str) -> Option<String> {
@@ -880,7 +886,7 @@ mod session_resume_tests {
     }
 
     #[test]
-    fn adds_privileged_flag_for_claude_and_agy_only() {
+    fn adds_provider_specific_privileged_flags() {
         assert_eq!(
             privileged_agent_args("agy", true),
             vec!["--dangerously-skip-permissions"]
@@ -890,7 +896,11 @@ mod session_resume_tests {
             vec!["--dangerously-skip-permissions"]
         );
         assert!(privileged_agent_args("agy", false).is_empty());
-        assert!(privileged_agent_args("codex", true).is_empty());
+        assert_eq!(
+            privileged_agent_args("codex", true),
+            vec!["--dangerously-bypass-approvals-and-sandbox"]
+        );
+        assert!(privileged_agent_args("codex", false).is_empty());
     }
 
     #[test]
