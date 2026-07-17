@@ -51,9 +51,3 @@ input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--primary);
 }
-
-/* Monaco can place a transient control tooltip over the button that opened it. */
-.workbench-hover-container:not(.locked),
-.workbench-hover-container:not(.locked) * {
-  pointer-events: none !important;
-}

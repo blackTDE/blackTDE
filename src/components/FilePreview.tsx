@@ -92,6 +92,15 @@ export const FilePreview: React.FC = () => {
 
   const handleEditorMount: OnMount = (editor) => {
     editorRef.current = editor;
+    const editorNode = editor.getDomNode();
+    const suppressFindControlTooltip = (event: MouseEvent) => {
+      if ((event.target as Element | null)?.closest('.find-widget [role="button"]')) {
+        event.stopImmediatePropagation();
+      }
+    };
+    editorNode?.addEventListener('mouseover', suppressFindControlTooltip, true);
+    editor.onDidDispose(() => editorNode?.removeEventListener('mouseover', suppressFindControlTooltip, true));
+
     if (activeFileLine) {
       editor.setPosition({ lineNumber: activeFileLine, column: 1 });
       editor.revealLineInCenter(activeFileLine);
