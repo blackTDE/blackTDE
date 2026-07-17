@@ -98,6 +98,7 @@ function App() {
   const [spawnProvider, setSpawnProvider] = useState('none');
   const [pastSessions, setPastSessions] = useState<any[]>([]);
   const [resumeSessionId, setResumeSessionId] = useState('');
+  const [manualResumeSessionId, setManualResumeSessionId] = useState('');
   const [detectedClis, setDetectedClis] = useState<string[]>([]);
   const [privileged, setPrivileged] = useState(true);
   const [isSpawningSession, setIsSpawningSession] = useState(false);
@@ -287,6 +288,7 @@ function App() {
     setCmdInput('/bin/zsh');
     setArgsInput('');
     setResumeSessionId('');
+    setManualResumeSessionId('');
     setSpawnSessionError(null);
     setSessionType('local');
     setSshHostSelect('manual');
@@ -355,6 +357,14 @@ function App() {
       setSpawnSessionError('Enter a command to start.');
       return;
     }
+    if (manualResumeSessionId.trim()) {
+      const commandName = cmdInput.split(/[\\/]/).pop()?.toLowerCase();
+      const resumableAgents = ['agy', 'claude', 'codex', 'gemini', 'open-code', 'opencode'];
+      if (!commandName || !resumableAgents.includes(commandName)) {
+        setSpawnSessionError(`${commandName || 'This command'} does not support provider session resume.`);
+        return;
+      }
+    }
 
     const newSessionId = 'session_' + Math.random().toString(36).substring(2, 11);
     const mockWorkspaceId = modalTargetProject?.id || activeWorkspace?.id || 'project_default';
@@ -400,7 +410,7 @@ function App() {
         rows: 24,
         cols: 80,
         provider: spawnProvider,
-        resumeSessionId: null,
+        resumeSessionId: manualResumeSessionId.trim() || null,
         privileged: privileged,
         sshHost: finalSshHost,
       });
@@ -417,6 +427,7 @@ function App() {
 
       setPaneSessionId(paneLayout.activePaneIndex, newSessionId);
       setResumeSessionId('');
+      setManualResumeSessionId('');
       loadPastSessions();
       setShowNewSessionModal(false);
     } catch (error) {
@@ -1204,20 +1215,36 @@ function App() {
                   </div>
 
                   {/* Resume past conversation */}
-                  <div>
+                  <div className="space-y-2">
                     <label className="block text-zinc-400 font-mono text-[10px] mb-1 font-bold">RESUME PAST CONVERSATION</label>
                     <select
                       value={resumeSessionId}
-                      onChange={(e) => setResumeSessionId(e.target.value)}
+                      onChange={(e) => {
+                        setResumeSessionId(e.target.value);
+                        if (e.target.value) setManualResumeSessionId('');
+                      }}
                       className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 focus:outline-none focus:border-brand/70 font-mono cursor-pointer"
                     >
-                      <option value="">Start Fresh (No Resume)</option>
+                      <option value="">Start Fresh / Enter ID Below</option>
                       {getFilteredPastSessions(modalTargetProject?.path || '').map(s => (
                         <option key={s.id} value={s.id}>
                           {s.agent_type} - {s.remote_session_id?.substring(0, 8)}...
                         </option>
                       ))}
                     </select>
+                    <input
+                      type="text"
+                      value={manualResumeSessionId}
+                      onChange={(e) => {
+                        setManualResumeSessionId(e.target.value);
+                        if (e.target.value) setResumeSessionId('');
+                      }}
+                      placeholder="Provider session / conversation ID (optional)"
+                      className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-250 placeholder:text-zinc-600 focus:outline-none focus:border-brand/70 font-mono"
+                    />
+                    <p className="text-[9px] text-zinc-500 font-mono">
+                      Select a saved TDE session to reopen it, or enter a provider ID to start a resumed agent session.
+                    </p>
                   </div>
 
                   {/* Privileged Mode Checkbox */}
