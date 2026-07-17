@@ -10,12 +10,16 @@ interface GitCommit {
   message: string;
 }
 
+interface GitUser {
+  name: string;
+  email: string;
+}
+
 export const GitPanel: React.FC = () => {
   const { gitFiles, setGitFiles, gitBranch, setGitBranch, activeWorkspace, openFile } = useWorkspaceStore();
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [, setDiffContent] = useState<string>('');
   const [commitMessage, setCommitMessage] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
+  const [gitUser, setGitUser] = useState<GitUser>({ name: '', email: '' });
 
   // Git Commit History States
   const [commits, setCommits] = useState<GitCommit[]>([]);
@@ -24,41 +28,23 @@ export const GitPanel: React.FC = () => {
 
   const workspacePath = activeWorkspace?.path || '/Users/ray/git-repo/black_tde';
 
-  const loadGitStatus = async () => {
-    setIsLoading(true);
+  const loadGitStatus = async (showLoading = true) => {
+    if (showLoading) setIsLoading(true);
     try {
-      const statusFiles = await invoke<GitFileStatus[]>('get_git_status', { cwd: workspacePath });
+      const [statusFiles, branchName, log, user] = await Promise.all([
+        invoke<GitFileStatus[]>('get_git_status', { cwd: workspacePath }),
+        invoke<string>('get_git_branch', { cwd: workspacePath }),
+        invoke<GitCommit[]>('get_git_commit_log', { cwd: workspacePath }),
+        invoke<GitUser>('get_git_user', { cwd: workspacePath }),
+      ]);
       setGitFiles(statusFiles);
-
-      const branchName = await invoke<string>('get_git_branch', { cwd: workspacePath });
       setGitBranch(branchName);
-
-      // Load Git Commit History
-      const log = await invoke<GitCommit[]>('get_git_commit_log', { cwd: workspacePath });
       setCommits(log);
-
-      // Refresh diff if a file is currently selected
-      if (selectedFile) {
-        if (!statusFiles.some(f => f.path === selectedFile)) {
-          setSelectedFile(null);
-          setDiffContent('');
-        } else {
-          await loadFileDiff(selectedFile);
-        }
-      }
+      setGitUser(user);
     } catch (err) {
       console.error('Failed to load Git status/history:', err);
     } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadFileDiff = async (filePath: string) => {
-    try {
-      const diff = await invoke<string>('get_git_diff', { cwd: workspacePath, filePath });
-      setDiffContent(diff);
-    } catch (err) {
-      console.error('Failed to load file diff:', err);
+      if (showLoading) setIsLoading(false);
     }
   };
 
@@ -107,6 +93,7 @@ export const GitPanel: React.FC = () => {
         setCommitFiles(prev => ({ ...prev, [hash]: files }));
       } catch (err) {
         console.error('Failed to load commit files:', err);
+        setCommitFiles(prev => ({ ...prev, [hash]: [] }));
       }
     }
   };
@@ -116,8 +103,15 @@ export const GitPanel: React.FC = () => {
     openFile(`git-diff:${hash}:${filePath}`, fileName);
   };
 
+  const handleWorkingFileClick = (filePath: string) => {
+    const fileName = filePath.split('/').pop() || filePath;
+    openFile(`git-diff:working:${filePath}`, fileName);
+  };
+
   useEffect(() => {
-    loadGitStatus();
+    void loadGitStatus();
+    const timer = window.setInterval(() => void loadGitStatus(false), 3000);
+    return () => window.clearInterval(timer);
   }, [workspacePath]);
 
   const staged = gitFiles.filter(f => f.staged);
@@ -141,12 +135,18 @@ export const GitPanel: React.FC = () => {
     <div className="w-full h-full bg-[#1e1e1e] rounded-lg border border-slate-700 flex flex-col overflow-hidden">
       {/* Git Header */}
       <div className="bg-[#171717] px-3 py-2 border-b border-slate-800 flex items-center justify-between select-none">
-        <div className="flex items-center space-x-2 text-xs font-mono font-bold text-slate-300">
-          <GitBranch size={14} className="text-brand-light" />
-          <span>git: {gitBranch}</span>
+        <div className="min-w-0 font-mono">
+          <div className="flex items-center space-x-2 text-xs font-bold text-slate-300">
+            <GitBranch size={14} className="text-brand-light" />
+            <span className="truncate">git: {gitBranch}</span>
+          </div>
+          <div className="mt-0.5 flex items-center gap-1 pl-5 text-[9px] text-slate-500" title={gitUser.email}>
+            <User size={9} />
+            <span className="truncate">{gitUser.name || 'Commit user not configured'}</span>
+          </div>
         </div>
         <button
-          onClick={loadGitStatus}
+          onClick={() => void loadGitStatus()}
           disabled={isLoading}
           className="p-1 hover:bg-slate-800 text-slate-400 rounded transition"
           title="Refresh Git status"
@@ -157,7 +157,32 @@ export const GitPanel: React.FC = () => {
 
       {/* Main content list */}
       <div className="flex-grow overflow-y-auto p-3 space-y-4">
-        
+        {/* Commit Form */}
+        <div className="flex items-center space-x-2 select-none">
+          <input
+            type="text"
+            value={commitMessage}
+            onChange={(e) => setCommitMessage(e.target.value)}
+            placeholder="Type commit message..."
+            className="min-w-0 flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-brand font-mono"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleCommit();
+            }}
+          />
+          <button
+            onClick={handleCommit}
+            disabled={staged.length === 0 || !commitMessage.trim()}
+            className={`flex items-center space-x-1 text-xs font-semibold px-2 py-1.5 rounded transition ${
+              staged.length === 0 || !commitMessage.trim()
+                ? 'text-slate-500 bg-slate-800 cursor-default'
+                : 'text-white bg-brand hover:bg-brand/80 active:bg-brand/90'
+            }`}
+          >
+            <Send size={12} />
+            <span>Commit</span>
+          </button>
+        </div>
+
         {/* Staged Changes Group */}
         <div>
           <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between font-mono">
@@ -171,13 +196,8 @@ export const GitPanel: React.FC = () => {
               {staged.map(file => (
                 <div
                   key={file.path}
-                  onClick={() => {
-                    setSelectedFile(file.path);
-                    loadFileDiff(file.path);
-                  }}
-                  className={`flex items-center justify-between p-1.5 rounded text-xs font-mono cursor-pointer transition ${
-                    selectedFile === file.path ? 'bg-slate-800/80' : 'hover:bg-slate-850/60'
-                  }`}
+                  onClick={() => handleWorkingFileClick(file.path)}
+                  className="flex items-center justify-between p-1.5 rounded text-xs font-mono cursor-pointer transition hover:bg-slate-850/60"
                 >
                   <div className="flex items-center space-x-2 truncate pr-2">
                     <span className={`w-3 font-bold text-center ${getStatusColor(file.status)}`}>
@@ -214,13 +234,8 @@ export const GitPanel: React.FC = () => {
               {unstaged.map(file => (
                 <div
                   key={file.path}
-                  onClick={() => {
-                    setSelectedFile(file.path);
-                    loadFileDiff(file.path);
-                  }}
-                  className={`flex items-center justify-between p-1.5 rounded text-xs font-mono cursor-pointer transition ${
-                    selectedFile === file.path ? 'bg-slate-800/80' : 'hover:bg-slate-850/60'
-                  }`}
+                  onClick={() => handleWorkingFileClick(file.path)}
+                  className="flex items-center justify-between p-1.5 rounded text-xs font-mono cursor-pointer transition hover:bg-slate-850/60"
                 >
                   <div className="flex items-center space-x-2 truncate pr-2">
                     <span className={`w-3 font-bold text-center ${getStatusColor(file.status)}`}>
@@ -256,7 +271,7 @@ export const GitPanel: React.FC = () => {
             <div className="space-y-1">
               {commits.map(commit => {
                 const isExpanded = expandedCommit === commit.hash;
-                const files = commitFiles[commit.hash] || [];
+                const files = commitFiles[commit.hash];
 
                 return (
                   <div key={commit.hash} className="border border-slate-800 rounded bg-[#171717]/30 overflow-hidden">
@@ -291,8 +306,10 @@ export const GitPanel: React.FC = () => {
                     {/* Commit Expanded Files list */}
                     {isExpanded && (
                       <div className="p-2 bg-slate-950/20 border-t border-slate-900 space-y-1">
-                        {files.length === 0 ? (
+                        {!files ? (
                           <div className="text-[9px] text-slate-500 italic font-mono pl-4">Loading changed files...</div>
+                        ) : files.length === 0 ? (
+                          <div className="text-[9px] text-slate-500 italic font-mono pl-4">No changed files</div>
                         ) : (
                           files.map(file => (
                             <div
@@ -318,31 +335,6 @@ export const GitPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Bottom Panel: Commit Form */}
-      <div className="bg-[#171717] p-3 border-t border-slate-800 flex items-center space-x-3 select-none shrink-0">
-        <input
-          type="text"
-          value={commitMessage}
-          onChange={(e) => setCommitMessage(e.target.value)}
-          placeholder="Type commit message..."
-          className="flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-brand font-mono"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') handleCommit();
-          }}
-        />
-        <button
-          onClick={handleCommit}
-          disabled={staged.length === 0 || !commitMessage.trim()}
-          className={`flex items-center space-x-1 text-xs font-semibold px-3 py-1.5 rounded transition ${
-            staged.length === 0 || !commitMessage.trim()
-              ? 'text-slate-500 bg-slate-800 cursor-default'
-              : 'text-white bg-brand hover:bg-brand/80 active:bg-brand/90'
-          }`}
-        >
-          <Send size={12} />
-          <span>Commit</span>
-        </button>
-      </div>
     </div>
   );
 };

@@ -20,6 +20,7 @@ export const GitDiffCompare: React.FC<GitDiffCompareProps> = ({ tabPath }) => {
   // Parse: git-diff:commit_hash:file_path
   const parts = tabPath.split(':');
   const commitHash = parts[1] || '';
+  const isWorkingTree = commitHash === 'working';
   const filePath = parts.slice(2).join(':') || '';
   const fileName = filePath.split('/').pop() || filePath;
 
@@ -56,19 +57,16 @@ export const GitDiffCompare: React.FC<GitDiffCompareProps> = ({ tabPath }) => {
       setIsLoading(true);
       setError(null);
       try {
-        // Original: parent of the commit (commitHash~1)
+        // Working changes compare HEAD to disk; commits compare parent to commit.
         const original = await invoke<string>('get_git_file_content_at_rev', {
           cwd: workspacePath,
-          rev: `${commitHash}~1`,
+          rev: isWorkingTree ? 'HEAD' : `${commitHash}~1`,
           filePath,
         });
 
-        // Modified: the commit itself (commitHash)
-        const modified = await invoke<string>('get_git_file_content_at_rev', {
-          cwd: workspacePath,
-          rev: commitHash,
-          filePath,
-        });
+        const modified = isWorkingTree
+          ? await invoke<string>('get_git_worktree_file_content', { cwd: workspacePath, filePath })
+          : await invoke<string>('get_git_file_content_at_rev', { cwd: workspacePath, rev: commitHash, filePath });
 
         setOriginalContent(original);
         setModifiedContent(modified);
@@ -83,7 +81,7 @@ export const GitDiffCompare: React.FC<GitDiffCompareProps> = ({ tabPath }) => {
     if (commitHash && filePath) {
       loadContent();
     }
-  }, [tabPath, commitHash, filePath, workspacePath]);
+  }, [tabPath, commitHash, filePath, isWorkingTree, workspacePath]);
 
   if (isLoading) {
     return (
@@ -114,11 +112,11 @@ export const GitDiffCompare: React.FC<GitDiffCompareProps> = ({ tabPath }) => {
             {fileName}
           </span>
           <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-brand/60 text-brand-light border border-brand/50 uppercase tracking-wider font-mono">
-            Commit: {commitHash.substring(0, 8)}
+            {isWorkingTree ? 'Working Tree' : `Commit: ${commitHash.substring(0, 8)}`}
           </span>
         </div>
         <div className="text-[9px] font-mono text-slate-500 uppercase tracking-wider">
-          Side-by-side comparison (Parent vs Commit)
+          {isWorkingTree ? 'HEAD vs Working Tree' : 'Parent vs Commit'}
         </div>
       </div>
 

@@ -7,6 +7,12 @@ pub struct GitFileStatus {
     pub staged: bool,
 }
 
+#[derive(serde::Serialize)]
+pub struct GitUser {
+    pub name: String,
+    pub email: String,
+}
+
 #[tauri::command]
 pub fn get_git_status(cwd: String) -> Result<Vec<GitFileStatus>, String> {
     let output = Command::new("git")
@@ -125,6 +131,24 @@ pub fn get_git_branch(cwd: String) -> Result<String, String> {
     }
 }
 
+#[tauri::command]
+pub fn get_git_user(cwd: String) -> GitUser {
+    let config = |key: &str| {
+        Command::new("git")
+            .args(["config", "--get", key])
+            .current_dir(&cwd)
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+            .unwrap_or_default()
+    };
+    GitUser {
+        name: config("user.name"),
+        email: config("user.email"),
+    }
+}
+
 #[derive(serde::Serialize)]
 pub struct GitCommit {
     pub hash: String,
@@ -166,7 +190,7 @@ pub fn get_git_commit_log(cwd: String) -> Result<Vec<GitCommit>, String> {
 #[tauri::command]
 pub fn get_git_commit_files(cwd: String, hash: String) -> Result<Vec<GitFileStatus>, String> {
     let output = Command::new("git")
-        .args(["diff-tree", "--no-commit-id", "--name-status", "-r", &hash])
+        .args(["diff-tree", "--root", "--no-commit-id", "--name-status", "--no-renames", "-r", "-z", &hash])
         .current_dir(&cwd)
         .output()
         .map_err(|e| e.to_string())?;
@@ -175,21 +199,20 @@ pub fn get_git_commit_files(cwd: String, hash: String) -> Result<Vec<GitFileStat
         return Err(String::from_utf8_lossy(&output.stderr).to_string());
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut files = Vec::new();
+    Ok(parse_name_status(&String::from_utf8_lossy(&output.stdout)))
+}
 
-    for line in stdout.lines() {
-        let mut parts = line.split_whitespace();
-        if let (Some(status), Some(path)) = (parts.next(), parts.next()) {
+fn parse_name_status(stdout: &str) -> Vec<GitFileStatus> {
+    let mut files = Vec::new();
+    let mut fields = stdout.split('\0').filter(|field| !field.is_empty());
+    while let (Some(status), Some(path)) = (fields.next(), fields.next()) {
             files.push(GitFileStatus {
                 path: path.to_string(),
                 status: status.to_string(),
                 staged: false,
             });
-        }
     }
-
-    Ok(files)
+    files
 }
 
 #[tauri::command]
@@ -205,4 +228,21 @@ pub fn get_git_file_content_at_rev(cwd: String, rev: String, file_path: String) 
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+#[tauri::command]
+pub fn get_git_worktree_file_content(cwd: String, file_path: String) -> String {
+    std::fs::read_to_string(std::path::Path::new(&cwd).join(file_path)).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_name_status;
+
+    #[test]
+    fn parses_root_commit_files_and_paths_with_spaces() {
+        let files = parse_name_status("A\0README.md\0M\0docs/user guide.md\0");
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[1].path, "docs/user guide.md");
+    }
 }
