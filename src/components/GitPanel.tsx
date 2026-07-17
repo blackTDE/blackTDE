@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { GitBranch, RefreshCw, Plus, Minus, Send, ChevronDown, ChevronRight, FileText, Clock, User, Download, Upload } from 'lucide-react';
+import { GitBranch, RefreshCw, Plus, Minus, Send, ChevronDown, ChevronRight, FileText, Clock, User, Download, Upload, Loader2 } from 'lucide-react';
 import { useWorkspaceStore, GitFileStatus } from '../store/workspaceStore';
 
 interface GitCommit {
@@ -29,7 +29,7 @@ export const GitPanel: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [gitUser, setGitUser] = useState<GitUser>({ name: '', email: '' });
   const [remoteStatus, setRemoteStatus] = useState<GitRemoteStatus>({ remote_name: '', remote_url: '', upstream: '', ahead: 0, behind: 0 });
-  const [activeOperation, setActiveOperation] = useState<string | null>(null);
+  const [activeOperation, setActiveOperation] = useState<{ command: string; label: string } | null>(null);
   const [operationMessage, setOperationMessage] = useState<{ error: boolean; text: string } | null>(null);
 
   // Git Commit History States
@@ -61,14 +61,15 @@ export const GitPanel: React.FC = () => {
     }
   };
 
-  const runGitOperation = async (command: string, label: string) => {
+  const runGitOperation = async (command: string, label: string, args: Record<string, unknown> = {}, onSuccess?: () => void) => {
     if (activeOperation) return;
-    setActiveOperation(command);
+    setActiveOperation({ command, label });
     setOperationMessage(null);
     try {
-      const output = await invoke<string>(command, { cwd: workspacePath });
+      const output = await invoke<string>(command, { cwd: workspacePath, ...args });
       setOperationMessage({ error: false, text: output || `${label} complete` });
       await loadGitStatus(false);
+      onSuccess?.();
     } catch (err) {
       setOperationMessage({ error: true, text: `${label} failed: ${err}` });
     } finally {
@@ -76,37 +77,16 @@ export const GitPanel: React.FC = () => {
     }
   };
 
-  const handleStageFile = async (filePath: string) => {
-    try {
-      await invoke('git_stage_file', { cwd: workspacePath, filePath });
-      await loadGitStatus();
-    } catch (err) {
-      alert('Failed to stage file: ' + err);
-    }
-  };
+  const handleStageFile = (filePath: string) => void runGitOperation('git_stage_file', 'Stage file', { filePath });
 
-  const handleUnstageFile = async (filePath: string) => {
-    try {
-      await invoke('git_unstage_file', { cwd: workspacePath, filePath });
-      await loadGitStatus();
-    } catch (err) {
-      alert('Failed to unstage file: ' + err);
-    }
-  };
+  const handleUnstageFile = (filePath: string) => void runGitOperation('git_unstage_file', 'Unstage file', { filePath });
 
   const handleCommit = async () => {
     if (!commitMessage.trim()) {
       alert('Please enter a commit message');
       return;
     }
-    try {
-      await invoke('git_commit_changes', { cwd: workspacePath, message: commitMessage });
-      setCommitMessage('');
-      await loadGitStatus();
-      alert('Changes committed successfully!');
-    } catch (err) {
-      alert('Failed to commit changes: ' + err);
-    }
+    await runGitOperation('git_commit_changes', 'Commit', { message: commitMessage }, () => setCommitMessage(''));
   };
 
   const handleCommitClick = async (hash: string) => {
@@ -175,7 +155,7 @@ export const GitPanel: React.FC = () => {
         </div>
         <button
           onClick={() => void loadGitStatus()}
-          disabled={isLoading}
+          disabled={isLoading || !!activeOperation}
           className="p-1 hover:bg-slate-800 text-slate-400 rounded transition"
           title="Refresh Git status"
         >
@@ -202,7 +182,7 @@ export const GitPanel: React.FC = () => {
               <div className="mt-1 truncate text-[9px] text-slate-600" title={remoteStatus.remote_url}>{remoteStatus.remote_url}</div>
               <div className="mt-2 grid grid-cols-3 gap-1">
                 <button type="button" onClick={() => void runGitOperation('git_fetch_remote', 'Fetch')} disabled={!!activeOperation} className="flex items-center justify-center gap-1 rounded bg-slate-800 px-1 py-1 text-[9px] text-slate-300 hover:bg-slate-700 disabled:opacity-50">
-                  <RefreshCw size={10} className={activeOperation === 'git_fetch_remote' ? 'animate-spin' : ''} /> Fetch
+                  <RefreshCw size={10} className={activeOperation?.command === 'git_fetch_remote' ? 'animate-spin' : ''} /> Fetch
                 </button>
                 <button type="button" onClick={() => void runGitOperation('git_pull_remote', 'Pull')} disabled={!!activeOperation} className="flex items-center justify-center gap-1 rounded bg-slate-800 px-1 py-1 text-[9px] text-slate-300 hover:bg-slate-700 disabled:opacity-50">
                   <Download size={10} /> Pull
@@ -215,8 +195,13 @@ export const GitPanel: React.FC = () => {
           ) : (
             <div className="text-[10px] italic text-slate-500">No Git remote configured</div>
           )}
-          {operationMessage && (
-            <div className={`mt-2 break-words text-[9px] ${operationMessage.error ? 'text-rose-400' : 'text-emerald-400'}`}>
+          {activeOperation ? (
+            <div role="status" aria-live="polite" className="mt-2 flex items-center gap-1 text-[9px] text-brand-light">
+              <Loader2 size={10} className="animate-spin" />
+              <span>{activeOperation.label}…</span>
+            </div>
+          ) : operationMessage && (
+            <div role={operationMessage.error ? 'alert' : 'status'} aria-live="polite" className={`mt-2 break-words text-[9px] ${operationMessage.error ? 'text-rose-400' : 'text-emerald-400'}`}>
               {operationMessage.text}
             </div>
           )}
@@ -236,9 +221,9 @@ export const GitPanel: React.FC = () => {
           />
           <button
             onClick={handleCommit}
-            disabled={staged.length === 0 || !commitMessage.trim()}
+            disabled={staged.length === 0 || !commitMessage.trim() || !!activeOperation}
             className={`flex items-center space-x-1 text-xs font-semibold px-2 py-1.5 rounded transition ${
-              staged.length === 0 || !commitMessage.trim()
+              staged.length === 0 || !commitMessage.trim() || !!activeOperation
                 ? 'text-slate-500 bg-slate-800 cursor-default'
                 : 'text-white bg-brand hover:bg-brand/80 active:bg-brand/90'
             }`}
@@ -274,11 +259,12 @@ export const GitPanel: React.FC = () => {
                     <span className="truncate text-slate-300">{file.path}</span>
                   </div>
                   <button
+                    disabled={!!activeOperation}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleUnstageFile(file.path);
                     }}
-                    className="p-1 hover:bg-slate-700/65 text-slate-400 rounded hover:text-red-400"
+                    className="p-1 hover:bg-slate-700/65 text-slate-400 rounded hover:text-red-400 disabled:opacity-40"
                     title="Unstage File"
                   >
                     <Minus size={11} />
@@ -315,11 +301,12 @@ export const GitPanel: React.FC = () => {
                     <span className="truncate text-slate-300">{file.path}</span>
                   </div>
                   <button
+                    disabled={!!activeOperation}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleStageFile(file.path);
                     }}
-                    className="p-1 hover:bg-slate-700/65 text-slate-400 rounded hover:text-emerald-400"
+                    className="p-1 hover:bg-slate-700/65 text-slate-400 rounded hover:text-emerald-400 disabled:opacity-40"
                     title="Stage File"
                   >
                     <Plus size={11} />
