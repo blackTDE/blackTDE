@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { useWorkspaceStore } from '../src/store/workspaceStore.ts';
+import { hasWorkspacePath, useWorkspaceStore } from '../src/store/workspaceStore.ts';
 
 const resetPaneState = () => {
   useWorkspaceStore.setState({
@@ -14,6 +14,11 @@ const resetPaneState = () => {
     paneLayoutsByProject: {},
   });
 };
+
+test('recognizes a project path with trailing separators as a duplicate', () => {
+  assert.equal(hasWorkspacePath([{ id: 'project', name: 'Project', path: '/project' }], '/project/'), true);
+  assert.equal(hasWorkspacePath([{ id: 'project', name: 'Project', path: '/project' }], '/other'), false);
+});
 
 test('moves an assigned session instead of duplicating it', () => {
   resetPaneState();

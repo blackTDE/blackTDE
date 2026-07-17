@@ -7,6 +7,11 @@ export interface WorkspaceEntry {
   path: string;
 }
 
+export const hasWorkspacePath = (workspaces: WorkspaceEntry[], path: string): boolean => {
+  const normalizedPath = path.replace(/[\\/]+$/, '');
+  return workspaces.some((workspace) => workspace.path.replace(/[\\/]+$/, '') === normalizedPath);
+};
+
 export interface SessionInfo {
   id: string;
   agentType: string; // "claude" | "aider" | "custom"

@@ -3,7 +3,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import { restoreTerminal } from '../terminalRestore';
+import { modifiedEnterSequence, restoreTerminal } from '../terminalRestore';
 import { isLocalShell, shellResumeMessage, type ShellResumeKind } from '../shellRestore';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import {
@@ -188,13 +188,22 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
       });
     });
 
-    // Handle user keyboard/mouse input
-    const dataDisposer = term.onData((data) => {
+    const writeInput = (data: string) => {
       const bytes = new TextEncoder().encode(data);
       invoke('write_to_session', { id: sessionId, data: Array.from(bytes) }).catch((err) => {
         console.error('Failed to write key to session:', err);
       });
+    };
+
+    term.attachCustomKeyEventHandler((event) => {
+      const sequence = modifiedEnterSequence(event);
+      if (!sequence) return true;
+      writeInput(sequence);
+      return false;
     });
+
+    // Handle user keyboard/mouse input
+    const dataDisposer = term.onData(writeInput);
 
     // Resize tracking
     const resizeObserver = new ResizeObserver(() => {

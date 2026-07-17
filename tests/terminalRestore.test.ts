@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { restoreTerminal } from '../src/terminalRestore.ts';
+import { modifiedEnterSequence, restoreTerminal } from '../src/terminalRestore.ts';
+
+test('encodes Shift+Enter separately from ordinary Enter', () => {
+  assert.equal(modifiedEnterSequence({ type: 'keydown', key: 'Enter', shiftKey: true }), '\x1b[13;2u');
+  assert.equal(modifiedEnterSequence({ type: 'keydown', key: 'Enter', shiftKey: false }), null);
+  assert.equal(modifiedEnterSequence({ type: 'keyup', key: 'Enter', shiftKey: true }), null);
+});
 
 const createActions = (active: boolean | Error) => {
   const events: string[] = [];

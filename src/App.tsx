@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getVisiblePaneCount, useWorkspaceStore } from './store/workspaceStore';
+import { getVisiblePaneCount, hasWorkspacePath, useWorkspaceStore } from './store/workspaceStore';
 import { dedupeSessions } from './sessionUtils';
 import { TerminalGrid } from './components/TerminalGrid';
 import { SettingsPanel } from './components/SettingsPanel';
@@ -220,8 +220,13 @@ function App() {
   };
 
   const handleCreateProject = async () => {
-    if (!newProjectPath.trim()) {
+    const projectPath = newProjectPath.trim();
+    if (!projectPath) {
       alert('Please enter or select a directory path.');
+      return;
+    }
+    if (hasWorkspacePath(workspaces, projectPath)) {
+      alert('This project is already in the project tree.');
       return;
     }
     const finalName = newProjectName.trim() || 'unnamed_project';
@@ -230,7 +235,7 @@ function App() {
       await invoke('create_workspace', {
         id,
         name: finalName,
-        path: newProjectPath.trim()
+        path: projectPath
       });
       setNewProjectName('');
       setNewProjectPath('');
