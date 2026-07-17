@@ -100,6 +100,8 @@ function App() {
   const [resumeSessionId, setResumeSessionId] = useState('');
   const [detectedClis, setDetectedClis] = useState<string[]>([]);
   const [privileged, setPrivileged] = useState(true);
+  const [isSpawningSession, setIsSpawningSession] = useState(false);
+  const [spawnSessionError, setSpawnSessionError] = useState<string | null>(null);
 
   // SSH Session Spawner state
   const [sessionType, setSessionType] = useState<'local' | 'ssh'>('local');
@@ -285,6 +287,7 @@ function App() {
     setCmdInput('/bin/zsh');
     setArgsInput('');
     setResumeSessionId('');
+    setSpawnSessionError(null);
     setSessionType('local');
     setSshHostSelect('manual');
     setSshHostManual('');
@@ -333,6 +336,8 @@ function App() {
   }, [activeFileTab]);
 
   const handleCreateSession = async () => {
+    if (isSpawningSession) return;
+
     if (resumeSessionId) {
       const existingSession = pastSessions.find((session) => session.id === resumeSessionId);
       if (!existingSession) {
@@ -343,6 +348,11 @@ function App() {
       handleSelectSession(modalTargetProject || activeWorkspace, existingSession.id);
       setResumeSessionId('');
       setShowNewSessionModal(false);
+      return;
+    }
+
+    if (sessionType === 'local' && !cmdInput.trim()) {
+      setSpawnSessionError('Enter a command to start.');
       return;
     }
 
@@ -361,7 +371,7 @@ function App() {
       finalArgs = [];
       if (sshHostSelect === 'manual') {
         if (!sshHostManual) {
-          alert('Please enter an SSH host or IP address.');
+          setSpawnSessionError('Enter an SSH host or IP address.');
           return;
         }
         let hostString = sshHostManual;
@@ -378,6 +388,8 @@ function App() {
       finalAgentType = getFriendlySshHost(finalSshHost);
     }
 
+    setSpawnSessionError(null);
+    setIsSpawningSession(true);
     try {
       await invoke('spawn_session', {
         id: newSessionId,
@@ -408,7 +420,9 @@ function App() {
       loadPastSessions();
       setShowNewSessionModal(false);
     } catch (error) {
-      alert('Failed to spawn session: ' + error);
+      setSpawnSessionError(String(error));
+    } finally {
+      setIsSpawningSession(false);
     }
   };
 
@@ -1277,18 +1291,25 @@ function App() {
             </div>
 
             {/* Modal Footer */}
-            <div className="bg-surface-1 px-4 py-3 border-t border-surface-2 flex justify-end space-x-2.5">
+            <div className="bg-surface-1 px-4 py-3 border-t border-surface-2 flex items-center gap-2.5">
+              {spawnSessionError && (
+                <p className="mr-auto text-[10px] font-mono text-red-400" role="alert">
+                  Failed to spawn: {spawnSessionError}
+                </p>
+              )}
               <button
                 onClick={() => setShowNewSessionModal(false)}
+                disabled={isSpawningSession}
                 className="bg-surface-3 text-zinc-400 font-semibold px-3.5 py-1.5 rounded text-xs hover:bg-surface-2 cursor-pointer transition"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCreateSession}
-                className="bg-brand text-white font-semibold px-4 py-1.5 rounded text-xs hover:bg-brand/90 cursor-pointer transition"
+                disabled={isSpawningSession}
+                className="bg-brand text-white font-semibold px-4 py-1.5 rounded text-xs hover:bg-brand/90 cursor-pointer transition disabled:opacity-60 disabled:cursor-wait"
               >
-                Spawn Session
+                {isSpawningSession ? 'Spawning…' : 'Spawn Session'}
               </button>
             </div>
           </div>

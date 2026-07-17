@@ -315,9 +315,19 @@ async fn spawn_session(
         }
     }
 
-    let active_process =
+    let spawn_result =
         process::spawn_pty_process(&resolved_command, command_args, &cwd, rows, cols, envs)
-            .map_err(|e| e.to_string())?;
+            .map_err(|error| error.to_string());
+    let active_process = match spawn_result {
+        Ok(process) => process,
+        Err(error) => {
+            let _ = sqlx::query("DELETE FROM sessions WHERE id = $1")
+                .bind(&id)
+                .execute(&*pool)
+                .await;
+            return Err(error);
+        }
+    };
 
     let master_clone = active_process.master.clone();
     let process_instance_id = active_process.instance_id;
