@@ -52,7 +52,8 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--primary);
 }
 
-/* Monaco can place a transient control tooltip over the find button that opened it. */
-body:has(.monaco-editor .find-widget.visible) .workbench-hover-container:not(.locked) {
-  pointer-events: none;
+/* Monaco can place a transient control tooltip over the button that opened it. */
+.workbench-hover-container:not(.locked),
+.workbench-hover-container:not(.locked) * {
+  pointer-events: none !important;
 }
