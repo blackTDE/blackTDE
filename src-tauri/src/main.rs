@@ -1537,7 +1537,8 @@ fn main() {
             skills_manager::create_skill,
             skills_manager::clone_skill,
             skills_manager::read_skill_file,
-            skills_manager::save_skill_file
+            skills_manager::save_skill_file,
+            skills_manager::install_from_vault
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
