@@ -6,6 +6,7 @@ mod process;
 mod provider;
 mod settings;
 mod shell_session;
+mod skills_manager;
 mod ssh_sftp;
 
 use sqlx::{Row, SqlitePool};
@@ -1528,7 +1529,15 @@ fn main() {
             ssh_sftp::sftp_download_file,
             ssh_sftp::sftp_upload_file,
             ssh_sftp::select_local_file_to_upload,
-            ssh_sftp::select_local_download_destination
+            ssh_sftp::select_local_download_destination,
+            skills_manager::list_agent_skills,
+            skills_manager::copy_skill,
+            skills_manager::move_skill,
+            skills_manager::delete_skill,
+            skills_manager::create_skill,
+            skills_manager::clone_skill,
+            skills_manager::read_skill_file,
+            skills_manager::save_skill_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
