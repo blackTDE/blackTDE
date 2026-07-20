@@ -16,15 +16,19 @@ import {
   RefreshCw,
   Loader2,
   Globe,
-  Folder
+  Folder,
+  Archive,
+  Download,
+  ShieldAlert
 } from 'lucide-react';
 
 export interface SkillItem {
   id: string;
   name: string;
-  agent_type: string; // "gemini", "claude", "codex", "aider"
-  scope: string;      // "global", "workspace"
+  agent_type: string; // "gemini", "claude", "codex", "aider", "vault", "custom"
+  scope: string;      // "global", "workspace", "plugin", "vault"
   path: string;
+  plugin_name?: string;
   description?: string;
   has_skill_md: boolean;
   file_count: number;
@@ -35,6 +39,8 @@ export const filterSkills = (skills: SkillItem[], query: string, agentFilter: st
   return skills.filter((s) => {
     const matchesAgent =
       agentFilter === 'all' ||
+      (agentFilter === 'plugins' && s.scope === 'plugin') ||
+      (agentFilter === 'vault' && s.scope === 'vault') ||
       s.agent_type === agentFilter ||
       (agentFilter === 'workspace' && s.scope === 'workspace');
     const q = query.toLowerCase().trim();
@@ -42,6 +48,7 @@ export const filterSkills = (skills: SkillItem[], query: string, agentFilter: st
       !q ||
       s.name.toLowerCase().includes(q) ||
       (s.description && s.description.toLowerCase().includes(q)) ||
+      (s.plugin_name && s.plugin_name.toLowerCase().includes(q)) ||
       s.path.toLowerCase().includes(q);
     return matchesAgent && matchesQuery;
   });
@@ -59,8 +66,10 @@ export const SkillsPanel: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCloneModal, setShowCloneModal] = useState(false);
   const [transferModalSkill, setTransferModalSkill] = useState<{ skill: SkillItem; mode: 'copy' | 'move' } | null>(null);
+  const [installVaultSkill, setInstallVaultSkill] = useState<SkillItem | null>(null);
   const [editSkill, setEditSkill] = useState<SkillItem | null>(null);
   const [deleteConfirmSkill, setDeleteConfirmSkill] = useState<SkillItem | null>(null);
+  const [deletePermanent, setDeletePermanent] = useState(false);
 
   // Form states
   const [createName, setCreateName] = useState('');
@@ -176,12 +185,38 @@ export const SkillsPanel: React.FC = () => {
     }
   };
 
+  const handleInstallFromVault = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!installVaultSkill) return;
+    setLoading(true);
+    try {
+      await invoke('install_from_vault', {
+        vaultPath: installVaultSkill.path,
+        targetAgent: targetAgent,
+        scope: targetScope,
+        workspacePath: activeWorkspace?.path || null,
+        newName: null,
+        moveFromVault: false,
+      });
+      setInstallVaultSkill(null);
+      await fetchSkills();
+    } catch (err) {
+      alert(`Failed to install skill from vault: ${err}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDeleteSkill = async () => {
     if (!deleteConfirmSkill) return;
     setLoading(true);
     try {
-      await invoke('delete_skill', { path: deleteConfirmSkill.path });
+      await invoke('delete_skill', {
+        path: deleteConfirmSkill.path,
+        permanent: deletePermanent,
+      });
       setDeleteConfirmSkill(null);
+      setDeletePermanent(false);
       await fetchSkills();
     } catch (err) {
       alert(`Failed to delete skill: ${err}`);
@@ -271,13 +306,13 @@ export const SkillsPanel: React.FC = () => {
         </button>
       </div>
 
-      {/* Search & Agent Filters */}
+      {/* Search & Agent/Plugin/Vault Filters */}
       <div className="p-2.5 border-b border-surface-2 space-y-2">
         <div className="relative">
           <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-zinc-500" />
           <input
             type="text"
-            placeholder="Search skills by name, prompt, agent..."
+            placeholder="Search skills, plugins, prompts..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-surface-2 border border-surface-3 rounded pl-8 pr-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-brand/60"
@@ -292,6 +327,8 @@ export const SkillsPanel: React.FC = () => {
             { id: 'codex', label: 'Codex' },
             { id: 'aider', label: 'Aider' },
             { id: 'workspace', label: 'Workspace' },
+            { id: 'plugins', label: 'Plugins' },
+            { id: 'vault', label: 'Vault' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -313,7 +350,7 @@ export const SkillsPanel: React.FC = () => {
         {loading && skills.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 space-y-2 text-zinc-500">
             <Loader2 className="w-5 h-5 animate-spin text-brand" />
-            <span>Scanning agent skills directories...</span>
+            <span>Scanning agent skills & plugins...</span>
           </div>
         ) : error ? (
           <div className="p-3 bg-rose-950/40 border border-rose-800/50 rounded text-rose-300 text-xs">
@@ -324,7 +361,7 @@ export const SkillsPanel: React.FC = () => {
             <Sparkles className="w-8 h-8 opacity-30" />
             <p className="font-medium text-zinc-400">No skills found</p>
             <p className="text-[11px]">
-              {searchQuery ? 'Try adjusting your search query or filter.' : 'Create or clone a skill into an agent directory.'}
+              {searchQuery ? 'Try adjusting your search query or filter.' : 'Create, clone, or move skills into your vault.'}
             </p>
           </div>
         ) : (
@@ -335,21 +372,33 @@ export const SkillsPanel: React.FC = () => {
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center space-x-2 truncate">
-                  <AgentIcon name={skill.agent_type} size={18} />
+                  <AgentIcon name={skill.agent_type === 'vault' ? 'custom' : skill.agent_type} size={18} />
                   <span className="font-semibold text-zinc-100 truncate text-xs" title={skill.name}>
                     {skill.name}
                   </span>
                 </div>
                 <div className="flex items-center space-x-1 shrink-0">
-                  <span
-                    className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-medium border ${
-                      skill.scope === 'workspace'
-                        ? 'bg-amber-950/40 text-amber-300 border-amber-800/40'
-                        : 'bg-indigo-950/40 text-indigo-300 border-indigo-800/40'
-                    }`}
-                  >
-                    {skill.scope === 'workspace' ? 'Workspace' : 'Global'}
-                  </span>
+                  {skill.scope === 'plugin' && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded font-mono font-medium border bg-purple-950/50 text-purple-300 border-purple-800/50 truncate max-w-[100px]" title={`Plugin: ${skill.plugin_name}`}>
+                      Plugin: {skill.plugin_name}
+                    </span>
+                  )}
+                  {skill.scope === 'vault' && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded font-mono font-medium border bg-emerald-950/50 text-emerald-300 border-emerald-800/50 flex items-center gap-1">
+                      <Archive className="w-2.5 h-2.5" />
+                      <span>Vault</span>
+                    </span>
+                  )}
+                  {skill.scope === 'workspace' && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded font-mono font-medium border bg-amber-950/40 text-amber-300 border-amber-800/40">
+                      Workspace
+                    </span>
+                  )}
+                  {skill.scope === 'global' && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded font-mono font-medium border bg-indigo-950/40 text-indigo-300 border-indigo-800/40">
+                      Global
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -360,46 +409,71 @@ export const SkillsPanel: React.FC = () => {
               )}
 
               <div className="flex items-center justify-between text-[10px] text-zinc-500 pt-1 border-t border-surface-3/30 font-mono">
-                <div className="truncate max-w-[170px]" title={skill.path}>
+                <div className="truncate max-w-[150px]" title={skill.path}>
                   {skill.path.replace(/^.*[\\/]/, '')} ({skill.file_count} files)
                 </div>
                 <div className="flex items-center space-x-1 opacity-90 group-hover:opacity-100 transition">
-                  <button
-                    onClick={() => void handleOpenEdit(skill)}
-                    className="p-1 hover:bg-surface-3 rounded text-zinc-400 hover:text-zinc-200"
-                    title="View/Edit SKILL.md"
-                  >
-                    <FileText className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      setTransferModalSkill({ skill, mode: 'copy' });
-                      setTargetAgent(skill.agent_type);
-                      setTargetScope(skill.scope === 'global' ? 'workspace' : 'global');
-                    }}
-                    className="p-1 hover:bg-surface-3 rounded text-zinc-400 hover:text-zinc-200"
-                    title="Copy skill to agent"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      setTransferModalSkill({ skill, mode: 'move' });
-                      setTargetAgent(skill.agent_type);
-                      setTargetScope(skill.scope === 'global' ? 'workspace' : 'global');
-                    }}
-                    className="p-1 hover:bg-surface-3 rounded text-zinc-400 hover:text-zinc-200"
-                    title="Move skill to agent"
-                  >
-                    <FolderInput className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => setDeleteConfirmSkill(skill)}
-                    className="p-1 hover:bg-rose-950/50 rounded text-zinc-500 hover:text-rose-400"
-                    title="Delete skill"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {skill.scope === 'vault' ? (
+                    <button
+                      onClick={() => {
+                        setInstallVaultSkill(skill);
+                        setTargetAgent('gemini');
+                        setTargetScope('global');
+                      }}
+                      className="px-2 py-0.5 bg-brand/20 hover:bg-brand/40 text-brand-light border border-brand/40 rounded flex items-center gap-1 text-[10px] font-sans font-medium"
+                      title="Install skill from Vault to Coding Agent"
+                    >
+                      <Download className="w-3 h-3" />
+                      <span>Install</span>
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => void handleOpenEdit(skill)}
+                        className="p-1 hover:bg-surface-3 rounded text-zinc-400 hover:text-zinc-200"
+                        title="View/Edit SKILL.md"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setTransferModalSkill({ skill, mode: 'copy' });
+                          setTargetAgent(skill.agent_type);
+                          setTargetScope(skill.scope === 'global' ? 'workspace' : 'global');
+                        }}
+                        className="p-1 hover:bg-surface-3 rounded text-zinc-400 hover:text-zinc-200"
+                        title="Copy skill to agent"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                      {skill.scope !== 'plugin' && (
+                        <button
+                          onClick={() => {
+                            setTransferModalSkill({ skill, mode: 'move' });
+                            setTargetAgent(skill.agent_type);
+                            setTargetScope(skill.scope === 'global' ? 'workspace' : 'global');
+                          }}
+                          className="p-1 hover:bg-surface-3 rounded text-zinc-400 hover:text-zinc-200"
+                          title="Move skill to agent"
+                        >
+                          <FolderInput className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </>
+                  )}
+
+                  {skill.scope !== 'plugin' && (
+                    <button
+                      onClick={() => {
+                        setDeleteConfirmSkill(skill);
+                        setDeletePermanent(false);
+                      }}
+                      className="p-1 hover:bg-rose-950/50 rounded text-zinc-500 hover:text-rose-400"
+                      title={skill.scope === 'vault' ? 'Delete skill permanently' : 'Move skill to Vault (soft delete)'}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -663,6 +737,84 @@ export const SkillsPanel: React.FC = () => {
         </div>
       )}
 
+      {/* Modal: Install Skill from Vault */}
+      {installVaultSkill && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-surface-1 border border-surface-3 rounded-lg w-full max-w-md p-4 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b border-surface-2 pb-2">
+              <h3 className="font-semibold text-zinc-100 text-sm flex items-center gap-2">
+                <Download className="w-4 h-4 text-brand-light" />
+                Install Skill from Vault: {installVaultSkill.name}
+              </h3>
+              <button onClick={() => setInstallVaultSkill(null)} className="text-zinc-500 hover:text-zinc-300">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleInstallFromVault} className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-medium text-zinc-400 mb-1">Target Coding Agent</label>
+                <select
+                  value={targetAgent}
+                  onChange={(e) => setTargetAgent(e.target.value)}
+                  className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-xs text-zinc-100 focus:outline-none focus:border-brand"
+                >
+                  <option value="gemini">Gemini / Antigravity (~/.gemini/skills)</option>
+                  <option value="claude">Claude Code (~/.claude/skills)</option>
+                  <option value="codex">Codex CLI (~/.codex/skills)</option>
+                  <option value="aider">Aider (~/.aider/skills)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-zinc-400 mb-1">Target Scope</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTargetScope('global')}
+                    className={`py-1.5 px-2 rounded border text-xs font-medium flex items-center justify-center gap-1.5 ${
+                      targetScope === 'global'
+                        ? 'bg-brand/20 border-brand/50 text-brand-light'
+                        : 'bg-surface-2 border-surface-3 text-zinc-400'
+                    }`}
+                  >
+                    <Globe className="w-3.5 h-3.5" />
+                    <span>Global Agent</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTargetScope('workspace')}
+                    disabled={!activeWorkspace}
+                    className={`py-1.5 px-2 rounded border text-xs font-medium flex items-center justify-center gap-1.5 ${
+                      targetScope === 'workspace'
+                        ? 'bg-amber-950/40 border-amber-800/50 text-amber-300'
+                        : 'bg-surface-2 border-surface-3 text-zinc-400 opacity-60'
+                    }`}
+                  >
+                    <Folder className="w-3.5 h-3.5" />
+                    <span>Workspace</span>
+                  </button>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-surface-2">
+                <button
+                  type="button"
+                  onClick={() => setInstallVaultSkill(null)}
+                  className="px-3 py-1.5 rounded bg-surface-2 hover:bg-surface-3 text-zinc-300 text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-3 py-1.5 rounded bg-brand hover:bg-brand-dark text-white text-xs font-medium flex items-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Install to Agent</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal: View/Edit SKILL.md */}
       {editSkill && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -710,14 +862,62 @@ export const SkillsPanel: React.FC = () => {
       {deleteConfirmSkill && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-surface-1 border border-surface-3 rounded-lg w-full max-w-sm p-4 space-y-3 shadow-xl">
-            <h3 className="font-semibold text-rose-400 text-sm">Delete Skill</h3>
+            <h3 className="font-semibold text-rose-400 text-sm flex items-center gap-1.5">
+              <ShieldAlert className="w-4 h-4" />
+              <span>Delete Skill</span>
+            </h3>
             <p className="text-xs text-zinc-300">
-              Are you sure you want to delete <strong className="text-zinc-100">{deleteConfirmSkill.name}</strong>?
-              This will remove the skill folder at <code className="text-[10px] bg-surface-2 px-1 py-0.5 rounded text-amber-300 font-mono block mt-1 truncate">{deleteConfirmSkill.path}</code>.
+              Select deletion mode for <strong className="text-zinc-100">{deleteConfirmSkill.name}</strong>:
             </p>
+
+            {deleteConfirmSkill.scope !== 'vault' && (
+              <div className="space-y-2 pt-1">
+                <label className="flex items-start gap-2 p-2 rounded border border-surface-3 bg-surface-2/40 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="deleteMode"
+                    checked={!deletePermanent}
+                    onChange={() => setDeletePermanent(false)}
+                    className="mt-0.5 text-brand"
+                  />
+                  <div>
+                    <span className="font-semibold text-xs text-zinc-100 block">Move to Uniform Vault (Soft Delete)</span>
+                    <span className="text-[11px] text-zinc-400 block leading-tight">
+                      Archives skill folder into <code className="text-[9px] bg-black/50 px-1 rounded text-amber-300">~/.tde/skills_vault</code> so you can restore it anytime.
+                    </span>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-2 p-2 rounded border border-surface-3 bg-surface-2/40 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="deleteMode"
+                    checked={deletePermanent}
+                    onChange={() => setDeletePermanent(true)}
+                    className="mt-0.5 text-rose-500"
+                  />
+                  <div>
+                    <span className="font-semibold text-xs text-rose-400 block">Delete Permanently</span>
+                    <span className="text-[11px] text-zinc-400 block leading-tight">
+                      Irreversibly removes files from disk.
+                    </span>
+                  </div>
+                </label>
+              </div>
+            )}
+
+            {deleteConfirmSkill.scope === 'vault' && (
+              <p className="text-xs text-rose-300 bg-rose-950/30 p-2 rounded border border-rose-900/40">
+                This skill is in your Vault. Deleting will permanently remove it from disk.
+              </p>
+            )}
+
             <div className="flex justify-end gap-2 pt-2 border-t border-surface-2">
               <button
-                onClick={() => setDeleteConfirmSkill(null)}
+                onClick={() => {
+                  setDeleteConfirmSkill(null);
+                  setDeletePermanent(false);
+                }}
                 className="px-3 py-1.5 rounded bg-surface-2 text-zinc-300 text-xs"
               >
                 Cancel
