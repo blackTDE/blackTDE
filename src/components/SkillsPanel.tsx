@@ -309,14 +309,26 @@ export const SkillsPanel: React.FC = () => {
       {/* Search & Agent/Plugin/Vault Filters */}
       <div className="p-2.5 border-b border-surface-2 space-y-2">
         <div className="relative">
-          <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-zinc-500" />
+          <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-zinc-500 pointer-events-none" />
           <input
             type="text"
             placeholder="Search skills, plugins, prompts..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-surface-2 border border-surface-3 rounded pl-8 pr-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-brand/60"
+            onKeyDown={(e) => e.stopPropagation()}
+            onKeyUp={(e) => e.stopPropagation()}
+            className="w-full bg-surface-2 border border-surface-3 rounded pl-8 pr-7 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-brand/60"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2 top-2 text-zinc-500 hover:text-zinc-300 transition"
+              title="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-1 overflow-x-auto pb-0.5 text-[11px] scrollbar-none">
@@ -503,6 +515,8 @@ export const SkillsPanel: React.FC = () => {
                   placeholder="e.g. Code Reviewer"
                   value={createName}
                   onChange={(e) => setCreateName(e.target.value)}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  onKeyUp={(e) => e.stopPropagation()}
                   className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-xs text-zinc-100 focus:outline-none focus:border-brand"
                 />
               </div>
@@ -601,6 +615,8 @@ export const SkillsPanel: React.FC = () => {
                   placeholder="https://github.com/user/my-agent-skill.git"
                   value={cloneUrl}
                   onChange={(e) => setCloneUrl(e.target.value)}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  onKeyUp={(e) => e.stopPropagation()}
                   className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-xs text-zinc-100 focus:outline-none focus:border-brand font-mono"
                 />
               </div>
@@ -637,6 +653,8 @@ export const SkillsPanel: React.FC = () => {
                   placeholder="Leave empty to use repository name"
                   value={cloneCustomName}
                   onChange={(e) => setCloneCustomName(e.target.value)}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  onKeyUp={(e) => e.stopPropagation()}
                   className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-xs text-zinc-100 focus:outline-none focus:border-brand font-mono"
                 />
               </div>
