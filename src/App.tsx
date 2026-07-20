@@ -8,6 +8,7 @@ import { FilePreview } from './components/FilePreview';
 import { GitPanel } from './components/GitPanel';
 import { GitDiffCompare } from './components/GitDiffCompare';
 import { SearchPanel } from './components/SearchPanel';
+import { SkillsPanel } from './components/SkillsPanel';
 import { AgentIcon } from './components/AgentIcon';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -1049,6 +1050,17 @@ function App() {
                 <span>Search</span>
               </button>
               <button
+                onClick={() => setActiveRightPanel('skills')}
+                className={`flex-1 flex items-center justify-center space-x-1.5 py-2.5 text-xs font-semibold border-b-2 transition ${
+                  activeRightPanel === 'skills'
+                    ? 'border-brand text-zinc-100 bg-surface/30'
+                    : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                <Sparkles size={13} />
+                <span>Skills</span>
+              </button>
+              <button
                 onClick={() => setIsRightPaneExpanded(false)}
                 className="px-3 text-zinc-500 hover:text-zinc-300 transition cursor-pointer"
                 title="Collapse Panel"
@@ -1068,6 +1080,8 @@ function App() {
                 </div>
               ) : activeRightPanel === 'git' ? (
                 <GitPanel />
+              ) : activeRightPanel === 'skills' ? (
+                <SkillsPanel />
               ) : activeRightPanel !== 'search' ? (
                 <div className="w-full h-full flex flex-col items-center justify-center text-zinc-500 font-mono text-[10px]">
                   <Sparkles size={20} className="mb-1.5 text-zinc-650" />
