@@ -125,19 +125,47 @@ pub fn parse_skill_info(
 }
 
 fn count_files_and_size(dir: &Path) -> (usize, u64) {
+    count_files_and_size_bounded(dir, 0, 4)
+}
+
+fn count_files_and_size_bounded(dir: &Path, current_depth: usize, max_depth: usize) -> (usize, u64) {
+    if current_depth > max_depth {
+        return (0, 0);
+    }
     let mut files = 0;
     let mut bytes = 0;
 
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.filter_map(|e| e.ok()) {
+            let file_type = match entry.file_type() {
+                Ok(ft) => ft,
+                Err(_) => continue,
+            };
+            if file_type.is_symlink() {
+                continue; // Do NOT follow symlinks to avoid infinite loops or hangs
+            }
             let path = entry.path();
-            if path.is_file() {
+            if file_type.is_file() {
                 files += 1;
                 if let Ok(meta) = entry.metadata() {
                     bytes += meta.len();
                 }
-            } else if path.is_dir() {
-                let (sub_files, sub_bytes) = count_files_and_size(&path);
+            } else if file_type.is_dir() {
+                let folder_name = entry.file_name();
+                let name_str = folder_name.to_string_lossy();
+                if name_str == "node_modules"
+                    || name_str == ".git"
+                    || name_str == "dist"
+                    || name_str == "build"
+                    || name_str == "target"
+                    || name_str == ".next"
+                    || name_str == ".cache"
+                    || name_str == ".venv"
+                {
+                    continue; // Skip heavy ignored directories
+                }
+                let (sub_files, sub_bytes) =
+                    count_files_and_size_bounded(&path, current_depth + 1, max_depth);
                 files += sub_files;
                 bytes += sub_bytes;
             }
@@ -149,6 +177,12 @@ fn count_files_and_size(dir: &Path) -> (usize, u64) {
 
 #[tauri::command]
 pub async fn list_agent_skills(workspace_path: Option<String>) -> Result<Vec<SkillItem>, String> {
+    tokio::task::spawn_blocking(move || list_agent_skills_sync(workspace_path))
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
+}
+
+pub fn list_agent_skills_sync(workspace_path: Option<String>) -> Result<Vec<SkillItem>, String> {
     let mut items = Vec::new();
     let home_opt = std::env::var("HOME").ok().map(PathBuf::from);
 
@@ -540,5 +574,20 @@ mod tests {
         assert!(dest.exists());
 
         fs::remove_dir_all(temp_home).unwrap();
+    }
+
+    #[test]
+    fn test_count_files_skips_node_modules_and_symlinks() {
+        let temp = std::env::temp_dir().join(format!("tde-count-test-{}", uuid::Uuid::new_v4()));
+        let skill_dir = temp.join("skill-with-node-modules");
+        let nm_dir = skill_dir.join("node_modules/heavy-pkg");
+        fs::create_dir_all(&nm_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "test").unwrap();
+        fs::write(nm_dir.join("index.js"), "console.log(1)").unwrap();
+
+        let (files, _) = count_files_and_size(&skill_dir);
+        assert_eq!(files, 1); // Should only count SKILL.md, skipping node_modules
+
+        fs::remove_dir_all(temp).unwrap();
     }
 }
