@@ -40,8 +40,8 @@ export const TerminalGrid: React.FC = () => {
           <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-zinc-300' : 'bg-zinc-600'}`} />
           <span className="text-[10px] text-slate-400 font-bold uppercase">Pane {index + 1}</span>
           {session && (
-            <span className="text-slate-500 text-[9px] font-semibold bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700 max-w-[120px] truncate">
-              {session.agentType} ({sessionId?.substring(0, 10)})
+            <span className="text-slate-300 text-[9px] font-semibold bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700 max-w-[160px] truncate" title={session.name || session.agentType}>
+              {session.name || session.agentType} ({sessionId?.substring(0, 8)})
             </span>
           )}
         </div>

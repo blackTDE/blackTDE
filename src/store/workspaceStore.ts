@@ -14,6 +14,7 @@ export const hasWorkspacePath = (workspaces: WorkspaceEntry[], path: string): bo
 
 export interface SessionInfo {
   id: string;
+  name?: string;
   agentType: string; // "claude" | "aider" | "custom"
   cwd: string;
   provider: string; // "anthropic" | "openai" | "gemini" | "deepseek"
@@ -80,6 +81,8 @@ interface WorkspaceState {
   setSessions: (sessions: Record<string, SessionInfo>) => void;
   setActiveSession: (id: string | null) => void;
   removeSession: (id: string) => void;
+  setSessionNameLocal: (id: string, name: string) => void;
+  updateSessionName: (id: string, name: string) => Promise<void>;
   
   setActiveFilePath: (path: string | null) => void;
   setActiveFileContent: (content: string | null) => void;
@@ -215,6 +218,29 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
         paneLayoutsByProject: newPaneLayoutsByProject,
       };
     }),
+
+  setSessionNameLocal: (id, name) =>
+    set((state) => ({
+      sessions: {
+        ...state.sessions,
+        [id]: state.sessions[id] ? { ...state.sessions[id], name } : state.sessions[id],
+      },
+    })),
+
+  updateSessionName: async (id, name) => {
+    set((state) => ({
+      sessions: {
+        ...state.sessions,
+        [id]: state.sessions[id] ? { ...state.sessions[id], name } : state.sessions[id],
+      },
+    }));
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('update_session_name', { id, name });
+    } catch (err) {
+      console.error('Failed to update session name in backend:', err);
+    }
+  },
     
   setActiveFilePath: (path) => set({ activeFilePath: path }),
   setActiveFileContent: (content) => set({ activeFileContent: content }),

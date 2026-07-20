@@ -26,6 +26,7 @@ async fn spawn_session(
     rows: u16,
     cols: u16,
     provider: String,
+    name: Option<String>,
     resume_session_id: Option<String>,
     privileged: bool,
     ssh_host: Option<String>,
@@ -280,9 +281,10 @@ async fn spawn_session(
 
     // 5. Insert session record to DB
     sqlx::query(
-        "INSERT INTO sessions (id, workspace_id, agent_type, cwd, status, provider, model, remote_session_id, ssh_host) VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8)"
+        "INSERT INTO sessions (id, name, workspace_id, agent_type, cwd, status, provider, model, remote_session_id, ssh_host) VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8, $9)"
     )
     .bind(&id)
+    .bind(&name)
     .bind(&workspace_id)
     .bind(&command)
     .bind(&cwd)
@@ -583,6 +585,7 @@ async fn delete_workspace(id: String, pool: State<'_, SqlitePool>) -> Result<(),
 #[derive(serde::Serialize)]
 pub struct PastSession {
     pub id: String,
+    pub name: Option<String>,
     pub agent_type: String,
     pub cwd: String,
     pub remote_session_id: Option<String>,
@@ -595,7 +598,7 @@ pub struct PastSession {
 
 #[tauri::command]
 async fn list_past_sessions(pool: State<'_, SqlitePool>) -> Result<Vec<PastSession>, String> {
-    let rows = sqlx::query("SELECT id, agent_type, cwd, remote_session_id, status, provider, model, created_at, ssh_host FROM sessions ORDER BY created_at DESC, id DESC")
+    let rows = sqlx::query("SELECT id, name, agent_type, cwd, remote_session_id, status, provider, model, created_at, ssh_host FROM sessions ORDER BY created_at DESC, id DESC")
         .fetch_all(&*pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -603,6 +606,7 @@ async fn list_past_sessions(pool: State<'_, SqlitePool>) -> Result<Vec<PastSessi
     let mut entries = Vec::new();
     for row in rows {
         let id: String = row.get("id");
+        let name: Option<String> = row.get("name");
         let agent_type: String = row.get("agent_type");
         let cwd: String = row.get("cwd");
         let remote_session_id: Option<String> = row.get("remote_session_id");
@@ -613,6 +617,7 @@ async fn list_past_sessions(pool: State<'_, SqlitePool>) -> Result<Vec<PastSessi
         let ssh_host: Option<String> = row.get("ssh_host");
         entries.push(PastSession {
             id,
+            name,
             agent_type,
             cwd,
             remote_session_id,
@@ -624,6 +629,21 @@ async fn list_past_sessions(pool: State<'_, SqlitePool>) -> Result<Vec<PastSessi
         });
     }
     Ok(entries)
+}
+
+#[tauri::command]
+async fn update_session_name(
+    id: String,
+    name: String,
+    pool: State<'_, SqlitePool>,
+) -> Result<(), String> {
+    sqlx::query("UPDATE sessions SET name = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2")
+        .bind(&name)
+        .bind(&id)
+        .execute(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -1446,6 +1466,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             spawn_session,
+            update_session_name,
             write_to_session,
             resize_session,
             delete_session,

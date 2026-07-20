@@ -14,6 +14,7 @@ import { listen } from '@tauri-apps/api/event';
 import { 
   Plus, 
   Trash2, 
+  Pencil,
   GitBranch, 
   Sparkles,
   Maximize2,
@@ -85,6 +86,8 @@ function App() {
   const [modalTargetProject, setModalTargetProject] = useState<any>(null);
   const [pendingDeleteSessionId, setPendingDeleteSessionId] = useState<string | null>(null);
   const [sessionDeleteError, setSessionDeleteError] = useState<string | null>(null);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingSessionName, setEditingSessionName] = useState<string>('');
 
   // New Project Form parameters
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
@@ -672,35 +675,80 @@ function App() {
                           <div
                             key={session.id}
                             onClick={() => handleSelectSession(ws, session.id)}
-                            className={`flex items-center justify-between p-1.5 rounded transition cursor-pointer border text-[11px] ${
+                            className={`group flex items-center justify-between p-1.5 rounded transition cursor-pointer border text-[11px] ${
                               activeSessionId === session.id
                                 ? 'bg-brand/10 border-brand/20 text-brand-light font-medium'
                                 : 'bg-surface-2/10 border-transparent hover:bg-surface-2 text-zinc-400 hover:text-zinc-200'
                             }`}
                           >
-                            <div className="flex items-center space-x-2 truncate">
+                            <div className="flex items-center space-x-2 truncate min-w-0 flex-1 mr-1">
                               <AgentIcon name={session.agentType} size={20} />
-                              <div className="truncate font-mono">
-                                <span>{session.agentType}</span>
-                                <span className="text-[9px] text-zinc-650 ml-1.5">({session.id.substring(8, 14)})</span>
-                              </div>
+                              {editingSessionId === session.id ? (
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={editingSessionName}
+                                  onChange={(e) => setEditingSessionName(e.target.value)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.stopPropagation();
+                                      if (editingSessionName.trim()) {
+                                        void useWorkspaceStore.getState().updateSessionName(session.id, editingSessionName.trim());
+                                      }
+                                      setEditingSessionId(null);
+                                    } else if (e.key === 'Escape') {
+                                      e.stopPropagation();
+                                      setEditingSessionId(null);
+                                    }
+                                  }}
+                                  onBlur={() => {
+                                    if (editingSessionName.trim()) {
+                                      void useWorkspaceStore.getState().updateSessionName(session.id, editingSessionName.trim());
+                                    }
+                                    setEditingSessionId(null);
+                                  }}
+                                  className="bg-black/60 border border-brand/50 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none w-full font-mono"
+                                />
+                              ) : (
+                                <div className="truncate font-mono flex items-center gap-1.5" title={session.name || session.agentType}>
+                                  <span className="truncate">{session.name || session.agentType}</span>
+                                  <span className="text-[9px] text-zinc-650 shrink-0">({session.id.substring(8, 14)})</span>
+                                </div>
+                              )}
                             </div>
-                            {pendingDeleteSessionId === session.id ? (
-                              <span className="flex items-center gap-1 text-[9px] text-rose-300">
-                                Delete?
-                                <button onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id, true); }} className="text-rose-400">✓</button>
-                                <button onClick={(e) => { e.stopPropagation(); setPendingDeleteSessionId(null); }} className="text-zinc-500">×</button>
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id); }}
-                                className="p-0.5 hover:bg-error/25 hover:text-error text-zinc-550 rounded transition cursor-pointer"
-                                title="Delete session"
-                              >
-                                <Trash2 size={11} />
-                              </button>
-                            )}
+                            <div className="flex items-center space-x-1 shrink-0">
+                              {editingSessionId !== session.id && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingSessionId(session.id);
+                                    setEditingSessionName(session.name || session.agentType);
+                                  }}
+                                  className="p-0.5 opacity-0 group-hover:opacity-100 hover:bg-zinc-700/50 hover:text-zinc-200 text-zinc-500 rounded transition cursor-pointer"
+                                  title="Rename session"
+                                >
+                                  <Pencil size={11} />
+                                </button>
+                              )}
+                              {pendingDeleteSessionId === session.id ? (
+                                <span className="flex items-center gap-1 text-[9px] text-rose-300">
+                                  Delete?
+                                  <button onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id, true); }} className="text-rose-400">✓</button>
+                                  <button onClick={(e) => { e.stopPropagation(); setPendingDeleteSessionId(null); }} className="text-zinc-500">×</button>
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id); }}
+                                  className="p-0.5 hover:bg-error/25 hover:text-error text-zinc-550 rounded transition cursor-pointer"
+                                  title="Delete session"
+                                >
+                                  <Trash2 size={11} />
+                                </button>
+                              )}
+                            </div>
                           </div>
                         ))}
 
