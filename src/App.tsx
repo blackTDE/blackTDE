@@ -18,7 +18,6 @@ import {
   Pencil,
   GitBranch, 
   Sparkles,
-  Maximize2,
   Minimize2,
   Settings,
   Folder,
@@ -72,13 +71,74 @@ function App() {
     setWorkspace,
     setWorkspaces,
     isSessionPinned,
-    toggleSessionPin
+    toggleSessionPin,
+    leftPanelWidth,
+    setLeftPanelWidth,
+    rightPanelWidth,
+    setRightPanelWidth,
+    pinnedSessionWidthPercent,
+    setPinnedSessionWidthPercent,
+    isRightPanelPinned,
+    toggleRightPanelPin
   } = useWorkspaceStore();
 
   const [isRightPaneExpanded, setIsRightPaneExpanded] = useState(true);
   const [isSettingsFatherTabOpen, setIsSettingsFatherTabOpen] = useState(false);
   const [activeFatherTabId, setActiveFatherTabId] = useState('');
   const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(true);
+
+  // Mouse drag resize handlers
+  const handleLeftResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = leftPanelWidth;
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientX - startX;
+      const newWidth = Math.max(200, Math.min(600, startWidth + delta));
+      setLeftPanelWidth(newWidth);
+    };
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
+  const handleRightResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = rightPanelWidth;
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = startX - moveEvent.clientX;
+      const newWidth = Math.max(220, Math.min(600, startWidth + delta));
+      setRightPanelWidth(newWidth);
+    };
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
+  const handleCenterSplitResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const container = e.currentTarget.parentElement;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const offsetX = moveEvent.clientX - rect.left;
+      const percent = Math.max(20, Math.min(80, Math.round((offsetX / rect.width) * 100)));
+      setPinnedSessionWidthPercent(percent);
+    };
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
 
   // Expanded/Collapsed state for projects in Left Panel
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({
@@ -520,261 +580,273 @@ function App() {
         
         {/* Left Sidebar Panel (Projects Tree Viewer) */}
         {isLeftPanelVisible && (
-          <div className="w-80 shrink-0 border-r border-surface-2 bg-surface-1 flex flex-col select-none overflow-hidden font-sans">
-          {/* Header */}
-          <div className="p-4 border-b border-surface-2 flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <img src={brandIcon} alt="Black TDE Logo" className="w-8 h-8 rounded object-cover" />
-              <div>
-                <h1 className="font-bold text-xs tracking-wider text-zinc-100 font-mono uppercase">TDE Cockpit</h1>
-                <p className="text-[9px] text-zinc-500 font-mono">v1.2.0</p>
+          <>
+            <div
+              style={{ width: `${leftPanelWidth}px` }}
+              className="shrink-0 border-r border-surface-2 bg-surface-1 flex flex-col select-none overflow-hidden font-sans"
+            >
+              {/* Header */}
+              <div className="p-4 border-b border-surface-2 flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <img src={brandIcon} alt="Black TDE Logo" className="w-8 h-8 rounded object-cover" />
+                  <div>
+                    <h1 className="font-bold text-xs tracking-wider text-zinc-100 font-mono uppercase">TDE Cockpit</h1>
+                    <p className="text-[9px] text-zinc-500 font-mono">v1.2.0</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-1 text-success text-[10px] font-semibold bg-success/10 px-2 py-0.5 rounded-full border border-success/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
+                  <span>Online</span>
+                </div>
               </div>
-            </div>
-            <div className="flex items-center space-x-1 text-success text-[10px] font-semibold bg-success/10 px-2 py-0.5 rounded-full border border-success/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
-              <span>Online</span>
-            </div>
-          </div>
 
-          {/* Left panel body: Project list tree with nested active sessions */}
-          <div className="flex-grow overflow-y-auto flex flex-col p-4 space-y-3 min-h-0">
-            <div className="flex items-center justify-between">
-              <h2 className="text-[10px] font-bold tracking-wider text-zinc-400 uppercase font-mono">Project Tree</h2>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={handleClearTerminatedSessions}
-                  className="text-zinc-500 hover:text-red-400 p-1 transition cursor-pointer"
-                  title="Clear Terminated Sessions"
-                >
-                  <Trash2 size={13} />
-                </button>
-                <button
-                  onClick={() => setShowNewProjectForm(!showNewProjectForm)}
-                  className="text-zinc-500 hover:text-brand-light p-1 transition cursor-pointer"
-                  title="Create New Project"
-                >
-                  <Plus size={14} />
-                </button>
-              </div>
-            </div>
-
-            {/* Create Project Form */}
-            {showNewProjectForm && (
-              <div className="p-3.5 bg-surface border border-surface-3 rounded-lg space-y-3 text-xs shadow-md">
-                <div>
-                  <label className="block text-[10px] text-zinc-500 font-semibold font-mono mb-1">LOCAL PATH</label>
-                  <div className="flex space-x-1">
-                    <input
-                      type="text"
-                      placeholder="e.g. /Users/ray/my-project"
-                      value={newProjectPath}
-                      onChange={(e) => {
-                        const path = e.target.value;
-                        setNewProjectPath(path);
-                        // Auto-extract last path segment as the default project name
-                        const parts = path.split(/[/\\]/).filter(Boolean);
-                        if (parts.length > 0) {
-                          setNewProjectName(parts[parts.length - 1]);
-                        }
-                      }}
-                      className="flex-1 min-w-0 bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-brand/70 font-mono"
-                    />
+              {/* Left panel body: Project list tree with nested active sessions */}
+              <div className="flex-grow overflow-y-auto flex flex-col p-4 space-y-3 min-h-0">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[10px] font-bold tracking-wider text-zinc-400 uppercase font-mono">Project Tree</h2>
+                  <div className="flex items-center space-x-2">
                     <button
-                      onClick={handleSelectDirectory}
-                      title="Select Local Directory"
-                      className="px-2.5 bg-surface-3 border border-surface-3 rounded hover:bg-surface-2 hover:text-brand-light text-zinc-400 transition cursor-pointer flex items-center justify-center shrink-0"
+                      onClick={handleClearTerminatedSessions}
+                      className="text-zinc-500 hover:text-red-400 p-1 transition cursor-pointer"
+                      title="Clear Terminated Sessions"
                     >
-                      <FolderOpen size={14} />
+                      <Trash2 size={13} />
+                    </button>
+                    <button
+                      onClick={() => setShowNewProjectForm(!showNewProjectForm)}
+                      className="text-zinc-500 hover:text-brand-light p-1 transition cursor-pointer"
+                      title="Create New Project"
+                    >
+                      <Plus size={14} />
                     </button>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-[10px] text-zinc-500 font-semibold font-mono mb-1">PROJECT NAME</label>
-                  <input
-                    type="text"
-                    placeholder="Auto-detected base name"
-                    value={newProjectName}
-                    onChange={(e) => setNewProjectName(e.target.value)}
-                    className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-brand/70 font-mono"
-                  />
-                </div>
-                <div className="flex space-x-2 pt-1">
-                  <button
-                    onClick={handleCreateProject}
-                    className="flex-1 bg-brand text-white font-semibold py-1.5 rounded text-[11px] hover:bg-brand/90 cursor-pointer transition"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => setShowNewProjectForm(false)}
-                    className="flex-1 bg-surface-3 text-zinc-400 font-semibold py-1.5 rounded text-[11px] hover:bg-surface-2 cursor-pointer transition"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
 
-            {/* Projects list tree nodes */}
-            <div className="space-y-2 overflow-y-auto">
-              {workspaces.map((ws) => {
-                const isExpanded = expandedProjects[ws.id];
-                const isActive = activeWorkspace?.id === ws.id;
-                // Filter active sessions inside this project
-                const projectSessions = Object.values(sessions).filter(s => s.cwd === ws.path);
-
-                return (
-                  <div key={ws.id} className="space-y-1">
-                    {/* Project Folder Row (Father Node) */}
-                    <div
-                      onClick={(e) => {
-                        handleSelectProject(ws);
-                        toggleProjectExpand(ws.id, e);
-                      }}
-                      className={`group flex items-center justify-between px-2.5 py-2 rounded-lg border transition cursor-pointer ${
-                        isActive
-                          ? 'bg-brand/5 border-brand/30 text-brand-light font-semibold'
-                          : 'bg-surface-2/20 border-transparent hover:bg-surface-2/40 text-zinc-300'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-2 truncate">
+                {/* Create Project Form */}
+                {showNewProjectForm && (
+                  <div className="p-3.5 bg-surface border border-surface-3 rounded-lg space-y-3 text-xs shadow-md">
+                    <div>
+                      <label className="block text-[10px] text-zinc-500 font-semibold font-mono mb-1">LOCAL PATH</label>
+                      <div className="flex space-x-1">
+                        <input
+                          type="text"
+                          placeholder="e.g. /Users/ray/my-project"
+                          value={newProjectPath}
+                          onChange={(e) => {
+                            const path = e.target.value;
+                            setNewProjectPath(path);
+                            // Auto-extract last path segment as the default project name
+                            const parts = path.split(/[/\\]/).filter(Boolean);
+                            if (parts.length > 0) {
+                              setNewProjectName(parts[parts.length - 1]);
+                            }
+                          }}
+                          className="flex-1 min-w-0 bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-brand/70 font-mono"
+                        />
                         <button
-                          onClick={(e) => toggleProjectExpand(ws.id, e)}
-                          className="p-0.5 hover:bg-surface-3 rounded text-zinc-500 transition cursor-pointer"
+                          onClick={handleSelectDirectory}
+                          title="Select Local Directory"
+                          className="px-2.5 bg-surface-3 border border-surface-3 rounded hover:bg-surface-2 hover:text-brand-light text-zinc-400 transition cursor-pointer flex items-center justify-center shrink-0"
                         >
-                          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          <FolderOpen size={14} />
                         </button>
-                        <Folder size={14} className={isActive ? 'text-brand-light' : 'text-zinc-500'} />
-                        <span className="text-xs truncate font-mono">{ws.name}</span>
-                      </div>
-                      
-                      {/* Action buttons next to project name on hover */}
-                      <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition">
-                        <button
-                          onClick={(e) => openNewSessionModal(ws, e)}
-                          title="Spawn Terminal Session"
-                          className="p-1 hover:text-brand-light text-zinc-500 rounded cursor-pointer"
-                        >
-                          <PlusCircle size={13} />
-                        </button>
-                        {ws.id !== 'project_default' && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteProject(ws.id);
-                            }}
-                            title="Delete Project"
-                            className="p-1 hover:text-error text-zinc-500 rounded cursor-pointer"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
                       </div>
                     </div>
+                    <div>
+                      <label className="block text-[10px] text-zinc-500 font-semibold font-mono mb-1">PROJECT NAME</label>
+                      <input
+                        type="text"
+                        placeholder="Auto-detected base name"
+                        value={newProjectName}
+                        onChange={(e) => setNewProjectName(e.target.value)}
+                        className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-brand/70 font-mono"
+                      />
+                    </div>
+                    <div className="flex space-x-2 pt-1">
+                      <button
+                        onClick={handleCreateProject}
+                        className="flex-1 bg-brand text-white font-semibold py-1.5 rounded text-[11px] hover:bg-brand/90 cursor-pointer transition"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setShowNewProjectForm(false)}
+                        className="flex-1 bg-surface-3 text-zinc-400 font-semibold py-1.5 rounded text-[11px] hover:bg-surface-2 cursor-pointer transition"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
 
-                    {/* Nested Child Nodes (PTY Sessions) */}
-                    {isExpanded && (
-                      <div className="pl-6 space-y-1 border-l border-surface-3/30 ml-4 py-0.5">
-                        {projectSessions.map((session) => (
-                          <div
-                            key={session.id}
-                            onClick={() => handleSelectSession(ws, session.id)}
-                            className={`group flex items-center justify-between p-1.5 rounded transition cursor-pointer border text-[11px] ${
-                              activeSessionId === session.id
-                                ? 'bg-brand/10 border-brand/20 text-brand-light font-medium'
-                                : 'bg-surface-2/10 border-transparent hover:bg-surface-2 text-zinc-400 hover:text-zinc-200'
-                            }`}
-                          >
-                            <div className="flex items-center space-x-2 truncate min-w-0 flex-1 mr-1">
-                              <AgentIcon name={session.agentType} size={20} />
-                              {editingSessionId === session.id ? (
-                                <input
-                                  type="text"
-                                  autoFocus
-                                  value={editingSessionName}
-                                  onChange={(e) => setEditingSessionName(e.target.value)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                      e.stopPropagation();
-                                      if (editingSessionName.trim()) {
-                                        void useWorkspaceStore.getState().updateSessionName(session.id, editingSessionName.trim());
-                                      }
-                                      setEditingSessionId(null);
-                                    } else if (e.key === 'Escape') {
-                                      e.stopPropagation();
-                                      setEditingSessionId(null);
-                                    }
-                                  }}
-                                  onBlur={() => {
-                                    if (editingSessionName.trim()) {
-                                      void useWorkspaceStore.getState().updateSessionName(session.id, editingSessionName.trim());
-                                    }
-                                    setEditingSessionId(null);
-                                  }}
-                                  className="bg-black/60 border border-brand/50 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none w-full font-mono"
-                                />
-                              ) : (
-                                <div className="truncate font-mono flex items-center gap-1.5" title={session.name || session.agentType}>
-                                  <span className="truncate">{session.name || session.agentType}</span>
-                                  <span className="text-[9px] text-zinc-650 shrink-0">({session.id.substring(8, 14)})</span>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex items-center space-x-1 shrink-0">
-                              {editingSessionId !== session.id && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingSessionId(session.id);
-                                    setEditingSessionName(session.name || session.agentType);
-                                  }}
-                                  className="p-0.5 opacity-0 group-hover:opacity-100 hover:bg-zinc-700/50 hover:text-zinc-200 text-zinc-500 rounded transition cursor-pointer"
-                                  title="Rename session"
-                                >
-                                  <Pencil size={11} />
-                                </button>
-                              )}
-                              {pendingDeleteSessionId === session.id ? (
-                                <span className="flex items-center gap-1 text-[9px] text-rose-300">
-                                  Delete?
-                                  <button onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id, true); }} className="text-rose-400">✓</button>
-                                  <button onClick={(e) => { e.stopPropagation(); setPendingDeleteSessionId(null); }} className="text-zinc-500">×</button>
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id); }}
-                                  className="p-0.5 hover:bg-error/25 hover:text-error text-zinc-550 rounded transition cursor-pointer"
-                                  title="Delete session"
-                                >
-                                  <Trash2 size={11} />
-                                </button>
-                              )}
-                            </div>
+                {/* Projects list tree nodes */}
+                <div className="space-y-2 overflow-y-auto">
+                  {workspaces.map((ws) => {
+                    const isExpanded = expandedProjects[ws.id];
+                    const isActive = activeWorkspace?.id === ws.id;
+                    // Filter active sessions inside this project
+                    const projectSessions = Object.values(sessions).filter(s => s.cwd === ws.path);
+
+                    return (
+                      <div key={ws.id} className="space-y-1">
+                        {/* Project Folder Row (Father Node) */}
+                        <div
+                          onClick={(e) => {
+                            handleSelectProject(ws);
+                            toggleProjectExpand(ws.id, e);
+                          }}
+                          className={`group flex items-center justify-between px-2.5 py-2 rounded-lg border transition cursor-pointer ${
+                            isActive
+                              ? 'bg-brand/5 border-brand/30 text-brand-light font-semibold'
+                              : 'bg-surface-2/20 border-transparent hover:bg-surface-2/40 text-zinc-300'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2 truncate">
+                            <button
+                              onClick={(e) => toggleProjectExpand(ws.id, e)}
+                              className="p-0.5 hover:bg-surface-3 rounded text-zinc-500 transition cursor-pointer"
+                            >
+                              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                            </button>
+                            <Folder size={14} className={isActive ? 'text-brand-light' : 'text-zinc-500'} />
+                            <span className="text-xs truncate font-mono">{ws.name}</span>
                           </div>
-                        ))}
+                          
+                          {/* Action buttons next to project name on hover */}
+                          <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition">
+                            <button
+                              onClick={(e) => openNewSessionModal(ws, e)}
+                              title="Spawn Terminal Session"
+                              className="p-1 hover:text-brand-light text-zinc-500 rounded cursor-pointer"
+                            >
+                              <PlusCircle size={13} />
+                            </button>
+                            {ws.id !== 'project_default' && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteProject(ws.id);
+                                }}
+                                title="Delete Project"
+                                className="p-1 hover:text-error text-zinc-500 rounded cursor-pointer"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
 
-                        {/* Inline button to spawn new session if list is empty */}
-                        {projectSessions.length === 0 && (
-                          <button
-                            onClick={(e) => openNewSessionModal(ws, e)}
-                            className="w-full flex items-center justify-center space-x-1 py-1.5 rounded border border-dashed border-surface-3/50 text-[10px] text-zinc-500 hover:text-zinc-350 hover:bg-surface-2/20 transition cursor-pointer font-mono"
-                          >
-                            <Plus size={10} />
-                            <span>Create Session</span>
-                          </button>
+                        {/* Nested Child Nodes (PTY Sessions) */}
+                        {isExpanded && (
+                          <div className="pl-6 space-y-1 border-l border-surface-3/30 ml-4 py-0.5">
+                            {projectSessions.map((session) => (
+                              <div
+                                key={session.id}
+                                onClick={() => handleSelectSession(ws, session.id)}
+                                className={`group flex items-center justify-between p-1.5 rounded transition cursor-pointer border text-[11px] ${
+                                  activeSessionId === session.id
+                                    ? 'bg-brand/10 border-brand/20 text-brand-light font-medium'
+                                    : 'bg-surface-2/10 border-transparent hover:bg-surface-2 text-zinc-400 hover:text-zinc-200'
+                                }`}
+                              >
+                                <div className="flex items-center space-x-2 truncate min-w-0 flex-1 mr-1">
+                                  <AgentIcon name={session.agentType} size={20} />
+                                  {editingSessionId === session.id ? (
+                                    <input
+                                      type="text"
+                                      autoFocus
+                                      value={editingSessionName}
+                                      onChange={(e) => setEditingSessionName(e.target.value)}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          e.stopPropagation();
+                                          if (editingSessionName.trim()) {
+                                            void useWorkspaceStore.getState().updateSessionName(session.id, editingSessionName.trim());
+                                          }
+                                          setEditingSessionId(null);
+                                        } else if (e.key === 'Escape') {
+                                          e.stopPropagation();
+                                          setEditingSessionId(null);
+                                        }
+                                      }}
+                                      onBlur={() => {
+                                        if (editingSessionName.trim()) {
+                                          void useWorkspaceStore.getState().updateSessionName(session.id, editingSessionName.trim());
+                                        }
+                                        setEditingSessionId(null);
+                                      }}
+                                      className="bg-black/60 border border-brand/50 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none w-full font-mono"
+                                    />
+                                  ) : (
+                                    <div className="truncate font-mono flex items-center gap-1.5" title={session.name || session.agentType}>
+                                      <span className="truncate">{session.name || session.agentType}</span>
+                                      <span className="text-[9px] text-zinc-650 shrink-0">({session.id.substring(8, 14)})</span>
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex items-center space-x-1 shrink-0">
+                                  {editingSessionId !== session.id && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingSessionId(session.id);
+                                        setEditingSessionName(session.name || session.agentType);
+                                      }}
+                                      className="p-0.5 opacity-0 group-hover:opacity-100 hover:bg-zinc-700/50 hover:text-zinc-200 text-zinc-500 rounded transition cursor-pointer"
+                                      title="Rename session"
+                                    >
+                                      <Pencil size={11} />
+                                    </button>
+                                  )}
+                                  {pendingDeleteSessionId === session.id ? (
+                                    <span className="flex items-center gap-1 text-[9px] text-rose-300">
+                                      Delete?
+                                      <button onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id, true); }} className="text-rose-400">✓</button>
+                                      <button onClick={(e) => { e.stopPropagation(); setPendingDeleteSessionId(null); }} className="text-zinc-500">×</button>
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id); }}
+                                      className="p-0.5 hover:bg-error/25 hover:text-error text-zinc-550 rounded transition cursor-pointer"
+                                      title="Delete session"
+                                    >
+                                      <Trash2 size={11} />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+
+                            {/* Inline button to spawn new session if list is empty */}
+                            {projectSessions.length === 0 && (
+                              <button
+                                onClick={(e) => openNewSessionModal(ws, e)}
+                                className="w-full flex items-center justify-center space-x-1 py-1.5 rounded border border-dashed border-surface-3/50 text-[10px] text-zinc-500 hover:text-zinc-350 hover:bg-surface-2/20 transition cursor-pointer font-mono"
+                              >
+                                <Plus size={10} />
+                                <span>Create Session</span>
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+
+            {/* Left Resizer Handle Divider */}
+            <div
+              onMouseDown={handleLeftResizeStart}
+              className="w-1 hover:w-1.5 cursor-col-resize bg-transparent hover:bg-brand/60 transition-all z-20 shrink-0 select-none"
+              title="Drag to resize Left Panel"
+            />
+          </>
+        )}
 
         {/* Center Panel (Swappable Workbench) */}
         <div className="flex-grow flex flex-col min-w-0 bg-surface">
@@ -940,11 +1012,14 @@ function App() {
               <div className="relative flex-grow min-h-0 overflow-hidden flex">
                 {/* Terminal Sessions View */}
                 <div
+                  style={{
+                    width: activeFileTab === null ? '100%' : isSessionPinned ? `${pinnedSessionWidthPercent}%` : '0%'
+                  }}
                   className={`flex flex-col bg-[#0a0a0a] overflow-hidden transition-all ${
                     activeFileTab === null
                       ? 'w-full h-full'
                       : isSessionPinned
-                      ? 'w-1/2 h-full border-r border-surface-2 shrink-0'
+                      ? 'h-full shrink-0'
                       : 'hidden'
                   }`}
                 >
@@ -1037,9 +1112,23 @@ function App() {
                   </div>
                 </div>
 
+                {/* Resizer Handle between Pinned Terminal and File Preview */}
+                {activeFileTab !== null && isSessionPinned && (
+                  <div
+                    onMouseDown={handleCenterSplitResizeStart}
+                    className="w-1.5 hover:w-1.5 cursor-col-resize bg-surface-2/40 hover:bg-brand/60 transition-all z-20 shrink-0 select-none"
+                    title="Drag to resize Terminal / File Preview split"
+                  />
+                )}
+
                 {/* Active File Preview / Diff View */}
                 {activeFileTab !== null && (
-                  <div className={`h-full min-w-0 bg-[#0a0a0a] overflow-hidden ${isSessionPinned ? 'w-1/2 flex-1' : 'w-full'}`}>
+                  <div
+                    style={{
+                      width: isSessionPinned ? `${100 - pinnedSessionWidthPercent}%` : '100%'
+                    }}
+                    className="h-full min-w-0 bg-[#0a0a0a] overflow-hidden flex-1"
+                  >
                     {activeFileTab.startsWith('git-diff:') ? (
                       <GitDiffCompare tabPath={activeFileTab} />
                     ) : (
@@ -1052,10 +1141,28 @@ function App() {
           )}
         </div>
 
+        {/* Right Resizer Handle Divider */}
+        {isRightPaneExpanded && (
+          <div
+            onMouseDown={handleRightResizeStart}
+            className="w-1.5 hover:w-1.5 cursor-col-resize bg-surface-2/40 hover:bg-brand/60 transition-all z-20 shrink-0 select-none"
+            title="Drag to resize Right Inspector Panel"
+          />
+        )}
+
         {/* Right Panel (Inspector tabs) */}
-        <div className={isRightPaneExpanded ? "w-80 border-l border-surface-2 bg-surface-1 flex flex-col overflow-hidden" : "hidden"}>
+        {isRightPaneExpanded ? (
+          <div
+            style={{ width: `${rightPanelWidth}px` }}
+            onMouseLeave={() => {
+              if (!isRightPanelPinned) {
+                setIsRightPaneExpanded(false);
+              }
+            }}
+            className="shrink-0 border-l border-surface-2 bg-surface-1 flex flex-col overflow-hidden transition-all shadow-lg z-10"
+          >
             {/* Swappable Panel Tabs */}
-            <div className="shrink-0 flex border-b border-surface-2 select-none bg-surface-1/40">
+            <div className="shrink-0 flex border-b border-surface-2 select-none bg-surface-1/40 items-center">
               <button
                 onClick={() => setActiveRightPanel('files')}
                 className={`flex-1 flex items-center justify-center space-x-1.5 py-2.5 text-xs font-semibold border-b-2 transition ${
@@ -1100,9 +1207,22 @@ function App() {
                 <Sparkles size={13} />
                 <span>Skills</span>
               </button>
+              
+              {/* Pin / Unpin Button */}
+              <button
+                type="button"
+                onClick={toggleRightPanelPin}
+                className={`px-2.5 text-zinc-500 hover:text-zinc-200 transition cursor-pointer ${
+                  isRightPanelPinned ? 'text-brand-light' : ''
+                }`}
+                title={isRightPanelPinned ? "Unpin Right Panel (Auto-Hide on mouse leave)" : "Pin Right Panel (Keep open)"}
+              >
+                <Pin size={12} className={isRightPanelPinned ? 'rotate-45 text-brand-light' : 'text-zinc-500'} />
+              </button>
+
               <button
                 onClick={() => setIsRightPaneExpanded(false)}
-                className="px-3 text-zinc-500 hover:text-zinc-300 transition cursor-pointer"
+                className="pr-3 text-zinc-500 hover:text-zinc-300 transition cursor-pointer"
                 title="Collapse Panel"
               >
                 <Minimize2 size={13} />
@@ -1133,21 +1253,45 @@ function App() {
               </div>
             </div>
           </div>
+        ) : null}
 
-        {/* Expand Right Pane Trigger */}
+        {/* Expand Right Pane Dock Trigger Bar */}
         {!isRightPaneExpanded && (
-          <button
-            onClick={() => {
-              setIsRightPaneExpanded(true);
-              if (activeRightPanel === 'none') {
-                setActiveRightPanel('files');
-              }
-            }}
-            className="w-8 bg-surface-1 border-l border-surface-2 flex items-center justify-center hover:bg-surface-2 text-zinc-500 hover:text-zinc-300 transition cursor-pointer"
-            title="Expand Panel"
+          <div
+            className="w-10 bg-surface-1 border-l border-surface-2 flex flex-col items-center py-3 space-y-3 shrink-0 select-none z-10"
           >
-            <Maximize2 size={13} className="rotate-90" />
-          </button>
+            {[
+              { id: 'files', icon: Folder, label: 'Files' },
+              { id: 'git', icon: GitBranch, label: 'Git' },
+              { id: 'search', icon: Search, label: 'Search' },
+              { id: 'skills', icon: Sparkles, label: 'Skills' },
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveRightPanel(item.id as any);
+                    setIsRightPaneExpanded(true);
+                  }}
+                  onMouseEnter={() => {
+                    if (!isRightPanelPinned) {
+                      setActiveRightPanel(item.id as any);
+                      setIsRightPaneExpanded(true);
+                    }
+                  }}
+                  className={`p-2 rounded-md transition cursor-pointer ${
+                    activeRightPanel === item.id
+                      ? 'bg-brand/20 text-brand-light'
+                      : 'text-zinc-500 hover:text-zinc-200 hover:bg-surface-2'
+                  }`}
+                  title={`Expand ${item.label}`}
+                >
+                  <Icon size={14} />
+                </button>
+              );
+            })}
+          </div>
         )}
 
       </div>
