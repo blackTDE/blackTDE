@@ -31,7 +31,8 @@ import {
   FolderOpen,
   PanelLeftClose,
   PanelLeftOpen,
-  Search
+  Search,
+  Pin
 } from 'lucide-react';
 
 const getFriendlySshHost = (sshHost?: string): string => {
@@ -69,7 +70,9 @@ function App() {
     activeWorkspace,
     workspaces,
     setWorkspace,
-    setWorkspaces
+    setWorkspaces,
+    isSessionPinned,
+    toggleSessionPin
   } = useWorkspaceStore();
 
   const [isRightPaneExpanded, setIsRightPaneExpanded] = useState(true);
@@ -867,17 +870,36 @@ function App() {
               <div className="shrink-0 flex items-center justify-between border-b border-surface-2 bg-[#171717] select-none">
                 <div className="flex-1 flex items-center overflow-x-auto scrollbar-none relative">
                   {/* Sessions Tab - sticky to the left */}
-                  <button
-                    onClick={() => setActiveFileTab(null)}
-                    className={`sticky left-0 z-10 flex items-center space-x-1.5 px-4 py-2.5 text-xs font-semibold border-r border-surface-2 transition bg-[#171717] shrink-0 border-b-2 ${
+                  <div
+                    className={`sticky left-0 z-10 flex items-center border-r border-surface-2 bg-[#171717] shrink-0 border-b-2 transition group ${
                       activeFileTab === null
                         ? 'border-b-brand text-zinc-100'
                         : 'border-b-transparent text-zinc-500 hover:text-zinc-350'
                     }`}
                   >
-                    <SquareTerminal size={13} className={activeFileTab === null ? 'text-brand-light' : 'text-zinc-500'} />
-                    <span className="font-mono">sessions</span>
-                  </button>
+                    <button
+                      onClick={() => setActiveFileTab(null)}
+                      className="flex items-center space-x-1.5 px-3 py-2.5 text-xs font-semibold"
+                    >
+                      <SquareTerminal size={13} className={activeFileTab === null ? 'text-brand-light' : 'text-zinc-500'} />
+                      <span className="font-mono">sessions</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSessionPin();
+                      }}
+                      className={`mr-2 p-1 rounded hover:bg-surface-3 transition cursor-pointer ${
+                        isSessionPinned
+                          ? 'text-brand-light bg-brand/15'
+                          : 'text-zinc-550 opacity-60 group-hover:opacity-100 hover:text-zinc-200'
+                      }`}
+                      title={isSessionPinned ? "Unpin Terminal Sessions from Left Side" : "Pin Terminal Sessions to Left Side"}
+                    >
+                      <Pin size={11} className={isSessionPinned ? 'rotate-45 text-brand-light' : ''} />
+                    </button>
+                  </div>
 
                   {/* Opened File Tabs */}
                   {openFiles.map(f => {
@@ -915,97 +937,115 @@ function App() {
               </div>
 
               {/* Tab content area */}
-              <div className="relative flex-grow min-h-0 overflow-hidden">
-                  <div
-                    className={`absolute inset-0 flex flex-col bg-[#0a0a0a] overflow-hidden ${activeFileTab === null ? '' : 'invisible pointer-events-none'}`}
-                    aria-hidden={activeFileTab !== null}
-                  >
-                    {/* Clean Terminal Toolbar */}
-                    <div className="shrink-0 bg-surface-1 border-b border-surface-2 px-4 py-2 flex items-center justify-between select-none overflow-x-auto">
-                      <div className="flex items-center space-x-2 overflow-x-auto">
-                        <SquareTerminal size={14} className="text-brand-light shrink-0" />
-                        <span className="text-[10px] text-zinc-450 font-mono uppercase tracking-wider font-semibold mr-1.5 shrink-0">PTY Sessions:</span>
-                        {sessionDeleteError && <span className="text-[9px] text-rose-400 truncate" title={sessionDeleteError}>{sessionDeleteError}</span>}
-                        {activeProjectSessions.map((session) => {
-                          const isSelected = activeSessionId === session.id;
-                          return (
-                            <div
-                              key={session.id}
-                              className={`flex items-center space-x-1.5 px-2 py-0.5 rounded text-[10px] font-mono border transition shrink-0 ${
-                                isSelected
-                                  ? 'bg-brand/10 border-brand/40 text-brand-light font-bold'
-                                  : 'bg-surface-3/30 border-surface-3 text-zinc-450 hover:text-zinc-200'
-                              }`}
+              <div className="relative flex-grow min-h-0 overflow-hidden flex">
+                {/* Terminal Sessions View */}
+                <div
+                  className={`flex flex-col bg-[#0a0a0a] overflow-hidden transition-all ${
+                    activeFileTab === null
+                      ? 'w-full h-full'
+                      : isSessionPinned
+                      ? 'w-1/2 h-full border-r border-surface-2 shrink-0'
+                      : 'hidden'
+                  }`}
+                >
+                  {/* Clean Terminal Toolbar */}
+                  <div className="shrink-0 bg-surface-1 border-b border-surface-2 px-4 py-2 flex items-center justify-between select-none overflow-x-auto">
+                    <div className="flex items-center space-x-2 overflow-x-auto">
+                      <SquareTerminal size={14} className="text-brand-light shrink-0" />
+                      <span className="text-[10px] text-zinc-450 font-mono uppercase tracking-wider font-semibold mr-1.5 shrink-0">PTY Sessions:</span>
+                      {sessionDeleteError && <span className="text-[9px] text-rose-400 truncate" title={sessionDeleteError}>{sessionDeleteError}</span>}
+                      {activeProjectSessions.map((session) => {
+                        const isSelected = activeSessionId === session.id;
+                        return (
+                          <div
+                            key={session.id}
+                            className={`flex items-center space-x-1.5 px-2 py-0.5 rounded text-[10px] font-mono border transition shrink-0 ${
+                              isSelected
+                                ? 'bg-brand/10 border-brand/40 text-brand-light font-bold'
+                                : 'bg-surface-3/30 border-surface-3 text-zinc-450 hover:text-zinc-200'
+                            }`}
+                          >
+                            <button
+                              onClick={() => handleSelectSession(activeWorkspace, session.id)}
+                              className="flex items-center space-x-1.5 cursor-pointer py-0.5"
                             >
+                              <AgentIcon name={session.agentType} size={16} />
+                              <span>{session.agentType}</span>
+                              <span className="text-[8px] text-zinc-500 font-normal">({session.id.substring(8, 12)})</span>
+                            </button>
+                            {pendingDeleteSessionId === session.id ? (
+                              <span className="flex items-center gap-1 text-[9px] text-rose-300">
+                                <button type="button" onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id, true); }} className="text-rose-400">✓</button>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); setPendingDeleteSessionId(null); }} className="text-zinc-500">×</button>
+                              </span>
+                            ) : (
                               <button
-                                onClick={() => handleSelectSession(activeWorkspace, session.id)}
-                                className="flex items-center space-x-1.5 cursor-pointer py-0.5"
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id); }}
+                                className="p-0.5 hover:bg-red-500/20 hover:text-red-400 text-zinc-550 rounded transition cursor-pointer"
+                                title="Delete Session"
                               >
-                                <AgentIcon name={session.agentType} size={16} />
-                                <span>{session.agentType}</span>
-                                <span className="text-[8px] text-zinc-500 font-normal">({session.id.substring(8, 12)})</span>
+                                <X size={10} />
                               </button>
-                              {pendingDeleteSessionId === session.id ? (
-                                <span className="flex items-center gap-1 text-[9px] text-rose-300">
-                                  <button type="button" onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id, true); }} className="text-rose-400">✓</button>
-                                  <button type="button" onClick={(e) => { e.stopPropagation(); setPendingDeleteSessionId(null); }} className="text-zinc-500">×</button>
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id); }}
-                                  className="p-0.5 hover:bg-red-500/20 hover:text-red-400 text-zinc-550 rounded transition cursor-pointer"
-                                  title="Delete Session"
-                                >
-                                  <X size={10} />
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })}
-                        
-                        {/* Spawn Session Trigger Button */}
-                        {activeWorkspace && (
-                          <button
-                            onClick={(e) => openNewSessionModal(activeWorkspace, e)}
-                            title="Spawn Session"
-                            className="flex items-center justify-center p-1 bg-surface-3 border border-surface-3 rounded hover:bg-surface-2 hover:text-brand-light text-zinc-400 transition cursor-pointer shrink-0"
-                          >
-                            <Plus size={11} />
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Splits layout toolbar in same row for space optimization */}
-                      <div className="flex items-center space-x-1 bg-surface-2/70 p-0.5 rounded border border-surface-3 font-mono text-[8px] text-zinc-450 ml-4 shrink-0">
-                        <span className="px-1 font-bold">SPLIT:</span>
-                        {['1x1', '1x2', '2x1', '2x2'].map((type) => (
-                          <button
-                            key={type}
-                            onClick={() => setPaneLayoutType(type as any)}
-                            className={`px-1.5 py-0.5 rounded transition cursor-pointer ${paneLayout.type === type ? 'bg-brand text-white font-bold' : 'hover:text-zinc-200 bg-surface-3/50'}`}
-                          >
-                            {type}
-                          </button>
-                        ))}
-                      </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                      
+                      {/* Spawn Session Trigger Button */}
+                      {activeWorkspace && (
+                        <button
+                          onClick={(e) => openNewSessionModal(activeWorkspace, e)}
+                          title="Spawn Session"
+                          className="flex items-center justify-center p-1 bg-surface-3 border border-surface-3 rounded hover:bg-surface-2 hover:text-brand-light text-zinc-400 transition cursor-pointer shrink-0"
+                        >
+                          <Plus size={11} />
+                        </button>
+                      )}
                     </div>
 
-                    {/* Terminal Grid */}
-                    <div className="flex-grow min-h-0 p-0 bg-[#0a0a0a] overflow-hidden">
-                      <TerminalGrid />
+                    {/* Splits layout toolbar & Pin button */}
+                    <div className="flex items-center space-x-2 bg-surface-2/70 p-0.5 rounded border border-surface-3 font-mono text-[8px] text-zinc-450 ml-4 shrink-0">
+                      <button
+                        onClick={toggleSessionPin}
+                        className={`flex items-center space-x-1 px-1.5 py-0.5 rounded transition cursor-pointer text-[9px] font-mono border ${
+                          isSessionPinned
+                            ? 'bg-brand/20 border-brand/50 text-brand-light font-semibold'
+                            : 'bg-surface-3/50 border-surface-3 text-zinc-400 hover:text-zinc-200'
+                        }`}
+                        title={isSessionPinned ? "Unpin Sessions Panel" : "Pin Sessions Panel to Left Side"}
+                      >
+                        <Pin size={9} className={isSessionPinned ? 'rotate-45 text-brand-light' : ''} />
+                        <span>{isSessionPinned ? 'PINNED' : 'PIN TO LEFT'}</span>
+                      </button>
+                      <span className="px-1 font-bold border-l border-surface-3 pl-1.5">SPLIT:</span>
+                      {['1x1', '1x2', '2x1', '2x2'].map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => setPaneLayoutType(type as any)}
+                          className={`px-1.5 py-0.5 rounded transition cursor-pointer ${paneLayout.type === type ? 'bg-brand text-white font-bold' : 'hover:text-zinc-200 bg-surface-3/50'}`}
+                        >
+                          {type}
+                        </button>
+                      ))}
                     </div>
                   </div>
+
+                  {/* Terminal Grid */}
+                  <div className="flex-grow min-h-0 p-0 bg-[#0a0a0a] overflow-hidden">
+                    <TerminalGrid />
+                  </div>
+                </div>
+
+                {/* Active File Preview / Diff View */}
                 {activeFileTab !== null && (
-                  activeFileTab.startsWith('git-diff:') ? (
-                    <div className="absolute inset-0">
+                  <div className={`h-full min-w-0 bg-[#0a0a0a] overflow-hidden ${isSessionPinned ? 'w-1/2 flex-1' : 'w-full'}`}>
+                    {activeFileTab.startsWith('git-diff:') ? (
                       <GitDiffCompare tabPath={activeFileTab} />
-                    </div>
-                  ) : (
-                    <div className="absolute inset-0">
+                    ) : (
                       <FilePreview />
-                    </div>
-                  )
+                    )}
+                  </div>
                 )}
               </div>
             </>
