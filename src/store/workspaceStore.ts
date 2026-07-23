@@ -72,6 +72,9 @@ interface WorkspaceState {
 
   fileUpdateCounter: number;
 
+  // Session Pin layout
+  isSessionPinned: boolean;
+
   // Actions
   setWorkspace: (ws: WorkspaceEntry | null) => void;
   setWorkspaces: (wsList: WorkspaceEntry[]) => void;
@@ -89,6 +92,9 @@ interface WorkspaceState {
   setActiveRightPanel: (panel: 'files' | 'git' | 'settings' | 'search' | 'skills' | 'none') => void;
   setGitFiles: (files: GitFileStatus[]) => void;
   setGitBranch: (branch: string) => void;
+
+  setSessionPinned: (pinned: boolean) => void;
+  toggleSessionPin: () => void;
 
   setPaneLayoutType: (type: '1x1' | '1x2' | '2x1' | '2x2') => void;
   setPaneSessionId: (index: number, sessionId: string | null) => void;
@@ -127,6 +133,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
   activeFileTabByProject: {},
   paneLayoutsByProject: {},
   fileUpdateCounter: 0,
+  isSessionPinned: false,
 
   setWorkspace: (ws) =>
     set((state) => {
@@ -248,6 +255,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
   setGitFiles: (files) => set({ gitFiles: files }),
   setGitBranch: (branch) => set({ gitBranch: branch }),
   triggerFileUpdate: () => set((state) => ({ fileUpdateCounter: state.fileUpdateCounter + 1 })),
+
+  setSessionPinned: (pinned) => set({ isSessionPinned: pinned }),
+  toggleSessionPin: () => set((state) => ({ isSessionPinned: !state.isSessionPinned })),
 
   setPaneLayoutType: (type) =>
     set((state) => {
@@ -389,5 +399,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
     openFilesByProject: state.openFilesByProject,
     activeFileTabByProject: state.activeFileTabByProject,
     paneLayoutsByProject: state.paneLayoutsByProject,
+    isSessionPinned: state.isSessionPinned,
   }),
 }));
