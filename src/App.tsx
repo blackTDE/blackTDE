@@ -31,7 +31,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Search,
-  Pin
+  Pin,
+  LayoutGrid,
+  Check
 } from 'lucide-react';
 
 const getFriendlySshHost = (sshHost?: string): string => {
@@ -139,6 +141,8 @@ function App() {
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
   };
+
+  const [showSplitMenu, setShowSplitMenu] = useState(false);
 
   // Expanded/Collapsed state for projects in Left Panel
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({
@@ -1024,10 +1028,9 @@ function App() {
                   }`}
                 >
                   {/* Clean Terminal Toolbar */}
-                  <div className="shrink-0 bg-surface-1 border-b border-surface-2 px-4 py-2 flex items-center justify-between select-none overflow-x-auto">
-                    <div className="flex items-center space-x-2 overflow-x-auto">
-                      <SquareTerminal size={14} className="text-brand-light shrink-0" />
-                      <span className="text-[10px] text-zinc-450 font-mono uppercase tracking-wider font-semibold mr-1.5 shrink-0">PTY Sessions:</span>
+                  <div className="shrink-0 bg-surface-1 border-b border-surface-2 px-3 py-1.5 flex items-center justify-between select-none min-w-0">
+                    <div className="flex-1 flex items-center space-x-2 overflow-x-auto min-w-0 mr-2 scrollbar-none">
+                      <span title="Active Terminal Sessions"><SquareTerminal size={14} className="text-brand-light shrink-0" /></span>
                       {sessionDeleteError && <span className="text-[9px] text-rose-400 truncate" title={sessionDeleteError}>{sessionDeleteError}</span>}
                       {activeProjectSessions.map((session) => {
                         const isSelected = activeSessionId === session.id;
@@ -1045,7 +1048,7 @@ function App() {
                               className="flex items-center space-x-1.5 cursor-pointer py-0.5"
                             >
                               <AgentIcon name={session.agentType} size={16} />
-                              <span>{session.agentType}</span>
+                              <span>{session.name || session.agentType}</span>
                               <span className="text-[8px] text-zinc-500 font-normal">({session.id.substring(8, 12)})</span>
                             </button>
                             {pendingDeleteSessionId === session.id ? (
@@ -1079,30 +1082,59 @@ function App() {
                       )}
                     </div>
 
-                    {/* Splits layout toolbar & Pin button */}
-                    <div className="flex items-center space-x-2 bg-surface-2/70 p-0.5 rounded border border-surface-3 font-mono text-[8px] text-zinc-450 ml-4 shrink-0">
+                    {/* Right Side Controls: Compact Pin button & Split Dropdown */}
+                    <div className="flex items-center space-x-1.5 shrink-0">
                       <button
                         onClick={toggleSessionPin}
-                        className={`flex items-center space-x-1 px-1.5 py-0.5 rounded transition cursor-pointer text-[9px] font-mono border ${
+                        className={`p-1 rounded border transition cursor-pointer text-xs ${
                           isSessionPinned
                             ? 'bg-brand/20 border-brand/50 text-brand-light font-semibold'
                             : 'bg-surface-3/50 border-surface-3 text-zinc-400 hover:text-zinc-200'
                         }`}
                         title={isSessionPinned ? "Unpin Sessions Panel" : "Pin Sessions Panel to Left Side"}
                       >
-                        <Pin size={9} className={isSessionPinned ? 'rotate-45 text-brand-light' : ''} />
-                        <span>{isSessionPinned ? 'PINNED' : 'PIN TO LEFT'}</span>
+                        <Pin size={11} className={isSessionPinned ? 'rotate-45 text-brand-light' : ''} />
                       </button>
-                      <span className="px-1 font-bold border-l border-surface-3 pl-1.5">SPLIT:</span>
-                      {['1x1', '1x2', '2x1', '2x2'].map((type) => (
+
+                      {/* Compact Split Dropdown */}
+                      <div className="relative">
                         <button
-                          key={type}
-                          onClick={() => setPaneLayoutType(type as any)}
-                          className={`px-1.5 py-0.5 rounded transition cursor-pointer ${paneLayout.type === type ? 'bg-brand text-white font-bold' : 'hover:text-zinc-200 bg-surface-3/50'}`}
+                          onClick={() => setShowSplitMenu(!showSplitMenu)}
+                          className="flex items-center space-x-1 px-2 py-0.5 rounded border border-surface-3 bg-surface-2/80 text-zinc-300 hover:text-white text-[10px] font-mono cursor-pointer transition"
+                          title="Change Terminal Split Layout"
                         >
-                          {type}
+                          <LayoutGrid size={11} className="text-brand-light" />
+                          <span>{paneLayout.type}</span>
+                          <ChevronDown size={10} className="text-zinc-500" />
                         </button>
-                      ))}
+                        {showSplitMenu && (
+                          <div
+                            className="absolute right-0 top-full mt-1 bg-surface-1 border border-surface-3 rounded-md shadow-xl py-1 z-30 w-28 text-[10px] font-mono"
+                            onClick={() => setShowSplitMenu(false)}
+                          >
+                            {[
+                              { type: '1x1', label: '1x1 Single' },
+                              { type: '1x2', label: '1x2 Dual H' },
+                              { type: '2x1', label: '2x1 Dual V' },
+                              { type: '2x2', label: '2x2 Grid' },
+                            ].map((item) => (
+                              <button
+                                key={item.type}
+                                onClick={() => {
+                                  setPaneLayoutType(item.type as any);
+                                  setShowSplitMenu(false);
+                                }}
+                                className={`w-full text-left px-2.5 py-1 hover:bg-surface-2 transition flex items-center justify-between cursor-pointer ${
+                                  paneLayout.type === item.type ? 'text-brand-light font-bold bg-brand/10' : 'text-zinc-300'
+                                }`}
+                              >
+                                <span>{item.label}</span>
+                                {paneLayout.type === item.type && <Check size={10} />}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
