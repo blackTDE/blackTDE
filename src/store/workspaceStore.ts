@@ -75,6 +75,12 @@ interface WorkspaceState {
   // Session Pin layout
   isSessionPinned: boolean;
 
+  // Panel sizing & Right Panel Pin/Auto-hide layout
+  leftPanelWidth: number;
+  rightPanelWidth: number;
+  pinnedSessionWidthPercent: number;
+  isRightPanelPinned: boolean;
+
   // Actions
   setWorkspace: (ws: WorkspaceEntry | null) => void;
   setWorkspaces: (wsList: WorkspaceEntry[]) => void;
@@ -95,6 +101,12 @@ interface WorkspaceState {
 
   setSessionPinned: (pinned: boolean) => void;
   toggleSessionPin: () => void;
+
+  setLeftPanelWidth: (w: number) => void;
+  setRightPanelWidth: (w: number) => void;
+  setPinnedSessionWidthPercent: (p: number) => void;
+  setRightPanelPinned: (pinned: boolean) => void;
+  toggleRightPanelPin: () => void;
 
   setPaneLayoutType: (type: '1x1' | '1x2' | '2x1' | '2x2') => void;
   setPaneSessionId: (index: number, sessionId: string | null) => void;
@@ -134,6 +146,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
   paneLayoutsByProject: {},
   fileUpdateCounter: 0,
   isSessionPinned: false,
+  leftPanelWidth: 320,
+  rightPanelWidth: 320,
+  pinnedSessionWidthPercent: 50,
+  isRightPanelPinned: true,
 
   setWorkspace: (ws) =>
     set((state) => {
@@ -258,6 +274,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
 
   setSessionPinned: (pinned) => set({ isSessionPinned: pinned }),
   toggleSessionPin: () => set((state) => ({ isSessionPinned: !state.isSessionPinned })),
+
+  setLeftPanelWidth: (w) => set({ leftPanelWidth: w }),
+  setRightPanelWidth: (w) => set({ rightPanelWidth: w }),
+  setPinnedSessionWidthPercent: (p) => set({ pinnedSessionWidthPercent: p }),
+  setRightPanelPinned: (pinned) => set({ isRightPanelPinned: pinned }),
+  toggleRightPanelPin: () => set((state) => ({ isRightPanelPinned: !state.isRightPanelPinned })),
 
   setPaneLayoutType: (type) =>
     set((state) => {
@@ -400,5 +422,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
     activeFileTabByProject: state.activeFileTabByProject,
     paneLayoutsByProject: state.paneLayoutsByProject,
     isSessionPinned: state.isSessionPinned,
+    leftPanelWidth: state.leftPanelWidth,
+    rightPanelWidth: state.rightPanelWidth,
+    pinnedSessionWidthPercent: state.pinnedSessionWidthPercent,
+    isRightPanelPinned: state.isRightPanelPinned,
   }),
 }));
