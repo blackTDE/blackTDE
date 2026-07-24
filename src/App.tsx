@@ -580,7 +580,7 @@ function App() {
     <div className="flex h-screen w-screen bg-surface text-zinc-100 overflow-hidden font-sans flex-col select-none relative">
       
       {/* Main Container */}
-      <div className="flex flex-1 min-h-0 w-full overflow-hidden">
+      <div className="flex flex-1 min-h-0 w-full overflow-hidden relative">
         
         {/* Left Sidebar Panel (Projects Tree Viewer) */}
         {isLeftPanelVisible && (
@@ -1173,8 +1173,8 @@ function App() {
           )}
         </div>
 
-        {/* Right Resizer Handle Divider */}
-        {isRightPaneExpanded && (
+        {/* Right Resizer Handle Divider (Only when Pinned) */}
+        {isRightPaneExpanded && isRightPanelPinned && (
           <div
             onMouseDown={handleRightResizeStart}
             className="w-1.5 hover:w-1.5 cursor-col-resize bg-surface-2/40 hover:bg-brand/60 transition-all z-20 shrink-0 select-none"
@@ -1191,8 +1191,20 @@ function App() {
                 setIsRightPaneExpanded(false);
               }
             }}
-            className="shrink-0 border-l border-surface-2 bg-surface-1 flex flex-col overflow-hidden transition-all shadow-lg z-10"
+            className={`bg-surface-1 flex flex-col overflow-hidden transition-all border-l border-surface-2 ${
+              isRightPanelPinned
+                ? 'shrink-0 z-10'
+                : 'absolute right-0 top-0 bottom-0 z-30 shadow-2xl'
+            }`}
           >
+            {/* Floating Resizer Handle on Left Edge when Unpinned */}
+            {!isRightPanelPinned && (
+              <div
+                onMouseDown={handleRightResizeStart}
+                className="absolute left-0 top-0 bottom-0 w-1.5 hover:w-2 cursor-col-resize bg-transparent hover:bg-brand/60 transition-all z-40 select-none"
+                title="Drag to resize Right Inspector Panel"
+              />
+            )}
             {/* Swappable Panel Tabs */}
             <div className="shrink-0 flex border-b border-surface-2 select-none bg-surface-1/40 items-center">
               <button
