@@ -20,4 +20,7 @@ test('manages panel widths and right panel pin state', () => {
 
   store.toggleRightPanelPin();
   assert.equal(useWorkspaceStore.getState().isRightPanelPinned, false);
+
+  store.setRightPanelPinned(true);
+  assert.equal(useWorkspaceStore.getState().isRightPanelPinned, true);
 });

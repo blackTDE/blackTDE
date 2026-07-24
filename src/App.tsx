@@ -1290,7 +1290,15 @@ function App() {
         {/* Expand Right Pane Dock Trigger Bar */}
         {!isRightPaneExpanded && (
           <div
-            className="w-10 bg-surface-1 border-l border-surface-2 flex flex-col items-center py-3 space-y-3 shrink-0 select-none z-10"
+            onMouseEnter={() => {
+              if (!isRightPanelPinned) {
+                if (activeRightPanel === 'none') {
+                  setActiveRightPanel('files');
+                }
+                setIsRightPaneExpanded(true);
+              }
+            }}
+            className="w-10 bg-surface-1 border-l border-surface-2 flex flex-col items-center py-3 space-y-3 shrink-0 select-none z-10 cursor-pointer"
           >
             {[
               { id: 'files', icon: Folder, label: 'Files' },
