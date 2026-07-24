@@ -944,40 +944,35 @@ function App() {
             <>
               {/* Level 2: Child Tabs (sessions and open files) */}
               <div className="shrink-0 flex items-center border-b border-surface-2 bg-[#171717] select-none min-w-0">
-                {/* Sessions Tab */}
-                <div
-                  style={{
-                    width: isSessionPinned && activeFileTab !== null ? `${pinnedSessionWidthPercent}%` : 'auto'
-                  }}
-                  className={`flex items-center justify-between border-r border-surface-2 bg-[#171717] shrink-0 border-b-2 transition group ${
-                    activeFileTab === null
-                      ? 'border-b-brand text-zinc-100'
-                      : 'border-b-transparent text-zinc-500 hover:text-zinc-350'
-                  }`}
-                >
-                  <button
-                    onClick={() => setActiveFileTab(null)}
-                    className="flex items-center space-x-1.5 px-3 py-2 text-xs font-semibold"
-                  >
-                    <SquareTerminal size={13} className={activeFileTab === null ? 'text-brand-light' : 'text-zinc-500'} />
-                    <span className="font-mono">sessions</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleSessionPin();
-                    }}
-                    className={`mr-2 p-1 rounded hover:bg-surface-3 transition cursor-pointer ${
-                      isSessionPinned
-                        ? 'text-brand-light bg-brand/15'
-                        : 'text-zinc-550 opacity-60 group-hover:opacity-100 hover:text-zinc-200'
+                {/* Sessions Tab - Rendered on Level 2 only when NOT pinned to avoid duplication */}
+                {!isSessionPinned && (
+                  <div
+                    className={`flex items-center justify-between border-r border-surface-2 bg-[#171717] shrink-0 border-b-2 transition group ${
+                      activeFileTab === null
+                        ? 'border-b-brand text-zinc-100'
+                        : 'border-b-transparent text-zinc-500 hover:text-zinc-350'
                     }`}
-                    title={isSessionPinned ? "Unpin Terminal Sessions from Left Side" : "Pin Terminal Sessions to Left Side"}
                   >
-                    <Pin size={11} className={isSessionPinned ? 'rotate-45 text-brand-light' : ''} />
-                  </button>
-                </div>
+                    <button
+                      onClick={() => setActiveFileTab(null)}
+                      className="flex items-center space-x-1.5 px-3 py-2 text-xs font-semibold"
+                    >
+                      <SquareTerminal size={13} className={activeFileTab === null ? 'text-brand-light' : 'text-zinc-500'} />
+                      <span className="font-mono">sessions</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSessionPin();
+                      }}
+                      className="mr-2 p-1 rounded hover:bg-surface-3 transition cursor-pointer text-zinc-550 opacity-60 group-hover:opacity-100 hover:text-zinc-200"
+                      title="Pin Terminal Sessions to Left Side"
+                    >
+                      <Pin size={11} />
+                    </button>
+                  </div>
+                )}
 
                 {/* Opened File Tabs - aligned over the right file window when pinned */}
                 <div className="flex-1 flex items-center overflow-x-auto scrollbar-none min-w-0">
