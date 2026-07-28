@@ -942,72 +942,162 @@ function App() {
           ) : (
             /* Render Workspace Content */
             <>
-              {/* Level 2: Child Tabs (sessions and open files) */}
+              {/* Level 2: Child Tabs (sessions and open files on a single split header row) */}
               <div className="shrink-0 flex items-center border-b border-surface-2 bg-[#171717] select-none min-w-0">
-                {/* Sessions Tab - Rendered on Level 2 only when NOT pinned to avoid duplication */}
-                {!isSessionPinned && (
-                  <div
-                    className={`flex items-center justify-between border-r border-surface-2 bg-[#171717] shrink-0 border-b-2 transition group ${
-                      activeFileTab === null
-                        ? 'border-b-brand text-zinc-100'
-                        : 'border-b-transparent text-zinc-500 hover:text-zinc-350'
-                    }`}
-                  >
+                {/* Left Part: Session Tabs & Controls (aligned with left PTY pane width when pinned) */}
+                <div
+                  style={{
+                    width: isSessionPinned && activeFileTab !== null ? `${pinnedSessionWidthPercent}%` : 'auto'
+                  }}
+                  className={`flex items-center justify-between px-3 py-1.5 border-r border-surface-2 bg-surface-1 shrink-0 min-w-0 ${
+                    activeFileTab === null ? 'flex-1' : ''
+                  }`}
+                >
+                  <div className="flex-1 flex items-center space-x-2 overflow-x-auto min-w-0 mr-2 scrollbar-none">
+                    <span title="Active Terminal Sessions"><SquareTerminal size={14} className="text-brand-light shrink-0" /></span>
+                    {sessionDeleteError && <span className="text-[9px] text-rose-400 truncate" title={sessionDeleteError}>{sessionDeleteError}</span>}
+                    {activeProjectSessions.map((session) => {
+                      const isSelected = activeSessionId === session.id;
+                      return (
+                        <div
+                          key={session.id}
+                          className={`flex items-center space-x-1.5 px-2 py-0.5 rounded text-[10px] font-mono border transition shrink-0 ${
+                            isSelected
+                              ? 'bg-brand/10 border-brand/40 text-brand-light font-bold'
+                              : 'bg-surface-3/30 border-surface-3 text-zinc-450 hover:text-zinc-200'
+                          }`}
+                        >
+                          <button
+                            onClick={() => handleSelectSession(activeWorkspace, session.id)}
+                            className="flex items-center space-x-1.5 cursor-pointer py-0.5"
+                          >
+                            <AgentIcon name={session.agentType} size={16} />
+                            <span>{session.name || session.agentType}</span>
+                            <span className="text-[8px] text-zinc-500 font-normal">({session.id.substring(8, 12)})</span>
+                          </button>
+                          {pendingDeleteSessionId === session.id ? (
+                            <span className="flex items-center gap-1 text-[9px] text-rose-300">
+                              <button type="button" onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id, true); }} className="text-rose-400">✓</button>
+                              <button type="button" onClick={(e) => { e.stopPropagation(); setPendingDeleteSessionId(null); }} className="text-zinc-500">×</button>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id); }}
+                              className="p-0.5 hover:bg-red-500/20 hover:text-red-400 text-zinc-550 rounded transition cursor-pointer"
+                              title="Delete Session"
+                            >
+                              <X size={10} />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                    
+                    {/* Spawn Session Trigger Button */}
+                    {activeWorkspace && (
+                      <button
+                        onClick={(e) => openNewSessionModal(activeWorkspace, e)}
+                        title="Spawn Session"
+                        className="flex items-center justify-center p-1 bg-surface-3 border border-surface-3 rounded hover:bg-surface-2 hover:text-brand-light text-zinc-400 transition cursor-pointer shrink-0"
+                      >
+                        <Plus size={11} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Right Side Controls of Left Part: Compact Pin button & Split Dropdown */}
+                  <div className="flex items-center space-x-1.5 shrink-0">
                     <button
-                      onClick={() => setActiveFileTab(null)}
-                      className="flex items-center space-x-1.5 px-3 py-2 text-xs font-semibold"
+                      onClick={toggleSessionPin}
+                      className={`p-1 rounded border transition cursor-pointer text-xs ${
+                        isSessionPinned
+                          ? 'bg-brand/20 border-brand/50 text-brand-light font-semibold'
+                          : 'bg-surface-3/50 border-surface-3 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                      title={isSessionPinned ? "Unpin Terminal Sessions from Left Side" : "Pin Terminal Sessions to Left Side"}
                     >
-                      <SquareTerminal size={13} className={activeFileTab === null ? 'text-brand-light' : 'text-zinc-500'} />
-                      <span className="font-mono">sessions</span>
+                      <Pin size={11} className={isSessionPinned ? 'rotate-45 text-brand-light' : ''} />
                     </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleSessionPin();
-                      }}
-                      className="mr-2 p-1 rounded hover:bg-surface-3 transition cursor-pointer text-zinc-550 opacity-60 group-hover:opacity-100 hover:text-zinc-200"
-                      title="Pin Terminal Sessions to Left Side"
-                    >
-                      <Pin size={11} />
-                    </button>
+
+                    {/* Compact Split Dropdown */}
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowSplitMenu(!showSplitMenu)}
+                        className="flex items-center space-x-1 px-2 py-0.5 rounded border border-surface-3 bg-surface-2/80 text-zinc-300 hover:text-white text-[10px] font-mono cursor-pointer transition"
+                        title="Change Terminal Split Layout"
+                      >
+                        <LayoutGrid size={11} className="text-brand-light" />
+                        <span>{paneLayout.type}</span>
+                        <ChevronDown size={10} className="text-zinc-500" />
+                      </button>
+                      {showSplitMenu && (
+                        <div
+                          className="absolute right-0 top-full mt-1 bg-surface-1 border border-surface-3 rounded-md shadow-xl py-1 z-30 w-28 text-[10px] font-mono"
+                          onClick={() => setShowSplitMenu(false)}
+                        >
+                          {[
+                            { type: '1x1', label: '1x1 Single' },
+                            { type: '1x2', label: '1x2 Dual H' },
+                            { type: '2x1', label: '2x1 Dual V' },
+                            { type: '2x2', label: '2x2 Grid' },
+                          ].map((item) => (
+                            <button
+                              key={item.type}
+                              onClick={() => {
+                                setPaneLayoutType(item.type as any);
+                                setShowSplitMenu(false);
+                              }}
+                              className={`w-full text-left px-2.5 py-1 hover:bg-surface-2 transition flex items-center justify-between cursor-pointer ${
+                                paneLayout.type === item.type ? 'text-brand-light font-bold bg-brand/10' : 'text-zinc-300'
+                              }`}
+                            >
+                              <span>{item.label}</span>
+                              {paneLayout.type === item.type && <Check size={10} />}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Part: Opened File Tabs (aligned over the right file window when pinned) */}
+                {activeFileTab !== null && (
+                  <div className="flex-1 flex items-center overflow-x-auto scrollbar-none min-w-0">
+                    {openFiles.map(f => {
+                      const isGitDiff = f.path.startsWith('git-diff:');
+                      const displayName = isGitDiff ? `Diff: ${f.name}` : f.name;
+                      return (
+                        <div
+                          key={f.path}
+                          className={`flex items-center space-x-1 border-r border-surface-2 border-b-2 transition shrink-0 ${
+                            activeFileTab === f.path
+                              ? 'border-brand text-zinc-100 bg-surface/40'
+                              : 'border-transparent text-zinc-550 hover:text-zinc-350 hover:bg-surface-2/10'
+                          }`}
+                        >
+                          <button
+                            onClick={() => setActiveFileTab(f.path)}
+                            className="px-3 py-2 text-xs font-mono font-medium truncate max-w-[160px]"
+                            title={displayName}
+                          >
+                            {displayName}
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              closeFile(f.path);
+                            }}
+                            className="pr-2.5 text-zinc-650 hover:text-rose-450 transition cursor-pointer"
+                          >
+                            <X size={10} />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
-
-                {/* Opened File Tabs - aligned over the right file window when pinned */}
-                <div className="flex-1 flex items-center overflow-x-auto scrollbar-none min-w-0">
-                  {openFiles.map(f => {
-                    const isGitDiff = f.path.startsWith('git-diff:');
-                    const displayName = isGitDiff ? `Diff: ${f.name}` : f.name;
-                    return (
-                      <div
-                        key={f.path}
-                        className={`flex items-center space-x-1 border-r border-surface-2 border-b-2 transition shrink-0 ${
-                          activeFileTab === f.path
-                            ? 'border-brand text-zinc-100 bg-surface/40'
-                            : 'border-transparent text-zinc-550 hover:text-zinc-350 hover:bg-surface-2/10'
-                        }`}
-                      >
-                        <button
-                          onClick={() => setActiveFileTab(f.path)}
-                          className="px-3 py-2 text-xs font-mono font-medium truncate max-w-[160px]"
-                          title={displayName}
-                        >
-                          {displayName}
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            closeFile(f.path);
-                          }}
-                          className="pr-2.5 text-zinc-650 hover:text-rose-450 transition cursor-pointer"
-                        >
-                          <X size={10} />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
               </div>
 
               {/* Tab content area */}
@@ -1025,117 +1115,6 @@ function App() {
                       : 'hidden'
                   }`}
                 >
-                  {/* Clean Terminal Toolbar */}
-                  <div className="shrink-0 bg-surface-1 border-b border-surface-2 px-3 py-1.5 flex items-center justify-between select-none min-w-0">
-                    <div className="flex-1 flex items-center space-x-2 overflow-x-auto min-w-0 mr-2 scrollbar-none">
-                      <span title="Active Terminal Sessions"><SquareTerminal size={14} className="text-brand-light shrink-0" /></span>
-                      {sessionDeleteError && <span className="text-[9px] text-rose-400 truncate" title={sessionDeleteError}>{sessionDeleteError}</span>}
-                      {activeProjectSessions.map((session) => {
-                        const isSelected = activeSessionId === session.id;
-                        return (
-                          <div
-                            key={session.id}
-                            className={`flex items-center space-x-1.5 px-2 py-0.5 rounded text-[10px] font-mono border transition shrink-0 ${
-                              isSelected
-                                ? 'bg-brand/10 border-brand/40 text-brand-light font-bold'
-                                : 'bg-surface-3/30 border-surface-3 text-zinc-450 hover:text-zinc-200'
-                            }`}
-                          >
-                            <button
-                              onClick={() => handleSelectSession(activeWorkspace, session.id)}
-                              className="flex items-center space-x-1.5 cursor-pointer py-0.5"
-                            >
-                              <AgentIcon name={session.agentType} size={16} />
-                              <span>{session.name || session.agentType}</span>
-                              <span className="text-[8px] text-zinc-500 font-normal">({session.id.substring(8, 12)})</span>
-                            </button>
-                            {pendingDeleteSessionId === session.id ? (
-                              <span className="flex items-center gap-1 text-[9px] text-rose-300">
-                                <button type="button" onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id, true); }} className="text-rose-400">✓</button>
-                                <button type="button" onClick={(e) => { e.stopPropagation(); setPendingDeleteSessionId(null); }} className="text-zinc-500">×</button>
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); void handleDeleteSession(session.id); }}
-                                className="p-0.5 hover:bg-red-500/20 hover:text-red-400 text-zinc-550 rounded transition cursor-pointer"
-                                title="Delete Session"
-                              >
-                                <X size={10} />
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                      
-                      {/* Spawn Session Trigger Button */}
-                      {activeWorkspace && (
-                        <button
-                          onClick={(e) => openNewSessionModal(activeWorkspace, e)}
-                          title="Spawn Session"
-                          className="flex items-center justify-center p-1 bg-surface-3 border border-surface-3 rounded hover:bg-surface-2 hover:text-brand-light text-zinc-400 transition cursor-pointer shrink-0"
-                        >
-                          <Plus size={11} />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Right Side Controls: Compact Pin button & Split Dropdown */}
-                    <div className="flex items-center space-x-1.5 shrink-0">
-                      <button
-                        onClick={toggleSessionPin}
-                        className={`p-1 rounded border transition cursor-pointer text-xs ${
-                          isSessionPinned
-                            ? 'bg-brand/20 border-brand/50 text-brand-light font-semibold'
-                            : 'bg-surface-3/50 border-surface-3 text-zinc-400 hover:text-zinc-200'
-                        }`}
-                        title={isSessionPinned ? "Unpin Sessions Panel" : "Pin Sessions Panel to Left Side"}
-                      >
-                        <Pin size={11} className={isSessionPinned ? 'rotate-45 text-brand-light' : ''} />
-                      </button>
-
-                      {/* Compact Split Dropdown */}
-                      <div className="relative">
-                        <button
-                          onClick={() => setShowSplitMenu(!showSplitMenu)}
-                          className="flex items-center space-x-1 px-2 py-0.5 rounded border border-surface-3 bg-surface-2/80 text-zinc-300 hover:text-white text-[10px] font-mono cursor-pointer transition"
-                          title="Change Terminal Split Layout"
-                        >
-                          <LayoutGrid size={11} className="text-brand-light" />
-                          <span>{paneLayout.type}</span>
-                          <ChevronDown size={10} className="text-zinc-500" />
-                        </button>
-                        {showSplitMenu && (
-                          <div
-                            className="absolute right-0 top-full mt-1 bg-surface-1 border border-surface-3 rounded-md shadow-xl py-1 z-30 w-28 text-[10px] font-mono"
-                            onClick={() => setShowSplitMenu(false)}
-                          >
-                            {[
-                              { type: '1x1', label: '1x1 Single' },
-                              { type: '1x2', label: '1x2 Dual H' },
-                              { type: '2x1', label: '2x1 Dual V' },
-                              { type: '2x2', label: '2x2 Grid' },
-                            ].map((item) => (
-                              <button
-                                key={item.type}
-                                onClick={() => {
-                                  setPaneLayoutType(item.type as any);
-                                  setShowSplitMenu(false);
-                                }}
-                                className={`w-full text-left px-2.5 py-1 hover:bg-surface-2 transition flex items-center justify-between cursor-pointer ${
-                                  paneLayout.type === item.type ? 'text-brand-light font-bold bg-brand/10' : 'text-zinc-300'
-                                }`}
-                              >
-                                <span>{item.label}</span>
-                                {paneLayout.type === item.type && <Check size={10} />}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
                   {/* Terminal Grid */}
                   <div className="flex-grow min-h-0 p-0 bg-[#0a0a0a] overflow-hidden">
                     <TerminalGrid />
