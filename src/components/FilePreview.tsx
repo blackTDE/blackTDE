@@ -1,12 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import MonacoEditor, { type OnMount } from '@monaco-editor/react';
 import { useWorkspaceStore } from '../store/workspaceStore';
-import { invoke } from '@tauri-apps/api/core';
-import { Save, FileText, Edit3, Eye, FileCode } from 'lucide-react';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { Save, FileText, Edit3, Eye, FileCode, Volume2, Video } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { MermaidBlock } from './MermaidBlock';
 import { isMermaidClass } from '../markdown';
+import {
+  isVideoFile,
+  isAudioFile,
+  isImageFile,
+  isPreviewableFile,
+  isBinaryFile,
+  processHtmlWithBaseUrl
+} from '../utils/htmlPreviewUtils';
 
 export const FilePreview: React.FC = () => {
   const { activeFilePath, activeFileLine, fileNavigationCounter, setActiveFileContent, fileUpdateCounter } = useWorkspaceStore();
@@ -26,16 +34,8 @@ export const FilePreview: React.FC = () => {
   const ext = activeFilePath ? activeFilePath.split('.').pop()?.toLowerCase() || '' : '';
 
   // Determine if this file is a previewable type
-  const isPreviewable = [
-    'md', 'html', 'json', 
-    'png', 'jpg', 'jpeg', 'gif', 'svg', 
-    'pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'
-  ].includes(ext);
-
-  const isBinary = [
-    'png', 'jpg', 'jpeg', 'gif', 'svg', 
-    'pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'
-  ].includes(ext);
+  const isPreviewable = isPreviewableFile(ext);
+  const isBinary = isBinaryFile(ext);
 
   useEffect(() => {
     if (!activeFilePath) return;
@@ -51,12 +51,14 @@ export const FilePreview: React.FC = () => {
 
     const loadData = async () => {
       try {
-        if (['png', 'jpg', 'jpeg', 'gif', 'svg'].includes(ext)) {
-          // Read binary file in Base64
+        if (isImageFile(ext)) {
+          // Read image binary file in Base64
           const b64 = await invoke<string>('read_file_base64', { path: activeFilePath });
           setBase64Content(b64);
+        } else if (isVideoFile(ext) || isAudioFile(ext)) {
+          // Video & Audio are streamed directly via convertFileSrc, no heavy preload required
         } else if (['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'].includes(ext)) {
-          // Keep base64 or just load metadata (read-only system view)
+          // Keep base64 or metadata
           try {
             const b64 = await invoke<string>('read_file_base64', { path: activeFilePath });
             setBase64Content(b64);
@@ -235,16 +237,74 @@ export const FilePreview: React.FC = () => {
           </div>
         );
       case 'html':
+      case 'htm': {
+        const processedHtml = processHtmlWithBaseUrl(textContent, activeFilePath, convertFileSrc);
         return (
           <div className="h-full w-full bg-white rounded overflow-hidden shadow border border-surface-3">
             <iframe
               title="HTML Visual Preview"
-              srcDoc={textContent}
-              sandbox="allow-scripts"
+              srcDoc={processedHtml}
+              sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
               className="w-full h-full bg-white"
             />
           </div>
         );
+      }
+      case 'mp4':
+      case 'webm':
+      case 'ogv':
+      case 'mov':
+      case 'm4v':
+      case 'mkv':
+      case 'avi': {
+        const mediaUrl = convertFileSrc(activeFilePath);
+        return (
+          <div className="h-full w-full flex flex-col items-center justify-center p-6 bg-surface-2/20 rounded select-none">
+            <div className="relative max-w-full max-h-full flex flex-col items-center">
+              <video
+                controls
+                autoPlay
+                src={mediaUrl}
+                className="max-w-full max-h-[70vh] rounded border border-surface-3 shadow-lg bg-black"
+              >
+                Your browser does not support video playback.
+              </video>
+              <div className="mt-3 text-xs font-mono text-zinc-400 flex items-center space-x-1.5">
+                <Video size={13} className="text-brand-light" />
+                <span>{activeFilePath.split('/').pop()}</span>
+                <span className="text-[10px] text-zinc-500 uppercase font-bold">({ext})</span>
+              </div>
+            </div>
+          </div>
+        );
+      }
+      case 'wav':
+      case 'mp3':
+      case 'ogg':
+      case 'flac':
+      case 'aac':
+      case 'm4a': {
+        const mediaUrl = convertFileSrc(activeFilePath);
+        return (
+          <div className="h-full w-full flex flex-col items-center justify-center p-6 bg-surface-2/20 rounded select-none">
+            <div className="p-8 bg-surface-1 rounded-xl border border-surface-2 shadow-lg max-w-md w-full flex flex-col items-center text-center">
+              <div className="w-16 h-16 rounded-full bg-brand/10 border border-brand/30 flex items-center justify-center text-brand-light mb-4 shadow-inner">
+                <Volume2 size={32} />
+              </div>
+              <h3 className="text-sm font-bold text-zinc-200 truncate mb-1 w-full">{activeFilePath.split('/').pop()}</h3>
+              <p className="text-[10px] text-zinc-500 mb-6 font-mono uppercase tracking-wider">{ext} Audio File</p>
+              <audio
+                controls
+                autoPlay
+                src={mediaUrl}
+                className="w-full mb-2"
+              >
+                Your browser does not support audio playback.
+              </audio>
+            </div>
+          </div>
+        );
+      }
       case 'json':
         try {
           const parsed = JSON.parse(textContent);
