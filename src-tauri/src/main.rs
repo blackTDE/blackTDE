@@ -242,31 +242,24 @@ async fn spawn_session(
         }
     }
 
-    if clean_cmd == "claude" {
-        if !command_args.iter().any(|arg| arg == "--output-format") {
-            command_args.push("--output-format".to_string());
-            command_args.push("stream-json".to_string());
-        }
+    if clean_cmd == "claude" && !command_args.iter().any(|arg| arg == "--output-format") {
+        command_args.push("--output-format".to_string());
+        command_args.push("stream-json".to_string());
+    }
 
-        if let Some(ref r_id) = resume_session_id {
-            if !r_id.trim().is_empty() {
-                if !command_args.iter().any(|arg| arg == "--resume") {
-                    command_args.push("--resume".to_string());
-                    command_args.push(r_id.clone());
-                }
-                initial_remote_id = Some(r_id.clone());
-            }
-        } else {
-            // Brand new session: generate a unique UUID and pass as --session-id
-            let new_uuid = uuid::Uuid::new_v4().to_string();
-            command_args.push("--session-id".to_string());
-            command_args.push(new_uuid.clone());
-            initial_remote_id = Some(new_uuid);
-        }
-    } else if let Some(ref r_id) = resume_session_id {
+    if let Some(ref r_id) = resume_session_id {
         if let Some(resume_args) = agent_resume_args(&clean_cmd, r_id) {
-            command_args.extend(resume_args);
+            if !command_args.iter().any(|arg| arg == &resume_args[0]) {
+                command_args.extend(resume_args);
+            }
             initial_remote_id = Some(r_id.clone());
+        }
+    } else {
+        // Brand new session: generate a unique UUID for supported agents (claude, agy, opencode)
+        let new_uuid = uuid::Uuid::new_v4().to_string();
+        if let Some(new_args) = agent_new_session_args(&clean_cmd, &new_uuid) {
+            command_args.extend(new_args);
+            initial_remote_id = Some(new_uuid);
         }
     }
 
@@ -837,6 +830,19 @@ fn resolve_codex_session_id(home: &Path, cwd: &str) -> Option<String> {
     latest.map(|(_, id)| id)
 }
 
+fn agent_new_session_args(command: &str, new_id: &str) -> Option<Vec<String>> {
+    if new_id.trim().is_empty() {
+        return None;
+    }
+    let flag = match command {
+        "claude" => "--session-id",
+        "agy" => "--conversation",
+        "opencode" | "open-code" => "--session",
+        _ => return None,
+    };
+    Some(vec![flag.to_string(), new_id.to_string()])
+}
+
 fn agent_resume_args(command: &str, remote_id: &str) -> Option<Vec<String>> {
     if remote_id.trim().is_empty() {
         return None;
@@ -881,10 +887,27 @@ fn resolve_agy_conversation_id(home: &Path, cwd: &str) -> Option<String> {
 #[cfg(test)]
 mod session_resume_tests {
     use super::{
-        agent_resume_args, privileged_agent_args, resolve_agy_conversation_id,
+        agent_new_session_args, agent_resume_args, privileged_agent_args, resolve_agy_conversation_id,
         resolve_codex_session_id, resume_args_for_session,
     };
     use std::fs;
+
+    #[test]
+    fn builds_provider_specific_new_session_arguments() {
+        assert_eq!(
+            agent_new_session_args("agy", "conv-uuid-1234"),
+            Some(vec!["--conversation".into(), "conv-uuid-1234".into()])
+        );
+        assert_eq!(
+            agent_new_session_args("claude", "claude-uuid-5678"),
+            Some(vec!["--session-id".into(), "claude-uuid-5678".into()])
+        );
+        assert_eq!(
+            agent_new_session_args("opencode", "open-uuid-9999"),
+            Some(vec!["--session".into(), "open-uuid-9999".into()])
+        );
+        assert_eq!(agent_new_session_args("zsh", "ignored"), None);
+    }
 
     #[test]
     fn builds_provider_specific_resume_arguments() {
@@ -1178,14 +1201,24 @@ async fn resume_terminated_session(
         && ssh_host.is_none()
     {
         if let Some(home) = std::env::var("HOME").ok().map(PathBuf::from) {
-            remote_session_id = resolve_agy_conversation_id(&home, &cwd);
-            if let Some(ref resolved) = remote_session_id {
-                sqlx::query("UPDATE sessions SET remote_session_id = $1 WHERE id = $2")
-                    .bind(resolved)
-                    .bind(&id)
-                    .execute(&*pool)
-                    .await
-                    .map_err(|e| e.to_string())?;
+            if let Some(resolved) = resolve_agy_conversation_id(&home, &cwd) {
+                // Check if this resolved conversation ID is already claimed by a different session in SQLite
+                let claimed: Result<Option<(String,)>, _> = sqlx::query_as(
+                    "SELECT id FROM sessions WHERE remote_session_id = $1 AND id != $2"
+                )
+                .bind(&resolved)
+                .bind(&id)
+                .fetch_optional(&*pool)
+                .await;
+
+                if matches!(claimed, Ok(None)) {
+                    remote_session_id = Some(resolved.clone());
+                    let _ = sqlx::query("UPDATE sessions SET remote_session_id = $1 WHERE id = $2")
+                        .bind(&resolved)
+                        .bind(&id)
+                        .execute(&*pool)
+                        .await;
+                }
             }
         }
     }

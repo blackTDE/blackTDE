@@ -46,8 +46,11 @@ pub fn start_stdout_reader(
                 Ok(n) => {
                     let data_chunk = buffer[..n].to_vec();
 
-                    // Scan chunk for remote session_id/conversation_id (e.g. from Claude Code, Codex, OpenCode, Pi Agent stream payloads)
+                    // Scan chunk for remote session_id/conversation_id (e.g. from Claude Code, AGY, Codex, OpenCode, Pi Agent payloads)
                     if let Ok(text) = std::str::from_utf8(&data_chunk) {
+                        let mut found_sid = None;
+                        
+                        // 1. Scan for JSON keys ("session_id", "conversation_id", etc.)
                         let keys = vec![
                             "\"session_id\"",
                             "\"sessionId\"",
@@ -56,7 +59,6 @@ pub fn start_stdout_reader(
                             "\"run_id\"",
                             "\"runId\"",
                         ];
-                        let mut found_sid = None;
                         for key in keys {
                             if let Some(idx) = text.find(key) {
                                 let after = &text[idx + key.len()..];
@@ -68,6 +70,31 @@ pub fn start_stdout_reader(
                                             found_sid = Some(val.to_string());
                                             break;
                                         }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 2. Scan for plain text Conversation ID (e.g. "Conversation ID: 697358a9-3459-4f48-b59b-dde0972d1d6c")
+                        if found_sid.is_none() {
+                            let plain_keys = vec![
+                                "Conversation ID:",
+                                "conversation ID:",
+                                "Conversation ID :",
+                                "conversation_id:",
+                                "conversationId:",
+                            ];
+                            for pkey in plain_keys {
+                                if let Some(idx) = text.find(pkey) {
+                                    let after = text[idx + pkey.len()..].trim_start();
+                                    let clean_after = after.trim_start_matches('[').trim_start();
+                                    let token: String = clean_after
+                                        .chars()
+                                        .take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+                                        .collect();
+                                    if token.len() >= 8 && token != "default" {
+                                        found_sid = Some(token);
+                                        break;
                                     }
                                 }
                             }
