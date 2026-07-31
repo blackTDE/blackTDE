@@ -40,6 +40,42 @@ export function isBinaryFile(ext: string): boolean {
   );
 }
 
+export function getMediaMimeType(ext: string): string {
+  const normalized = ext.toLowerCase();
+  switch (normalized) {
+    case 'wav':
+      return 'audio/wav';
+    case 'mp3':
+      return 'audio/mpeg';
+    case 'ogg':
+      return 'audio/ogg';
+    case 'flac':
+      return 'audio/flac';
+    case 'aac':
+      return 'audio/aac';
+    case 'm4a':
+      return 'audio/mp4';
+    case 'mp4':
+      return 'video/mp4';
+    case 'webm':
+      return 'video/webm';
+    case 'ogv':
+      return 'video/ogg';
+    case 'mov':
+      return 'video/quicktime';
+    case 'm4v':
+      return 'video/x-m4v';
+    case 'mkv':
+      return 'video/x-matroska';
+    case 'avi':
+      return 'video/x-msvideo';
+    case 'svg':
+      return 'image/svg+xml';
+    default:
+      return `image/${normalized}`;
+  }
+}
+
 /**
  * Injects `<base href="...">` pointing to the file's parent directory via Tauri asset protocol
  * so relative URLs in `<img src="...">`, `<video src="...">`, `<link href="...">`, `<script src="...">` resolve correctly.

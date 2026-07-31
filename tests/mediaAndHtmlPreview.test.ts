@@ -5,8 +5,16 @@ import {
   isAudioFile,
   isPreviewableFile,
   isBinaryFile,
+  getMediaMimeType,
   processHtmlWithBaseUrl
 } from '../src/utils/htmlPreviewUtils.ts';
+
+test('returns correct MIME types for media files', () => {
+  assert.equal(getMediaMimeType('wav'), 'audio/wav');
+  assert.equal(getMediaMimeType('mp3'), 'audio/mpeg');
+  assert.equal(getMediaMimeType('mp4'), 'video/mp4');
+  assert.equal(getMediaMimeType('webm'), 'video/webm');
+});
 
 test('recognizes video and audio extensions', () => {
   assert.equal(isVideoFile('mp4'), true);

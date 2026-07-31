@@ -13,6 +13,7 @@ import {
   isImageFile,
   isPreviewableFile,
   isBinaryFile,
+  getMediaMimeType,
   processHtmlWithBaseUrl
 } from '../utils/htmlPreviewUtils';
 
@@ -51,12 +52,10 @@ export const FilePreview: React.FC = () => {
 
     const loadData = async () => {
       try {
-        if (isImageFile(ext)) {
-          // Read image binary file in Base64
+        if (isImageFile(ext) || isVideoFile(ext) || isAudioFile(ext)) {
+          // Read binary file in Base64 for WKWebView media decoding compatibility
           const b64 = await invoke<string>('read_file_base64', { path: activeFilePath });
           setBase64Content(b64);
-        } else if (isVideoFile(ext) || isAudioFile(ext)) {
-          // Video & Audio are streamed directly via convertFileSrc, no heavy preload required
         } else if (['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'].includes(ext)) {
           // Keep base64 or metadata
           try {
@@ -257,14 +256,15 @@ export const FilePreview: React.FC = () => {
       case 'm4v':
       case 'mkv':
       case 'avi': {
-        const mediaUrl = convertFileSrc(activeFilePath);
+        const mimeType = getMediaMimeType(ext);
+        const mediaSrc = base64Content ? `data:${mimeType};base64,${base64Content}` : convertFileSrc(activeFilePath);
         return (
           <div className="h-full w-full flex flex-col items-center justify-center p-6 bg-surface-2/20 rounded select-none">
             <div className="relative max-w-full max-h-full flex flex-col items-center">
               <video
                 controls
                 autoPlay
-                src={mediaUrl}
+                src={mediaSrc}
                 className="max-w-full max-h-[70vh] rounded border border-surface-3 shadow-lg bg-black"
               >
                 Your browser does not support video playback.
@@ -284,7 +284,8 @@ export const FilePreview: React.FC = () => {
       case 'flac':
       case 'aac':
       case 'm4a': {
-        const mediaUrl = convertFileSrc(activeFilePath);
+        const mimeType = getMediaMimeType(ext);
+        const mediaSrc = base64Content ? `data:${mimeType};base64,${base64Content}` : convertFileSrc(activeFilePath);
         return (
           <div className="h-full w-full flex flex-col items-center justify-center p-6 bg-surface-2/20 rounded select-none">
             <div className="p-8 bg-surface-1 rounded-xl border border-surface-2 shadow-lg max-w-md w-full flex flex-col items-center text-center">
@@ -296,7 +297,7 @@ export const FilePreview: React.FC = () => {
               <audio
                 controls
                 autoPlay
-                src={mediaUrl}
+                src={mediaSrc}
                 className="w-full mb-2"
               >
                 Your browser does not support audio playback.
