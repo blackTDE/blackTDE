@@ -15,8 +15,81 @@ import {
   isBinaryFile,
   getMediaMimeType,
   processHtmlWithBaseUrl,
-  resolveMarkdownAssetUrl
+  getAbsolutePath,
+  base64ToBlobUrl
 } from '../utils/htmlPreviewUtils';
+
+const MarkdownImage: React.FC<{ src?: string; alt?: string; activeFilePath: string }> = ({ src, alt, activeFilePath }) => {
+  const [imgSrc, setImgSrc] = useState<string>('');
+  const [hasError, setHasError] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!src) return;
+    let cancelled = false;
+    let createdBlobUrl = '';
+
+    const loadImg = async () => {
+      const trimmed = src.trim();
+
+      if (
+        trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://') ||
+        trimmed.startsWith('data:') ||
+        trimmed.startsWith('blob:')
+      ) {
+        if (!cancelled) setImgSrc(trimmed);
+        return;
+      }
+
+      const absPath = getAbsolutePath(trimmed, activeFilePath);
+      const ext = absPath.split('.').pop()?.toLowerCase() || 'png';
+      const mime = getMediaMimeType(ext);
+
+      try {
+        const b64 = await invoke<string>('read_file_base64', { path: absPath });
+        createdBlobUrl = base64ToBlobUrl(b64, mime);
+        if (!cancelled) setImgSrc(createdBlobUrl);
+      } catch {
+        if (!cancelled) setImgSrc(convertFileSrc(absPath));
+      }
+    };
+
+    void loadImg();
+
+    return () => {
+      cancelled = true;
+      if (createdBlobUrl) {
+        URL.revokeObjectURL(createdBlobUrl);
+      }
+    };
+  }, [src, activeFilePath]);
+
+  if (hasError) {
+    return (
+      <span className="inline-flex items-center space-x-1.5 px-3 py-1.5 my-2 bg-surface-2 border border-surface-3 text-xs text-zinc-400 rounded font-mono">
+        <FileCode size={13} className="text-zinc-500" />
+        <span>[Image unavailable: {src}]</span>
+      </span>
+    );
+  }
+
+  if (!imgSrc) {
+    return (
+      <span className="inline-block px-3 py-1.5 my-2 bg-surface-2 text-xs text-zinc-500 rounded font-mono animate-pulse">
+        Loading image…
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={imgSrc}
+      alt={alt || ''}
+      className="max-w-full h-auto rounded border border-surface-3 my-3 shadow-md bg-surface-1 object-contain inline-block"
+      onError={() => setHasError(true)}
+    />
+  );
+};
 
 export const FilePreview: React.FC = () => {
   const { activeFilePath, activeFileLine, fileNavigationCounter, setActiveFileContent, fileUpdateCounter } = useWorkspaceStore();
@@ -28,6 +101,7 @@ export const FilePreview: React.FC = () => {
   // Preview specific states
   const [textContent, setTextContent] = useState<string>('');
   const [base64Content, setBase64Content] = useState<string>('');
+  const [mediaBlobUrl, setMediaBlobUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [confirmCreate, setConfirmCreate] = useState(false);
@@ -38,6 +112,29 @@ export const FilePreview: React.FC = () => {
   // Determine if this file is a previewable type
   const isPreviewable = isPreviewableFile(ext);
   const isBinary = isBinaryFile(ext);
+
+  useEffect(() => {
+    if (!base64Content || (!isVideoFile(ext) && !isAudioFile(ext))) {
+      setMediaBlobUrl('');
+      return;
+    }
+
+    const mimeType = getMediaMimeType(ext);
+    let createdUrl = '';
+    try {
+      createdUrl = base64ToBlobUrl(base64Content, mimeType);
+      setMediaBlobUrl(createdUrl);
+    } catch (err) {
+      console.error('Failed to create Blob URL for media playback:', err);
+      setMediaBlobUrl('');
+    }
+
+    return () => {
+      if (createdUrl) {
+        URL.revokeObjectURL(createdUrl);
+      }
+    };
+  }, [base64Content, ext]);
 
   useEffect(() => {
     if (!activeFilePath) return;
@@ -221,17 +318,7 @@ export const FilePreview: React.FC = () => {
                 th: ({ children }) => <th className="border border-surface-3 bg-surface-2 px-3 py-2 font-semibold text-zinc-100">{children}</th>,
                 td: ({ children }) => <td className="border border-surface-3 px-3 py-2">{children}</td>,
                 a: ({ href, children }) => <a href={href} className="text-brand-light underline" target="_blank" rel="noreferrer">{children}</a>,
-                img: ({ src, alt }) => {
-                  if (!src) return null;
-                  const resolvedSrc = resolveMarkdownAssetUrl(src, activeFilePath, convertFileSrc);
-                  return (
-                    <img
-                      src={resolvedSrc}
-                      alt={alt || ''}
-                      className="max-w-full h-auto rounded border border-surface-3 my-3 shadow-md bg-surface-1 object-contain"
-                    />
-                  );
-                },
+                img: ({ src, alt }) => <MarkdownImage src={src} alt={alt} activeFilePath={activeFilePath} />,
                 pre: ({ children }) => {
                   const child = React.Children.toArray(children)[0];
                   if (React.isValidElement<{ className?: string }>(child) && isMermaidClass(child.props.className)) return <>{children}</>;
@@ -269,7 +356,7 @@ export const FilePreview: React.FC = () => {
       case 'mkv':
       case 'avi': {
         const mimeType = getMediaMimeType(ext);
-        const mediaSrc = base64Content ? `data:${mimeType};base64,${base64Content}` : convertFileSrc(activeFilePath);
+        const mediaSrc = mediaBlobUrl || (base64Content ? `data:${mimeType};base64,${base64Content}` : convertFileSrc(activeFilePath));
         return (
           <div className="h-full w-full flex flex-col items-center justify-center p-6 bg-surface-2/20 rounded select-none">
             <div className="relative max-w-full max-h-full flex flex-col items-center">
@@ -297,7 +384,7 @@ export const FilePreview: React.FC = () => {
       case 'aac':
       case 'm4a': {
         const mimeType = getMediaMimeType(ext);
-        const mediaSrc = base64Content ? `data:${mimeType};base64,${base64Content}` : convertFileSrc(activeFilePath);
+        const mediaSrc = mediaBlobUrl || (base64Content ? `data:${mimeType};base64,${base64Content}` : convertFileSrc(activeFilePath));
         return (
           <div className="h-full w-full flex flex-col items-center justify-center p-6 bg-surface-2/20 rounded select-none">
             <div className="p-8 bg-surface-1 rounded-xl border border-surface-2 shadow-lg max-w-md w-full flex flex-col items-center text-center">

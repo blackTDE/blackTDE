@@ -7,7 +7,9 @@ import {
   isBinaryFile,
   getMediaMimeType,
   processHtmlWithBaseUrl,
-  resolveMarkdownAssetUrl
+  resolveMarkdownAssetUrl,
+  getAbsolutePath,
+  base64ToBlobUrl
 } from '../src/utils/htmlPreviewUtils.ts';
 
 test('returns correct MIME types for media files', () => {
@@ -85,4 +87,22 @@ test('resolves relative, absolute, and remote Markdown image URLs', () => {
     resolveMarkdownAssetUrl('../assets/diagram.png', mdPath, dummyConvertFileSrc),
     'asset://localhost/Users/ray/project/assets/diagram.png'
   );
+});
+
+test('resolves absolute path cleanly stripping query parameters and hashes', () => {
+  const currentPath = '/Users/ray/git-repo/black_tde/README.md';
+  assert.equal(
+    getAbsolutePath('./qr_codes/Jam-jp-VLESS-WS.png?v=1#tag', currentPath),
+    '/Users/ray/git-repo/black_tde/qr_codes/Jam-jp-VLESS-WS.png'
+  );
+  assert.equal(
+    getAbsolutePath('/tmp/sample.mp4', currentPath),
+    '/tmp/sample.mp4'
+  );
+});
+
+test('converts base64 to Blob URL string', () => {
+  const dummyB64 = 'SGVsbG8gV29ybGQ='; // "Hello World"
+  const blobUrl = base64ToBlobUrl(dummyB64, 'video/mp4');
+  assert.equal(blobUrl.startsWith('blob:'), true);
 });

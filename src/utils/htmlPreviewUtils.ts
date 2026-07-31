@@ -152,3 +152,50 @@ export function resolveMarkdownAssetUrl(
   const absolutePath = segments.join('/');
   return convertFileSrcFn(absolutePath);
 }
+
+/**
+ * Resolves relative or absolute path relative to current file path, stripping query parameters and hashes.
+ */
+export function getAbsolutePath(relOrAbsPath: string, currentFilePath: string): string {
+  if (!relOrAbsPath) return '';
+  const cleanPath = relOrAbsPath.trim().split('?')[0].split('#')[0];
+
+  if (cleanPath.startsWith('/') || /^[a-zA-Z]:[/\\]/.test(cleanPath)) {
+    return cleanPath;
+  }
+
+  if (!currentFilePath) return cleanPath;
+
+  const lastSlashIdx = Math.max(currentFilePath.lastIndexOf('/'), currentFilePath.lastIndexOf('\\'));
+  const parentDir = lastSlashIdx !== -1 ? currentFilePath.substring(0, lastSlashIdx) : '';
+
+  if (!parentDir) return cleanPath;
+
+  const segments = parentDir.split(/[/\\]/);
+  const relSegments = cleanPath.split(/[/\\]/);
+
+  for (const seg of relSegments) {
+    if (seg === '.' || seg === '') continue;
+    if (seg === '..') {
+      if (segments.length > 0) segments.pop();
+    } else {
+      segments.push(seg);
+    }
+  }
+
+  return segments.join('/');
+}
+
+/**
+ * Converts a base64 string and MIME type into a browser native Blob object URL (`blob:http://...`).
+ */
+export function base64ToBlobUrl(b64: string, mimeType: string): string {
+  const binaryString = atob(b64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  const blob = new Blob([bytes], { type: mimeType });
+  return URL.createObjectURL(blob);
+}
