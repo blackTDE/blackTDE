@@ -6,7 +6,8 @@ import {
   isPreviewableFile,
   isBinaryFile,
   getMediaMimeType,
-  processHtmlWithBaseUrl
+  processHtmlWithBaseUrl,
+  resolveMarkdownAssetUrl
 } from '../src/utils/htmlPreviewUtils.ts';
 
 test('returns correct MIME types for media files', () => {
@@ -58,4 +59,30 @@ test('prepends base tag when head tag is absent', () => {
 
   const result = processHtmlWithBaseUrl(html, filePath, dummyConvertFileSrc);
   assert.equal(result.startsWith('<base href="http://asset.localhost/Users/ray/project/docs/">'), true);
+});
+
+test('resolves relative, absolute, and remote Markdown image URLs', () => {
+  const dummyConvertFileSrc = (p: string) => `asset://localhost${p}`;
+  const mdPath = '/Users/ray/project/docs/README.md';
+
+  assert.equal(
+    resolveMarkdownAssetUrl('https://example.com/logo.png', mdPath, dummyConvertFileSrc),
+    'https://example.com/logo.png'
+  );
+  assert.equal(
+    resolveMarkdownAssetUrl('data:image/png;base64,123', mdPath, dummyConvertFileSrc),
+    'data:image/png;base64,123'
+  );
+  assert.equal(
+    resolveMarkdownAssetUrl('/var/tmp/pic.png', mdPath, dummyConvertFileSrc),
+    'asset://localhost/var/tmp/pic.png'
+  );
+  assert.equal(
+    resolveMarkdownAssetUrl('./images/photo.png', mdPath, dummyConvertFileSrc),
+    'asset://localhost/Users/ray/project/docs/images/photo.png'
+  );
+  assert.equal(
+    resolveMarkdownAssetUrl('../assets/diagram.png', mdPath, dummyConvertFileSrc),
+    'asset://localhost/Users/ray/project/assets/diagram.png'
+  );
 });

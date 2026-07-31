@@ -14,7 +14,8 @@ import {
   isPreviewableFile,
   isBinaryFile,
   getMediaMimeType,
-  processHtmlWithBaseUrl
+  processHtmlWithBaseUrl,
+  resolveMarkdownAssetUrl
 } from '../utils/htmlPreviewUtils';
 
 export const FilePreview: React.FC = () => {
@@ -220,6 +221,17 @@ export const FilePreview: React.FC = () => {
                 th: ({ children }) => <th className="border border-surface-3 bg-surface-2 px-3 py-2 font-semibold text-zinc-100">{children}</th>,
                 td: ({ children }) => <td className="border border-surface-3 px-3 py-2">{children}</td>,
                 a: ({ href, children }) => <a href={href} className="text-brand-light underline" target="_blank" rel="noreferrer">{children}</a>,
+                img: ({ src, alt }) => {
+                  if (!src) return null;
+                  const resolvedSrc = resolveMarkdownAssetUrl(src, activeFilePath, convertFileSrc);
+                  return (
+                    <img
+                      src={resolvedSrc}
+                      alt={alt || ''}
+                      className="max-w-full h-auto rounded border border-surface-3 my-3 shadow-md bg-surface-1 object-contain"
+                    />
+                  );
+                },
                 pre: ({ children }) => {
                   const child = React.Children.toArray(children)[0];
                   if (React.isValidElement<{ className?: string }>(child) && isMermaidClass(child.props.className)) return <>{children}</>;

@@ -102,3 +102,53 @@ export function processHtmlWithBaseUrl(
 
   return `${baseTag}\n${htmlContent}`;
 }
+
+/**
+ * Resolves Markdown image src URLs (relative, absolute, or external) to valid display URLs.
+ */
+export function resolveMarkdownAssetUrl(
+  src: string,
+  filePath: string,
+  convertFileSrcFn: (path: string) => string
+): string {
+  if (!src) return '';
+  const trimmed = src.trim();
+
+  // 1. External URLs or Data URLs
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('blob:')
+  ) {
+    return trimmed;
+  }
+
+  // 2. Absolute filesystem paths (e.g. /Users/ray/...)
+  if (trimmed.startsWith('/') || /^[a-zA-Z]:[/\\]/.test(trimmed)) {
+    return convertFileSrcFn(trimmed);
+  }
+
+  // 3. Relative paths (e.g. ./images/photo.png or images/photo.png or ../pic.png)
+  if (!filePath) return trimmed;
+
+  const lastSlashIdx = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+  const parentDir = lastSlashIdx !== -1 ? filePath.substring(0, lastSlashIdx) : '';
+
+  if (!parentDir) return convertFileSrcFn(trimmed);
+
+  const segments = parentDir.split(/[/\\]/);
+  const relSegments = trimmed.split(/[/\\]/);
+
+  for (const seg of relSegments) {
+    if (seg === '.' || seg === '') continue;
+    if (seg === '..') {
+      if (segments.length > 0) segments.pop();
+    } else {
+      segments.push(seg);
+    }
+  }
+
+  const absolutePath = segments.join('/');
+  return convertFileSrcFn(absolutePath);
+}
