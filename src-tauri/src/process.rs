@@ -46,6 +46,68 @@ pub async fn lock_session_resume(locks: &ResumeLocks, session_id: &str) -> Owned
     session_lock.lock_owned().await
 }
 
+pub fn build_enriched_path() -> String {
+    let mut current_paths: Vec<String> = std::env::var("PATH")
+        .unwrap_or_default()
+        .split(':')
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut default_dirs = vec![
+        "/opt/homebrew/bin".to_string(),
+        "/opt/homebrew/sbin".to_string(),
+        "/usr/local/bin".to_string(),
+        "/usr/local/sbin".to_string(),
+    ];
+
+    if !home.is_empty() {
+        default_dirs.push(format!("{}/.cargo/bin", home));
+        default_dirs.push(format!("{}/.gemini/bin", home));
+        default_dirs.push(format!("{}/.local/bin", home));
+        default_dirs.push(format!("{}/.npm-global/bin", home));
+        default_dirs.push(format!("{}/.bun/bin", home));
+
+        let nvm_dir = std::path::Path::new(&home).join(".nvm").join("versions").join("node");
+        if let Ok(entries) = std::fs::read_dir(nvm_dir) {
+            for entry in entries.flatten() {
+                let bin_dir = entry.path().join("bin");
+                if bin_dir.exists() {
+                    if let Some(path_str) = bin_dir.to_str() {
+                        default_dirs.push(path_str.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    for dir in default_dirs {
+        if !current_paths.contains(&dir) && std::path::Path::new(&dir).exists() {
+            current_paths.push(dir);
+        }
+    }
+
+    current_paths.join(":")
+}
+
+pub fn resolve_command_executable(command: &str) -> String {
+    let path_obj = std::path::Path::new(command);
+    if path_obj.is_absolute() && path_obj.exists() {
+        return command.to_string();
+    }
+
+    let enriched = build_enriched_path();
+    for p in enriched.split(':') {
+        let candidate = std::path::Path::new(p).join(command);
+        if candidate.exists() && candidate.is_file() {
+            return candidate.to_string_lossy().to_string();
+        }
+    }
+
+    command.to_string()
+}
+
 pub fn spawn_pty_process(
     command: &str,
     args: Vec<String>,
@@ -65,8 +127,9 @@ pub fn spawn_pty_process(
         pixel_height: 0,
     })?;
 
-    // 3. Build command
-    let mut cmd = CommandBuilder::new(command);
+    // 3. Resolve executable path
+    let exec_path = resolve_command_executable(command);
+    let mut cmd = CommandBuilder::new(&exec_path);
     cmd.args(args);
     cmd.cwd(std::path::Path::new(cwd));
 
@@ -75,9 +138,19 @@ pub fn spawn_pty_process(
         cmd.env(k, v);
     }
 
-    // Set standard terminal variables for maximum shell capability
+    // Set enriched PATH environment variable
+    cmd.env("PATH".to_string(), build_enriched_path());
+
+    // Set standard terminal variables and UTF-8 locale for powerline prompt rendering
     cmd.env("TERM".to_string(), "xterm-256color".to_string());
     cmd.env("TERM_PROGRAM".to_string(), "Apple_Terminal".to_string());
+    cmd.env("COLORTERM".to_string(), "truecolor".to_string());
+    if std::env::var("LANG").is_err() {
+        cmd.env("LANG".to_string(), "en_US.UTF-8".to_string());
+    }
+    if std::env::var("LC_ALL").is_err() {
+        cmd.env("LC_ALL".to_string(), "en_US.UTF-8".to_string());
+    }
 
     // Inject/override session specific envs
     for (k, v) in envs {

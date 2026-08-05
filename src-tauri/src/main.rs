@@ -445,13 +445,12 @@ async fn get_session_history(id: String, pool: State<'_, SqlitePool>) -> Result<
 async fn detect_available_clis() -> Result<Vec<String>, String> {
     let common_commands = vec![
         "zsh", "bash", "sh", "fish", "claude", "aider", "codex", "agy", "opencode", "gemini",
-        "goose", "pi", "copilot", "cline", "devin", "cn", "auggie", "grok", "git", "gh", "node",
+        "goose", "pi", "omp", "oh-my-pi", "copilot", "cline", "devin", "cn", "auggie", "grok", "git", "gh", "node",
         "python3",
     ];
 
-    let path_var = std::env::var("PATH").unwrap_or_default();
-    let paths: Vec<&str> = path_var.split(':').collect();
-    let home = std::env::var("HOME").unwrap_or_default();
+    let enriched_path = process::build_enriched_path();
+    let paths: Vec<&str> = enriched_path.split(':').collect();
 
     let mut detected = Vec::new();
     for cmd in common_commands {
@@ -461,53 +460,6 @@ async fn detect_available_clis() -> Result<Vec<String>, String> {
             if path.exists() && path.is_file() {
                 found = true;
                 break;
-            }
-        }
-
-        // Check standard macOS/Linux absolute locations as fallback (in case PATH is not fully populated in the environment context)
-        if !found {
-            let fallbacks = match cmd {
-                "zsh" => vec!["/bin/zsh", "/usr/bin/zsh"],
-                "bash" => vec!["/bin/bash", "/usr/bin/bash"],
-                "sh" => vec!["/bin/sh", "/usr/bin/sh"],
-                "fish" => vec!["/usr/local/bin/fish", "/opt/homebrew/bin/fish"],
-                "claude" => vec!["/usr/local/bin/claude", "/opt/homebrew/bin/claude"],
-                "aider" => vec!["/usr/local/bin/aider", "/opt/homebrew/bin/aider"],
-                "codex" => vec!["/usr/local/bin/codex", "/opt/homebrew/bin/codex"],
-                "agy" => vec!["/usr/local/bin/agy", "/opt/homebrew/bin/agy"],
-                "opencode" => vec!["/usr/local/bin/opencode", "/opt/homebrew/bin/opencode"],
-                "gemini" => vec!["/usr/local/bin/gemini", "/opt/homebrew/bin/gemini"],
-                "goose" => vec!["/usr/local/bin/goose", "/opt/homebrew/bin/goose"],
-                "pi" => vec!["/usr/local/bin/pi", "/opt/homebrew/bin/pi"],
-                "copilot" => vec!["/usr/local/bin/copilot", "/opt/homebrew/bin/copilot"],
-                "cline" => vec!["/usr/local/bin/cline", "/opt/homebrew/bin/cline"],
-                "devin" => vec!["/usr/local/bin/devin", "/opt/homebrew/bin/devin"],
-                "cn" => vec!["/usr/local/bin/cn", "/opt/homebrew/bin/cn"],
-                "auggie" => vec!["/usr/local/bin/auggie", "/opt/homebrew/bin/auggie"],
-                "grok" => vec!["/usr/local/bin/grok", "/opt/homebrew/bin/grok"],
-                "git" => vec!["/usr/bin/git", "/usr/local/bin/git"],
-                _ => vec![],
-            };
-            for fb in fallbacks {
-                if std::path::Path::new(fb).exists() {
-                    found = true;
-                    break;
-                }
-            }
-        }
-
-        // Check user-local directories (pip, npm global installs, yarn)
-        if !found && !home.is_empty() {
-            let user_bins = vec![
-                format!("{}/.npm-global/bin/{}", home, cmd),
-                format!("{}/.local/bin/{}", home, cmd),
-                format!("{}/.config/yarn/global/node_modules/.bin/{}", home, cmd),
-            ];
-            for path_str in user_bins {
-                if std::path::Path::new(&path_str).exists() {
-                    found = true;
-                    break;
-                }
             }
         }
 
