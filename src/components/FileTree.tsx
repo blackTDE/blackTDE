@@ -125,6 +125,7 @@ const FileNode: React.FC<NodeProps> = ({ name, path, isDir, size, modifiedAt, le
       <div
         onClick={handleToggle}
         style={{ paddingLeft: `${level * 10}px` }}
+        title={name}
         className="group flex items-center space-x-1 py-0.5 px-2 hover:bg-slate-800/60 rounded cursor-pointer select-none text-xs text-slate-300 transition duration-75"
       >
         {isDir ? (
@@ -152,9 +153,9 @@ const FileNode: React.FC<NodeProps> = ({ name, path, isDir, size, modifiedAt, le
           </form>
         ) : (
           <>
-            <span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={`Modified ${formatModified(modifiedAt)}`}>{name}</span>
-            <span className="shrink-0 text-[9px] text-slate-600" title={`Modified ${formatModified(modifiedAt)}`}>{formatModified(modifiedAt)}</span>
-            <span className="shrink-0 text-[9px] text-slate-600" title={`Modified ${formatModified(modifiedAt)}`}>{formatSize(size)}</span>
+            <span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={name}>{name}</span>
+            <span className="shrink-0 text-[9px] text-slate-600" title={name}>{formatModified(modifiedAt)}</span>
+            <span className="shrink-0 text-[9px] text-slate-600" title={name}>{formatSize(size)}</span>
             {confirmingDelete ? (
               <span className="flex shrink-0 items-center gap-1 text-[9px] text-rose-300">
                 Delete?

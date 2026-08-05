@@ -114,6 +114,7 @@ interface WorkspaceState {
 
   openFile: (path: string, name: string, line?: number) => void;
   closeFile: (path: string) => void;
+  reorderOpenFiles: (fromIndex: number, toIndex: number) => void;
   setActiveFileTab: (tab: string | null) => void;
   triggerFileUpdate: () => void;
 }
@@ -391,6 +392,31 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
         activeFileLine: null,
         openFilesByProject: newOpenFilesByProj,
         activeFileTabByProject: newActiveFileTabByProj
+      };
+    }),
+
+  reorderOpenFiles: (fromIndex, toIndex) =>
+    set((state) => {
+      const wsId = state.activeWorkspace?.id || 'project_default';
+      const currentWsOpenFiles = [...(state.openFilesByProject[wsId] || [])];
+      if (
+        fromIndex < 0 ||
+        fromIndex >= currentWsOpenFiles.length ||
+        toIndex < 0 ||
+        toIndex >= currentWsOpenFiles.length ||
+        fromIndex === toIndex
+      ) {
+        return {};
+      }
+      const [movedItem] = currentWsOpenFiles.splice(fromIndex, 1);
+      currentWsOpenFiles.splice(toIndex, 0, movedItem);
+
+      return {
+        openFiles: currentWsOpenFiles,
+        openFilesByProject: {
+          ...state.openFilesByProject,
+          [wsId]: currentWsOpenFiles,
+        },
       };
     }),
 

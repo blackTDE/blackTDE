@@ -19,6 +19,7 @@ import {
   GitBranch, 
   Sparkles,
   Minimize2,
+  EyeOff,
   Settings,
   Folder,
   X,
@@ -67,6 +68,7 @@ function App() {
     openFiles,
     activeFileTab,
     closeFile,
+    reorderOpenFiles,
     setActiveFileTab,
     activeWorkspace,
     workspaces,
@@ -84,6 +86,7 @@ function App() {
     toggleRightPanelPin
   } = useWorkspaceStore();
 
+  const [draggedTabIndex, setDraggedTabIndex] = useState<number | null>(null);
   const [isRightPaneExpanded, setIsRightPaneExpanded] = useState(true);
   const [isSettingsFatherTabOpen, setIsSettingsFatherTabOpen] = useState(false);
   const [activeFatherTabId, setActiveFatherTabId] = useState('');
@@ -1063,39 +1066,73 @@ function App() {
                 </div>
 
                 {/* Right Part: Opened File Tabs (aligned over the right file window when pinned) */}
-                {activeFileTab !== null && (
-                  <div className="flex-1 flex items-center overflow-x-auto scrollbar-none min-w-0">
-                    {openFiles.map(f => {
-                      const isGitDiff = f.path.startsWith('git-diff:');
-                      const displayName = isGitDiff ? `Diff: ${f.name}` : f.name;
-                      return (
-                        <div
-                          key={f.path}
-                          className={`flex items-center space-x-1 border-r border-surface-2 border-b-2 transition shrink-0 ${
-                            activeFileTab === f.path
-                              ? 'border-brand text-zinc-100 bg-surface/40'
-                              : 'border-transparent text-zinc-550 hover:text-zinc-350 hover:bg-surface-2/10'
-                          }`}
-                        >
-                          <button
-                            onClick={() => setActiveFileTab(f.path)}
-                            className="px-3 py-2 text-xs font-mono font-medium truncate max-w-[160px]"
-                            title={displayName}
-                          >
-                            {displayName}
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              closeFile(f.path);
+                {openFiles.length > 0 && (
+                  <div className="flex-1 flex items-center justify-between overflow-x-auto scrollbar-none min-w-0 pr-2">
+                    <div className="flex items-center overflow-x-auto scrollbar-none min-w-0 flex-1">
+                      {openFiles.map((f, index) => {
+                        const isGitDiff = f.path.startsWith('git-diff:');
+                        const displayName = isGitDiff ? `Diff: ${f.name}` : f.name;
+                        const isActive = activeFileTab === f.path;
+                        return (
+                          <div
+                            key={f.path}
+                            draggable
+                            onDragStart={(e) => {
+                              setDraggedTabIndex(index);
+                              e.dataTransfer.setData('text/plain', index.toString());
                             }}
-                            className="pr-2.5 text-zinc-650 hover:text-rose-450 transition cursor-pointer"
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              const fromIndex =
+                                draggedTabIndex !== null
+                                  ? draggedTabIndex
+                                  : parseInt(e.dataTransfer.getData('text/plain'), 10);
+                              if (!isNaN(fromIndex)) {
+                                reorderOpenFiles(fromIndex, index);
+                              }
+                              setDraggedTabIndex(null);
+                            }}
+                            onDragEnd={() => setDraggedTabIndex(null)}
+                            className={`flex items-center space-x-1 border-r border-surface-2 border-b-2 transition shrink-0 cursor-grab active:cursor-grabbing ${
+                              isActive
+                                ? 'border-brand text-zinc-100 bg-surface/40'
+                                : 'border-transparent text-zinc-550 hover:text-zinc-350 hover:bg-surface-2/10'
+                            }`}
                           >
-                            <X size={10} />
-                          </button>
-                        </div>
-                      );
-                    })}
+                            <button
+                              onClick={() => setActiveFileTab(f.path)}
+                              className="px-3 py-2 text-xs font-mono font-medium truncate max-w-[160px]"
+                              title={displayName}
+                            >
+                              {displayName}
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                closeFile(f.path);
+                              }}
+                              className="pr-2.5 text-zinc-650 hover:text-rose-450 transition cursor-pointer"
+                              title="Close file"
+                            >
+                              <X size={10} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {activeFileTab !== null && (
+                      <button
+                        onClick={() => setActiveFileTab(null)}
+                        className="ml-2 px-2 py-1 text-zinc-500 hover:text-zinc-200 hover:bg-surface-2/40 rounded transition shrink-0 flex items-center gap-1 text-xs select-none"
+                        title="Hide/close file preview window (keep files open)"
+                      >
+                        <EyeOff size={13} />
+                        <span className="text-[10px]">Hide Preview</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
