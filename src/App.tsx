@@ -433,7 +433,7 @@ function App() {
     }
     if (manualResumeSessionId.trim()) {
       const commandName = cmdInput.split(/[\\/]/).pop()?.toLowerCase();
-      const resumableAgents = ['agy', 'claude', 'codex', 'gemini', 'open-code', 'opencode'];
+      const resumableAgents = ['agy', 'claude', 'codex', 'gemini', 'open-code', 'opencode', 'pi', 'omp', 'oh-my-pi'];
       if (!commandName || !resumableAgents.includes(commandName)) {
         setSpawnSessionError(`${commandName || 'This command'} does not support provider session resume.`);
         return;

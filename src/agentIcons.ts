@@ -1,4 +1,4 @@
-export type AgentIconKind = 'claude' | 'codex' | 'antigravity' | 'gemini' | 'opencode' | 'fallback';
+export type AgentIconKind = 'claude' | 'codex' | 'antigravity' | 'gemini' | 'opencode' | 'pi' | 'omp' | 'fallback';
 
 export function getAgentIconKind(name: string): AgentIconKind {
   const command = name.toLowerCase().split(/[\\/]/).pop() || '';
@@ -7,5 +7,7 @@ export function getAgentIconKind(name: string): AgentIconKind {
   if (command === 'agy' || command.includes('antigravity')) return 'antigravity';
   if (command.includes('gemini')) return 'gemini';
   if (command.includes('opencode') || command.includes('open-code')) return 'opencode';
+  if (command === 'omp' || command.includes('oh-my-pi') || command.includes('ohmypi')) return 'omp';
+  if (command === 'pi' || command.includes('pi-agent') || command.includes('pi-coding')) return 'pi';
   return 'fallback';
 }

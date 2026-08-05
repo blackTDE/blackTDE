@@ -26,6 +26,22 @@ function OpenCodeIcon({ size }: { size: number }) {
   return <svg width={size} height={size} viewBox="0 0 240 300" aria-hidden><path d="M180 240H60V120h120v120Z" fill="#4B4646" /><path fillRule="evenodd" d="M180 60H60v180h120V60Zm60 240H0V0h240v300Z" fill="#F1ECEC" /></svg>;
 }
 
+function PiIcon({ size }: { size: number }) {
+  return (
+    <span className="flex items-center justify-center rounded bg-emerald-700/80 font-bold text-white font-mono" style={{ width: size, height: size, fontSize: Math.max(9, size * 0.65) }}>
+      π
+    </span>
+  );
+}
+
+function OmpIcon({ size }: { size: number }) {
+  return (
+    <span className="flex items-center justify-center rounded bg-amber-600/80 font-extrabold text-white font-mono tracking-tighter" style={{ width: size, height: size, fontSize: Math.max(8, size * 0.55) }}>
+      Ω
+    </span>
+  );
+}
+
 function initials(name: string) {
   const clean = name.replace(/[^a-zA-Z0-9\s-]/g, '').trim();
   const parts = clean.split(/[\s-]+/);
@@ -39,6 +55,8 @@ export function AgentIcon({ name, size = 18, className = '' }: AgentIconProps) {
     : kind === 'antigravity' ? <img src={antigravityIcon} width={size} height={size} alt="" />
     : kind === 'gemini' ? <GeminiIcon size={size} />
     : kind === 'opencode' ? <OpenCodeIcon size={size} />
+    : kind === 'pi' ? <PiIcon size={size} />
+    : kind === 'omp' ? <OmpIcon size={size} />
     : <span className="flex h-full w-full items-center justify-center rounded bg-slate-700 text-[7px] font-bold text-white">{initials(name)}</span>;
 
   return <span className={`inline-flex shrink-0 items-center justify-center ${className}`} style={{ width: size, height: size }} title={name}>{icon}</span>;

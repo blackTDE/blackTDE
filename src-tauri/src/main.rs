@@ -789,7 +789,7 @@ fn agent_new_session_args(command: &str, new_id: &str) -> Option<Vec<String>> {
     let flag = match command {
         "claude" => "--session-id",
         "agy" => "--conversation",
-        "opencode" | "open-code" => "--session",
+        "opencode" | "open-code" | "pi" | "omp" | "oh-my-pi" => "--session",
         _ => return None,
     };
     Some(vec![flag.to_string(), new_id.to_string()])
@@ -802,7 +802,7 @@ fn agent_resume_args(command: &str, remote_id: &str) -> Option<Vec<String>> {
     let flag = match command {
         "claude" | "gemini" => "--resume",
         "agy" => "--conversation",
-        "opencode" | "open-code" => "--session",
+        "opencode" | "open-code" | "pi" | "omp" | "oh-my-pi" => "--session",
         "codex" => "resume",
         _ => return None,
     };
@@ -858,11 +858,27 @@ mod session_resume_tests {
             agent_new_session_args("opencode", "open-uuid-9999"),
             Some(vec!["--session".into(), "open-uuid-9999".into()])
         );
+        assert_eq!(
+            agent_new_session_args("pi", "pi-uuid-0000"),
+            Some(vec!["--session".into(), "pi-uuid-0000".into()])
+        );
+        assert_eq!(
+            agent_new_session_args("omp", "omp-uuid-1111"),
+            Some(vec!["--session".into(), "omp-uuid-1111".into()])
+        );
         assert_eq!(agent_new_session_args("zsh", "ignored"), None);
     }
 
     #[test]
     fn builds_provider_specific_resume_arguments() {
+        assert_eq!(
+            agent_resume_args("pi", "pi-session-1"),
+            Some(vec!["--session".into(), "pi-session-1".into()])
+        );
+        assert_eq!(
+            agent_resume_args("omp", "omp-session-1"),
+            Some(vec!["--session".into(), "omp-session-1".into()])
+        );
         assert_eq!(
             agent_resume_args("agy", "conversation-1"),
             Some(vec!["--conversation".into(), "conversation-1".into()])

@@ -9,5 +9,8 @@ test('maps supported agent commands to their official icon', () => {
   assert.equal(getAgentIconKind('Google Antigravity'), 'antigravity');
   assert.equal(getAgentIconKind('gemini'), 'gemini');
   assert.equal(getAgentIconKind('open-code'), 'opencode');
+  assert.equal(getAgentIconKind('pi'), 'pi');
+  assert.equal(getAgentIconKind('omp'), 'omp');
+  assert.equal(getAgentIconKind('/usr/local/bin/oh-my-pi'), 'omp');
   assert.equal(getAgentIconKind('custom-agent'), 'fallback');
 });
