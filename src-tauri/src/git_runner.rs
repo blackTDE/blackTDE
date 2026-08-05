@@ -181,6 +181,33 @@ pub fn get_git_branch(cwd: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+pub fn get_git_branches(cwd: String) -> Result<Vec<String>, String> {
+    let output = Command::new("git")
+        .args(["branch", "--format=%(refname:short)"])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let branches: Vec<String> = stdout
+        .lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    Ok(branches)
+}
+
+#[tauri::command]
+pub fn git_checkout_branch(cwd: String, branch: String) -> Result<String, String> {
+    run_git(&cwd, &["checkout", &branch])
+}
+
+#[tauri::command]
 pub fn get_git_user(cwd: String) -> GitUser {
     let config = |key: &str| {
         Command::new("git")

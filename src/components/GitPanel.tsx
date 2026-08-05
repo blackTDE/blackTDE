@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { GitBranch, RefreshCw, Plus, Minus, Send, ChevronDown, ChevronRight, FileText, Clock, User, Download, Upload, Loader2 } from 'lucide-react';
+import { GitBranch, RefreshCw, Plus, Minus, Send, ChevronDown, ChevronRight, FileText, Clock, User, Download, Upload, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { useWorkspaceStore, GitFileStatus } from '../store/workspaceStore';
 
 interface GitCommit {
@@ -32,9 +32,11 @@ export const GitPanel: React.FC = () => {
   const [activeOperation, setActiveOperation] = useState<{ command: string; label: string } | null>(null);
   const [operationMessage, setOperationMessage] = useState<{ error: boolean; text: string } | null>(null);
 
-  // Git Commit History States
+  // Git Branch & Commit History States
+  const [branches, setBranches] = useState<string[]>([]);
   const [commits, setCommits] = useState<GitCommit[]>([]);
   const [expandedCommit, setExpandedCommit] = useState<string | null>(null);
+  const [expandedMsgHashes, setExpandedMsgHashes] = useState<Record<string, boolean>>({});
   const [commitFiles, setCommitFiles] = useState<Record<string, GitFileStatus[]>>({});
 
   const workspacePath = activeWorkspace?.path || '/Users/ray/git-repo/black_tde';
@@ -42,15 +44,17 @@ export const GitPanel: React.FC = () => {
   const loadGitStatus = async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
     try {
-      const [statusFiles, branchName, log, user, remote] = await Promise.all([
+      const [statusFiles, branchName, branchList, log, user, remote] = await Promise.all([
         invoke<GitFileStatus[]>('get_git_status', { cwd: workspacePath }),
         invoke<string>('get_git_branch', { cwd: workspacePath }),
+        invoke<string[]>('get_git_branches', { cwd: workspacePath }),
         invoke<GitCommit[]>('get_git_commit_log', { cwd: workspacePath }),
         invoke<GitUser>('get_git_user', { cwd: workspacePath }),
         invoke<GitRemoteStatus>('get_git_remote_status', { cwd: workspacePath }),
       ]);
       setGitFiles(statusFiles);
       setGitBranch(branchName);
+      setBranches(branchList);
       setCommits(log);
       setGitUser(user);
       setRemoteStatus(remote);
@@ -59,6 +63,11 @@ export const GitPanel: React.FC = () => {
     } finally {
       if (showLoading) setIsLoading(false);
     }
+  };
+
+  const handleBranchChange = (newBranch: string) => {
+    if (!newBranch || newBranch === gitBranch) return;
+    void runGitOperation('git_checkout_branch', `Switch to ${newBranch}`, { branch: newBranch });
   };
 
   const runGitOperation = async (command: string, label: string, args: Record<string, unknown> = {}, onSuccess?: () => void) => {
@@ -144,9 +153,25 @@ export const GitPanel: React.FC = () => {
       {/* Git Header */}
       <div className="bg-[#171717] px-3 py-2 border-b border-slate-800 flex items-center justify-between select-none">
         <div className="min-w-0 font-mono">
-          <div className="flex items-center space-x-2 text-xs font-bold text-slate-300">
-            <GitBranch size={14} className="text-brand-light" />
-            <span className="truncate">git: {gitBranch}</span>
+          <div className="flex items-center space-x-1 text-xs font-bold text-slate-300 min-w-0">
+            <GitBranch size={14} className="text-brand-light shrink-0" />
+            <select
+              value={gitBranch}
+              disabled={!!activeOperation}
+              onChange={(e) => handleBranchChange(e.target.value)}
+              className="bg-slate-900 text-slate-200 border border-slate-700 rounded px-1.5 py-0.5 text-xs focus:outline-none focus:border-brand font-mono max-w-[170px] truncate cursor-pointer shrink"
+              title="Quick switch branch"
+            >
+              {branches.length === 0 ? (
+                <option value={gitBranch}>{gitBranch}</option>
+              ) : (
+                branches.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))
+              )}
+            </select>
           </div>
           <div className="mt-0.5 flex items-center gap-1 pl-5 text-[9px] text-slate-500" title={gitUser.email}>
             <User size={9} />
@@ -356,9 +381,29 @@ export const GitPanel: React.FC = () => {
                           </span>
                         </div>
                       </div>
-                      <p className="text-[11px] text-slate-300 font-mono mt-1 line-clamp-1 leading-normal">
-                        {commit.message}
-                      </p>
+                      {(() => {
+                        const isMsgExpanded = !!expandedMsgHashes[commit.hash];
+                        return (
+                          <div className="flex items-start justify-between gap-1 mt-1">
+                            <p className={`text-[11px] text-slate-300 font-mono leading-normal min-w-0 flex-1 ${
+                              isMsgExpanded ? 'whitespace-pre-wrap break-words' : 'line-clamp-1'
+                            }`}>
+                              {commit.message}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedMsgHashes((prev) => ({ ...prev, [commit.hash]: !prev[commit.hash] }));
+                              }}
+                              className="p-0.5 text-slate-500 hover:text-brand-light rounded hover:bg-slate-800 shrink-0 transition"
+                              title={isMsgExpanded ? 'Collapse commit message' : 'Expand full commit message'}
+                            >
+                              {isMsgExpanded ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Commit Expanded Files list */}

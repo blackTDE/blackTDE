@@ -1522,6 +1522,8 @@ fn main() {
             git_runner::git_unstage_file,
             git_runner::git_commit_changes,
             git_runner::get_git_branch,
+            git_runner::get_git_branches,
+            git_runner::git_checkout_branch,
             git_runner::get_git_user,
             git_runner::get_git_remote_status,
             git_runner::git_fetch_remote,
