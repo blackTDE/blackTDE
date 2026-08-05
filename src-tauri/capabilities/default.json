@@ -7,7 +7,6 @@
   ],
   "permissions": [
     "core:default",
-    "core:event:default",
-    "core:asset:default"
+    "core:event:default"
   ]
 }
