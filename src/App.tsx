@@ -88,7 +88,6 @@ function App() {
 
   const [draggedTabIndex, setDraggedTabIndex] = useState<number | null>(null);
   const [isRightPaneExpanded, setIsRightPaneExpanded] = useState(true);
-  const [isSettingsFatherTabOpen, setIsSettingsFatherTabOpen] = useState(false);
   const [activeFatherTabId, setActiveFatherTabId] = useState('');
   const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(true);
 
@@ -871,13 +870,16 @@ function App() {
             {/* Settings button on the far left of Level 1 */}
             <button
               onClick={() => {
-                setIsSettingsFatherTabOpen(true);
-                setActiveFatherTabId('settings');
+                if (activeFatherTabId === 'settings') {
+                  setActiveFatherTabId(activeWorkspace?.id || '');
+                } else {
+                  setActiveFatherTabId('settings');
+                }
               }}
               className={`flex items-center justify-center px-3 py-3 border-r border-surface-2 hover:bg-surface-2/15 transition cursor-pointer text-zinc-500 hover:text-zinc-200 shrink-0 ${
                 activeFatherTabId === 'settings' ? 'bg-surface-1/40 text-brand-light' : ''
               }`}
-              title="Open Settings Tab"
+              title={activeFatherTabId === 'settings' ? "Close Settings" : "Open Settings"}
             >
               <Settings size={13} />
             </button>
@@ -903,38 +905,6 @@ function App() {
                 </button>
               );
             })}
-
-            {/* Settings father tab (conditional) */}
-            {isSettingsFatherTabOpen && (
-              <div
-                className={`flex items-center space-x-1 border-r border-surface-2 border-b-2 transition shrink-0 ${
-                  activeFatherTabId === 'settings'
-                    ? 'border-brand text-brand-light bg-surface-1/40'
-                    : 'border-transparent text-zinc-500 hover:text-zinc-350 hover:bg-surface-2/5'
-                }`}
-              >
-                <button
-                  onClick={() => setActiveFatherTabId('settings')}
-                  className="flex items-center space-x-1.5 px-3 py-2.5"
-                >
-                  <Settings size={12} className={activeFatherTabId === 'settings' ? 'text-brand-light' : 'text-zinc-650'} />
-                  <span>Settings</span>
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsSettingsFatherTabOpen(false);
-                    if (activeFatherTabId === 'settings') {
-                      setActiveFatherTabId(activeWorkspace?.id || '');
-                    }
-                  }}
-                  className="pr-2 text-zinc-600 hover:text-rose-450 transition cursor-pointer"
-                  title="Close Settings Tab"
-                >
-                  <X size={10} />
-                </button>
-              </div>
-            )}
           </div>
 
           {activeFatherTabId === 'settings' ? (
