@@ -37,7 +37,13 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
   const sshHost = session?.ssh_host;
 
   useEffect(() => {
-    if (isVisible) void fitAndResizeRef.current?.();
+    if (isVisible) {
+      void fitAndResizeRef.current?.();
+      const timer = setTimeout(() => {
+        void fitAndResizeRef.current?.();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
   }, [isVisible]);
 
   useEffect(() => {
@@ -96,6 +102,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
       if (isDisposed || !isVisibleRef.current) return;
       try {
         fitAddon.fit();
+        term.refresh(0, Math.max(0, term.rows - 1));
         if (resize && term.rows > 2 && term.cols > 2) {
           await invoke('resize_session', {
             id: sessionId,
