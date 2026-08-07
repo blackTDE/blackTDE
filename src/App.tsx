@@ -72,6 +72,9 @@ function App() {
     setActiveFileTab,
     activeWorkspace,
     workspaces,
+    openWorkspaceTabIds,
+    closeWorkspaceTab,
+    openWorkspaceTab,
     setWorkspace,
     setWorkspaces,
     isSessionPinned,
@@ -575,6 +578,11 @@ function App() {
     return pastSessions.filter(s => s.cwd === projectPath);
   };
 
+  // Filter open workspaces for top tab bar
+  const openWorkspaces = workspaces.filter(
+    (ws) => openWorkspaceTabIds.length === 0 || openWorkspaceTabIds.includes(ws.id)
+  );
+
   // Filter active sessions belonging to the active project path
   const activeProjectSessions = Object.values(sessions).filter(s => s.cwd === (activeWorkspace?.path || ''));
 
@@ -698,7 +706,9 @@ function App() {
                         {/* Project Folder Row (Father Node) */}
                         <div
                           onClick={(e) => {
+                            openWorkspaceTab(ws.id);
                             handleSelectProject(ws);
+                            setActiveFatherTabId(ws.id);
                             toggleProjectExpand(ws.id, e);
                           }}
                           className={`group flex items-center justify-between px-2.5 py-2 rounded-lg border transition cursor-pointer ${
@@ -885,24 +895,48 @@ function App() {
             </button>
 
             {/* Project tabs */}
-            {workspaces.map((ws) => {
+            {openWorkspaces.map((ws) => {
               const isActive = activeFatherTabId === ws.id;
               return (
-                <button
+                <div
                   key={ws.id}
-                  onClick={() => {
-                    handleSelectProject(ws);
-                    setActiveFatherTabId(ws.id);
-                  }}
-                  className={`flex items-center space-x-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition shrink-0 ${
+                  className={`group relative flex items-center border-b-2 transition shrink-0 ${
                     isActive
-                      ? 'border-brand text-brand-light bg-surface-1/40'
-                      : 'border-transparent text-zinc-500 hover:text-zinc-350 hover:bg-surface-2/5'
+                      ? 'border-brand text-brand-light bg-surface-1/40 font-bold'
+                      : 'border-transparent text-zinc-500 hover:text-zinc-350 hover:bg-surface-2/5 font-semibold'
                   }`}
                 >
-                  <Folder size={12} className={isActive ? 'text-brand-light' : 'text-zinc-650'} />
-                  <span>{ws.name}</span>
-                </button>
+                  <button
+                    onClick={() => {
+                      handleSelectProject(ws);
+                      setActiveFatherTabId(ws.id);
+                    }}
+                    className="flex items-center space-x-1.5 pl-3.5 pr-1.5 py-2.5 text-xs cursor-pointer"
+                  >
+                    <Folder size={12} className={isActive ? 'text-brand-light' : 'text-zinc-650'} />
+                    <span>{ws.name}</span>
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeWorkspaceTab(ws.id);
+                      if (activeFatherTabId === ws.id) {
+                        const remaining = openWorkspaces.filter((w) => w.id !== ws.id);
+                        if (remaining.length > 0) {
+                          handleSelectProject(remaining[0]);
+                          setActiveFatherTabId(remaining[0].id);
+                        } else {
+                          setActiveFatherTabId('');
+                        }
+                      }
+                    }}
+                    className="pr-2.5 opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-rose-450 transition cursor-pointer"
+                    title={`Close ${ws.name} tab`}
+                  >
+                    <X size={10} />
+                  </button>
+                </div>
               );
             })}
           </div>

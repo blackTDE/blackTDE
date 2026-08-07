@@ -81,11 +81,17 @@ interface WorkspaceState {
   pinnedSessionWidthPercent: number;
   isRightPanelPinned: boolean;
 
+  // Workspace top bar tabs
+  openWorkspaceTabIds: string[];
+
   // Actions
   setWorkspace: (ws: WorkspaceEntry | null) => void;
   setWorkspaces: (wsList: WorkspaceEntry[]) => void;
   addWorkspace: (ws: WorkspaceEntry) => void;
   removeWorkspace: (id: string) => void;
+  closeWorkspaceTab: (id: string) => void;
+  openWorkspaceTab: (id: string) => void;
+  setOpenWorkspaceTabIds: (ids: string[]) => void;
   addSession: (session: SessionInfo) => void;
   setSessions: (sessions: Record<string, SessionInfo>) => void;
   setActiveSession: (id: string | null) => void;
@@ -152,6 +158,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
   pinnedSessionWidthPercent: 50,
   isRightPanelPinned: true,
 
+  openWorkspaceTabIds: [],
+
   setWorkspace: (ws) =>
     set((state) => {
       if (!ws) {
@@ -188,11 +196,27 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
         activeFileLine: null,
         paneLayout: wsPaneLayout,
         activeSessionId: activeSessId,
+        openWorkspaceTabIds: state.openWorkspaceTabIds.includes(ws.id)
+          ? state.openWorkspaceTabIds
+          : [...state.openWorkspaceTabIds, ws.id],
       };
     }),
 
-  setWorkspaces: (wsList) => set({ workspaces: wsList }),
-  addWorkspace: (ws) => set((state) => ({ workspaces: [...state.workspaces, ws] })),
+  setWorkspaces: (wsList) =>
+    set((state) => ({
+      workspaces: wsList,
+      openWorkspaceTabIds:
+        state.openWorkspaceTabIds.length > 0
+          ? state.openWorkspaceTabIds
+          : wsList.map((w) => w.id),
+    })),
+  addWorkspace: (ws) =>
+    set((state) => ({
+      workspaces: [...state.workspaces, ws],
+      openWorkspaceTabIds: state.openWorkspaceTabIds.includes(ws.id)
+        ? state.openWorkspaceTabIds
+        : [...state.openWorkspaceTabIds, ws.id],
+    })),
   removeWorkspace: (id) =>
     set((state) => {
       const newOpenFilesByProj = { ...state.openFilesByProject };
@@ -204,11 +228,23 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
 
       return {
         workspaces: state.workspaces.filter((w) => w.id !== id),
+        openWorkspaceTabIds: state.openWorkspaceTabIds.filter((tabId) => tabId !== id),
         openFilesByProject: newOpenFilesByProj,
         activeFileTabByProject: newActiveFileTabByProj,
         paneLayoutsByProject: newPaneLayoutsByProject
       };
     }),
+  closeWorkspaceTab: (id) =>
+    set((state) => ({
+      openWorkspaceTabIds: state.openWorkspaceTabIds.filter((tabId) => tabId !== id),
+    })),
+  openWorkspaceTab: (id) =>
+    set((state) => ({
+      openWorkspaceTabIds: state.openWorkspaceTabIds.includes(id)
+        ? state.openWorkspaceTabIds
+        : [...state.openWorkspaceTabIds, id],
+    })),
+  setOpenWorkspaceTabIds: (ids) => set({ openWorkspaceTabIds: ids }),
 
   addSession: (session) =>
     set((state) => ({
