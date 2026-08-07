@@ -550,7 +550,6 @@ function App() {
     const currentPaneLayout = state.paneLayout;
 
     setActiveSession(sessionId);
-    setActiveFileTab(null); // Auto open the terminal sessions view!
 
     // Auto-focus this session in PTY split cell if not focused, considering only visible panes
     const visibleCount = getVisiblePaneCount(currentPaneLayout.type);

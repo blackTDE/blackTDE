@@ -207,6 +207,12 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
     };
 
     term.attachCustomKeyEventHandler((event) => {
+      if (event.key === 'Enter' && event.shiftKey) {
+        if (event.type === 'keydown') {
+          writeInput('\n');
+        }
+        return false;
+      }
       const sequence = modifiedEnterSequence(event);
       if (!sequence) return true;
       writeInput(sequence);
