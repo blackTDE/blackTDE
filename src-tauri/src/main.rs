@@ -45,11 +45,7 @@ async fn spawn_session(
         .map_err(|e| e.to_string())?;
 
     // 2. Resolve provider details via virtual models mapping or default provider
-    let clean_cmd = command
-        .split(|c| c == '/' || c == '\\')
-        .last()
-        .unwrap_or(&command)
-        .to_lowercase();
+    let clean_cmd = extract_agent_kind(&command);
     let virtual_model_row =
         sqlx::query("SELECT provider, model FROM proxy_virtual_models WHERE name = $1")
             .bind(&clean_cmd)
@@ -782,11 +778,65 @@ fn resolve_codex_session_id(home: &Path, cwd: &str) -> Option<String> {
     latest.map(|(_, id)| id)
 }
 
+pub fn extract_agent_kind(command: &str) -> String {
+    let first_word = command.split_whitespace().next().unwrap_or(command);
+    let base = first_word
+        .split(|c| c == '/' || c == '\\')
+        .last()
+        .unwrap_or(first_word)
+        .to_lowercase();
+
+    if base.contains("claude") {
+        return "claude".to_string();
+    }
+    if base == "agy" || base.contains("antigravity") {
+        return "agy".to_string();
+    }
+    if base.contains("opencode") || base.contains("open-code") {
+        return "opencode".to_string();
+    }
+    if base == "omp" || base.contains("oh-my-pi") || base.contains("ohmypi") {
+        return "omp".to_string();
+    }
+    if base == "pi" || base.contains("pi-agent") || base.contains("pi-coding") {
+        return "pi".to_string();
+    }
+    if base.contains("codex") {
+        return "codex".to_string();
+    }
+    if base.contains("gemini") {
+        return "gemini".to_string();
+    }
+    if base.contains("aider") {
+        return "aider".to_string();
+    }
+
+    let lower_full = command.to_lowercase();
+    if lower_full.contains("antigravity") || lower_full.contains("agy") {
+        return "agy".to_string();
+    }
+    if lower_full.contains("claude") {
+        return "claude".to_string();
+    }
+    if lower_full.contains("opencode") || lower_full.contains("open-code") {
+        return "opencode".to_string();
+    }
+    if lower_full.contains("oh-my-pi") || lower_full.contains("omp") {
+        return "omp".to_string();
+    }
+    if lower_full.contains("pi-coding") || lower_full.contains("pi-agent") {
+        return "pi".to_string();
+    }
+
+    base
+}
+
 fn agent_new_session_args(command: &str, new_id: &str) -> Option<Vec<String>> {
     if new_id.trim().is_empty() {
         return None;
     }
-    let flag = match command {
+    let kind = extract_agent_kind(command);
+    let flag = match kind.as_str() {
         "claude" => "--session-id",
         "agy" => "--conversation",
         "opencode" | "open-code" | "pi" | "omp" | "oh-my-pi" => "--session",
@@ -799,7 +849,8 @@ fn agent_resume_args(command: &str, remote_id: &str) -> Option<Vec<String>> {
     if remote_id.trim().is_empty() {
         return None;
     }
-    let flag = match command {
+    let kind = extract_agent_kind(command);
+    let flag = match kind.as_str() {
         "claude" | "gemini" => "--resume",
         "agy" => "--conversation",
         "opencode" | "open-code" | "pi" | "omp" | "oh-my-pi" => "--session",
@@ -1137,11 +1188,7 @@ async fn resume_terminated_session(
     let model: Option<String> = row.get("model");
     let ssh_host: Option<String> = row.get("ssh_host");
 
-    let clean_cmd = command
-        .split(|c| c == '/' || c == '\\')
-        .last()
-        .unwrap_or(&command)
-        .to_lowercase();
+    let clean_cmd = extract_agent_kind(&command);
 
     if clean_cmd == "codex"
         && ssh_host.is_none()
@@ -1152,12 +1199,11 @@ async fn resume_terminated_session(
         if let Some(home) = std::env::var("HOME").ok().map(PathBuf::from) {
             remote_session_id = resolve_codex_session_id(&home, &cwd);
             if let Some(ref resolved) = remote_session_id {
-                sqlx::query("UPDATE sessions SET remote_session_id = $1 WHERE id = $2")
+                let _ = sqlx::query("UPDATE sessions SET remote_session_id = $1 WHERE id = $2")
                     .bind(resolved)
                     .bind(&id)
                     .execute(&*pool)
-                    .await
-                    .map_err(|e| e.to_string())?;
+                    .await;
             }
         }
     }
@@ -1189,6 +1235,21 @@ async fn resume_terminated_session(
                 }
             }
         }
+    }
+
+    // Auto-healing: If remote_session_id is still missing for a resumable agent, auto-generate a fresh UUID and save to SQLite
+    if remote_session_id
+        .as_deref()
+        .map_or(true, |r_id| r_id.trim().is_empty())
+        && agent_new_session_args(&clean_cmd, "check-uuid").is_some()
+    {
+        let auto_uuid = uuid::Uuid::new_v4().to_string();
+        remote_session_id = Some(auto_uuid.clone());
+        let _ = sqlx::query("UPDATE sessions SET remote_session_id = $1 WHERE id = $2")
+            .bind(&auto_uuid)
+            .bind(&id)
+            .execute(&*pool)
+            .await;
     }
 
     // 3. Resolve environment variables and arguments
