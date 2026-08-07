@@ -47,7 +47,7 @@ pub async fn lock_session_resume(locks: &ResumeLocks, session_id: &str) -> Owned
 }
 
 pub fn build_enriched_path() -> String {
-    let mut current_paths: Vec<String> = std::env::var("PATH")
+    let current_paths: Vec<String> = std::env::var("PATH")
         .unwrap_or_default()
         .split(':')
         .map(|s| s.to_string())
@@ -55,7 +55,7 @@ pub fn build_enriched_path() -> String {
         .collect();
 
     let home = std::env::var("HOME").unwrap_or_default();
-    let mut default_dirs = vec![
+    let mut priority_dirs = vec![
         "/opt/homebrew/bin".to_string(),
         "/opt/homebrew/sbin".to_string(),
         "/usr/local/bin".to_string(),
@@ -63,11 +63,11 @@ pub fn build_enriched_path() -> String {
     ];
 
     if !home.is_empty() {
-        default_dirs.push(format!("{}/.cargo/bin", home));
-        default_dirs.push(format!("{}/.gemini/bin", home));
-        default_dirs.push(format!("{}/.local/bin", home));
-        default_dirs.push(format!("{}/.npm-global/bin", home));
-        default_dirs.push(format!("{}/.bun/bin", home));
+        priority_dirs.push(format!("{}/.cargo/bin", home));
+        priority_dirs.push(format!("{}/.gemini/bin", home));
+        priority_dirs.push(format!("{}/.local/bin", home));
+        priority_dirs.push(format!("{}/.npm-global/bin", home));
+        priority_dirs.push(format!("{}/.bun/bin", home));
 
         let nvm_dir = std::path::Path::new(&home).join(".nvm").join("versions").join("node");
         if let Ok(entries) = std::fs::read_dir(nvm_dir) {
@@ -75,20 +75,26 @@ pub fn build_enriched_path() -> String {
                 let bin_dir = entry.path().join("bin");
                 if bin_dir.exists() {
                     if let Some(path_str) = bin_dir.to_str() {
-                        default_dirs.push(path_str.to_string());
+                        priority_dirs.push(path_str.to_string());
                     }
                 }
             }
         }
     }
 
-    for dir in default_dirs {
-        if !current_paths.contains(&dir) && std::path::Path::new(&dir).exists() {
-            current_paths.push(dir);
+    let mut result_paths = Vec::new();
+    for dir in priority_dirs {
+        if !result_paths.contains(&dir) && std::path::Path::new(&dir).exists() {
+            result_paths.push(dir);
+        }
+    }
+    for dir in current_paths {
+        if !result_paths.contains(&dir) {
+            result_paths.push(dir);
         }
     }
 
-    current_paths.join(":")
+    result_paths.join(":")
 }
 
 pub fn resolve_command_executable(command: &str) -> String {
