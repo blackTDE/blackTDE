@@ -28,6 +28,8 @@ export const restoreTerminal = async (actions: TerminalRestoreActions): Promise<
     await actions.fitAndResize(false);
     await actions.replayHistory?.();
     await actions.resume();
+  } else {
+    await actions.replayHistory?.();
   }
 
   await actions.fitAndResize();

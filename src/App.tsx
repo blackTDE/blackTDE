@@ -941,14 +941,15 @@ function App() {
             })}
           </div>
 
-          {activeFatherTabId === 'settings' ? (
+          {activeFatherTabId === 'settings' && (
             /* Render full page Settings Dashboard */
             <div className="flex-grow min-h-0 bg-[#0a0a0a] overflow-hidden">
               <SettingsPanel />
             </div>
-          ) : (
-            /* Render Workspace Content */
-            <>
+          )}
+
+          {/* Render Workspace Content (preserved in DOM via hidden class to retain xterm session buffers) */}
+          <div className={activeFatherTabId === 'settings' ? 'hidden' : 'flex flex-col flex-1 min-h-0 overflow-hidden'}>
               {/* Level 2: Child Tabs (sessions and open files on a single split header row) */}
               <div className="shrink-0 flex items-center border-b border-surface-2 bg-[#171717] select-none min-w-0">
                 {/* Left Part: Session Tabs & Controls (aligned with left PTY pane width when pinned) */}
@@ -1187,8 +1188,7 @@ function App() {
                   </div>
                 )}
               </div>
-            </>
-          )}
+            </div>
         </div>
 
         {/* Right Resizer Handle Divider (Only when Pinned) */}

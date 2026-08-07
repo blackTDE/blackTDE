@@ -147,10 +147,12 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
         reset: () => {
           if (!isDisposed) term.reset();
         },
-        replayHistory: localShell ? async () => {
+        replayHistory: async () => {
           const history = await invoke<number[]>('get_session_history', { id: sessionId });
-          if (!isDisposed && history.length > 0) term.write(new Uint8Array(history));
-        } : undefined,
+          if (!isDisposed && history && history.length > 0) {
+            term.write(new Uint8Array(history));
+          }
+        },
         resume: async (rows = term.rows, cols = term.cols) => {
           try {
             if (localShell) {
