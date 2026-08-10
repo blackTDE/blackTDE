@@ -116,7 +116,10 @@ fn has_session(tmux: &Path, name: &str, dedicated: bool, path: &str) -> bool {
     } else {
         command.args(["has-session", "-t", name]);
     }
-    command.env("PATH", path).status().is_ok_and(|status| status.success())
+    command
+        .env("PATH", path)
+        .status()
+        .is_ok_and(|status| status.success())
 }
 
 fn refresh_path(tmux: &Path, path: &str, session: Option<&str>) {
@@ -131,6 +134,16 @@ fn refresh_path(tmux: &Path, path: &str, session: Option<&str>) {
         .status();
 }
 
+fn configure_server(tmux: &Path, path: &str) {
+    refresh_path(tmux, path, None);
+    for (option, value) in [("mouse", "on"), ("history-limit", "50000")] {
+        let _ = Command::new(tmux)
+            .args(tmux_args(["set-option", "-g", option, value]))
+            .env("PATH", path)
+            .status();
+    }
+}
+
 fn prepare_shell_with(
     tmux: &Path,
     id: &str,
@@ -140,9 +153,9 @@ fn prepare_shell_with(
 ) -> Option<PersistentShell> {
     let name = tmux_session_name(id);
     let path = crate::process::build_enriched_path();
-    refresh_path(tmux, &path, None);
 
     if has_session(tmux, &name, true, &path) {
+        configure_server(tmux, &path);
         refresh_path(tmux, &path, Some(&name));
         return Some(PersistentShell {
             command: tmux.to_string_lossy().into_owned(),
@@ -160,15 +173,29 @@ fn prepare_shell_with(
         });
     }
 
+    let mut create_command = tmux_args([
+        "set-option",
+        "-g",
+        "mouse",
+        "on",
+        ";",
+        "set-option",
+        "-g",
+        "history-limit",
+        "50000",
+        ";",
+    ]);
+    create_command.extend(create_args(&name, cwd, command, args));
     if !Command::new(tmux)
-            .args(tmux_args(create_args(&name, cwd, command, args)))
-            .env("PATH", &path)
-            .status()
-            .ok()?
-            .success()
+        .args(create_command)
+        .env("PATH", &path)
+        .status()
+        .ok()?
+        .success()
     {
         return None;
     }
+    configure_server(tmux, &path);
 
     Some(PersistentShell {
         command: tmux.to_string_lossy().into_owned(),
@@ -233,10 +260,7 @@ mod tests {
     #[test]
     fn builds_safe_names_and_direct_argv() {
         assert_eq!(login_shell_args("/bin/zsh", &[]), vec!["-l"]);
-        assert_eq!(
-            login_shell_args("/bin/zsh", &["-l".into()]),
-            vec!["-l"]
-        );
+        assert_eq!(login_shell_args("/bin/zsh", &["-l".into()]), vec!["-l"]);
         assert_eq!(login_shell_args("claude", &[]), Vec::<String>::new());
         assert_eq!(tmux_session_name("session/a b"), "tde-session_a_b");
         assert_eq!(
@@ -315,6 +339,19 @@ mod tests {
         let created = prepare_shell(&id, "/bin/sh", &[], "/tmp").unwrap();
         assert!(!created.reattached);
         assert_eq!(created.args, attach_args(&tmux_session_name(&id)));
+        let mouse = Command::new(find_tmux().unwrap())
+            .args(tmux_args(["show-options", "-gv", "mouse"]))
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&mouse.stdout).trim(), "on");
+        let history_limit = Command::new(find_tmux().unwrap())
+            .args(tmux_args(["show-options", "-gv", "history-limit"]))
+            .output()
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&history_limit.stdout).trim(),
+            "50000"
+        );
 
         let resumed = prepare_shell(&id, "/bin/sh", &[], "/tmp").unwrap();
         assert!(resumed.reattached);
