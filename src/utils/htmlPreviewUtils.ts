@@ -71,9 +71,18 @@ export function getMediaMimeType(ext: string): string {
       return 'video/x-msvideo';
     case 'svg':
       return 'image/svg+xml';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'ico':
+      return 'image/x-icon';
     default:
       return `image/${normalized}`;
   }
+}
+
+export function imageDataUrl(ext: string, base64: string): string {
+  return `data:${getMediaMimeType(ext)};base64,${base64}`;
 }
 
 /**

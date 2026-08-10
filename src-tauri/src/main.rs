@@ -244,12 +244,11 @@ async fn spawn_session(
     }
 
     if let Some(ref r_id) = resume_session_id {
-        if let Some(resume_args) = agent_resume_args(&clean_cmd, r_id) {
-            if !command_args.iter().any(|arg| arg == &resume_args[0]) {
-                command_args.extend(resume_args);
-            }
-            initial_remote_id = Some(r_id.clone());
+        let resume_args = requested_resume_args(&clean_cmd, r_id)?;
+        if !command_args.iter().any(|arg| arg == &resume_args[0]) {
+            command_args.extend(resume_args);
         }
+        initial_remote_id = Some(r_id.clone());
     } else {
         // Brand new session: generate a unique UUID for supported agents (claude, agy, opencode)
         let new_uuid = uuid::Uuid::new_v4().to_string();
@@ -299,6 +298,7 @@ async fn spawn_session(
     }
 
     if shell_session::is_local_shell(&resolved_command, ssh_host.as_deref()) {
+        command_args = shell_session::login_shell_args(&resolved_command, &command_args);
         if let Some(shell) =
             shell_session::prepare_shell(&id, &resolved_command, &command_args, &cwd)
         {
@@ -382,6 +382,25 @@ async fn resize_session(
         return Err(format!("Session {} not found", id));
     }
     Ok(())
+}
+
+#[tauri::command]
+async fn split_shell_session(
+    id: String,
+    direction: String,
+    pool: State<'_, SqlitePool>,
+) -> Result<(), String> {
+    let row: Option<(String, Option<String>)> =
+        sqlx::query_as("SELECT agent_type, ssh_host FROM sessions WHERE id = $1")
+            .bind(&id)
+            .fetch_optional(&*pool)
+            .await
+            .map_err(|error| error.to_string())?;
+    let (command, ssh_host) = row.ok_or("Session not found")?;
+    if !shell_session::is_local_shell(&command, ssh_host.as_deref()) {
+        return Err("Only local shell sessions can use native tmux splits".into());
+    }
+    shell_session::split_shell_session(&id, &direction)
 }
 
 #[tauri::command]
@@ -835,13 +854,7 @@ fn agent_new_session_args(command: &str, new_id: &str) -> Option<Vec<String>> {
     if new_id.trim().is_empty() {
         return None;
     }
-    let kind = extract_agent_kind(command);
-    let flag = match kind.as_str() {
-        "claude" => "--session-id",
-        "agy" => "--conversation",
-        "opencode" | "open-code" | "pi" | "omp" | "oh-my-pi" => "--session",
-        _ => return None,
-    };
+    let flag = agent_session_flags(command)?.0?;
     Some(vec![flag.to_string(), new_id.to_string()])
 }
 
@@ -849,15 +862,29 @@ fn agent_resume_args(command: &str, remote_id: &str) -> Option<Vec<String>> {
     if remote_id.trim().is_empty() {
         return None;
     }
-    let kind = extract_agent_kind(command);
-    let flag = match kind.as_str() {
-        "claude" | "gemini" => "--resume",
-        "agy" => "--conversation",
-        "opencode" | "open-code" | "pi" | "omp" | "oh-my-pi" => "--session",
-        "codex" => "resume",
-        _ => return None,
-    };
+    let flag = agent_session_flags(command)?.1;
     Some(vec![flag.to_string(), remote_id.to_string()])
+}
+
+fn agent_session_flags(command: &str) -> Option<(Option<&'static str>, &'static str)> {
+    let kind = extract_agent_kind(command);
+    match kind.as_str() {
+        "claude" => Some((Some("--session-id"), "--resume")),
+        "agy" => Some((Some("--conversation"), "--conversation")),
+        "opencode" | "pi" | "omp" => Some((Some("--session"), "--session")),
+        "codex" => Some((None, "resume")),
+        "gemini" => Some((None, "--resume")),
+        _ => None,
+    }
+}
+
+fn requested_resume_args(command: &str, remote_id: &str) -> Result<Vec<String>, String> {
+    agent_resume_args(command, remote_id).ok_or_else(|| {
+        format!(
+            "{} does not support provider session resume or the session ID is empty",
+            command
+        )
+    })
 }
 
 fn resume_args_for_session(
@@ -890,8 +917,9 @@ fn resolve_agy_conversation_id(home: &Path, cwd: &str) -> Option<String> {
 #[cfg(test)]
 mod session_resume_tests {
     use super::{
-        agent_new_session_args, agent_resume_args, privileged_agent_args, resolve_agy_conversation_id,
-        resolve_codex_session_id, resume_args_for_session,
+        agent_new_session_args, agent_resume_args, extract_agent_kind, privileged_agent_args,
+        requested_resume_args, resolve_agy_conversation_id, resolve_codex_session_id,
+        resume_args_for_session,
     };
     use std::fs;
 
@@ -956,6 +984,23 @@ mod session_resume_tests {
         );
         assert_eq!(agent_resume_args("agy", " "), None);
         assert_eq!(agent_resume_args("zsh", "ignored"), None);
+    }
+
+    #[test]
+    fn keeps_resume_capability_in_the_backend() {
+        assert_eq!(
+            extract_agent_kind("/opt/homebrew/bin/codex --profile work"),
+            "codex"
+        );
+        assert_eq!(
+            extract_agent_kind("npx @anthropic-ai/claude-code"),
+            "claude"
+        );
+        assert_eq!(
+            requested_resume_args("/opt/homebrew/bin/opencode", "session-1").unwrap(),
+            vec!["--session", "session-1"]
+        );
+        assert!(requested_resume_args("/bin/zsh", "not-a-session").is_err());
     }
 
     #[test]
@@ -1057,11 +1102,7 @@ async fn get_remote_session_id(
         None => return Ok(None),
     };
 
-    let clean_cmd = command
-        .split(|c| c == '/' || c == '\\')
-        .last()
-        .unwrap_or(&command)
-        .to_lowercase();
+    let clean_cmd = extract_agent_kind(&command);
 
     // If already resolved, return it. Old Codex rows stored rollout filenames;
     // repair those below before handing them to `codex resume`.
@@ -1439,6 +1480,7 @@ async fn resume_terminated_session(
 
     let mut resume_kind = "resumed";
     if shell_session::is_local_shell(&resolved_command, ssh_host.as_deref()) {
+        command_args = shell_session::login_shell_args(&resolved_command, &command_args);
         if let Some(shell) =
             shell_session::prepare_shell(&id, &resolved_command, &command_args, &cwd)
         {
@@ -1532,6 +1574,7 @@ fn main() {
             update_session_name,
             write_to_session,
             resize_session,
+            split_shell_session,
             delete_session,
             get_session_history,
             file_manager::list_directory,

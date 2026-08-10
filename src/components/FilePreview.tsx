@@ -16,7 +16,8 @@ import {
   getMediaMimeType,
   processHtmlWithBaseUrl,
   getAbsolutePath,
-  base64ToBlobUrl
+  base64ToBlobUrl,
+  imageDataUrl
 } from '../utils/htmlPreviewUtils';
 
 const MarkdownImage: React.FC<{ src?: string; alt?: string; activeFilePath: string }> = ({ src, alt, activeFilePath }) => {
@@ -299,6 +300,23 @@ export const FilePreview: React.FC = () => {
       );
     }
 
+    if (isImageFile(ext)) {
+      return (
+        <div className="h-full w-full flex items-center justify-center p-6 bg-surface-2/20 rounded">
+          <div className="relative group max-w-full max-h-full">
+            <img
+              src={imageDataUrl(ext, base64Content)}
+              alt={activeFilePath.split('/').pop()}
+              className="max-w-full max-h-[70vh] object-contain rounded border border-surface-3 shadow-lg bg-surface-1"
+            />
+            <div className="absolute top-2 right-2 bg-surface/85 border border-surface-3 px-2 py-0.5 rounded text-[10px] font-mono text-zinc-400 opacity-0 group-hover:opacity-100 transition">
+              {ext.toUpperCase()} IMAGE
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     switch (ext) {
       case 'md':
         return (
@@ -422,26 +440,6 @@ export const FilePreview: React.FC = () => {
             </div>
           );
         }
-      case 'png':
-      case 'jpg':
-      case 'jpeg':
-      case 'gif':
-      case 'svg':
-        const mimeType = ext === 'svg' ? 'image/svg+xml' : `image/${ext}`;
-        return (
-          <div className="h-full w-full flex items-center justify-center p-6 bg-surface-2/20 rounded">
-            <div className="relative group max-w-full max-h-full">
-              <img
-                src={`data:${mimeType};base64,${base64Content}`}
-                alt={activeFilePath.split('/').pop()}
-                className="max-w-full max-h-[70vh] object-contain rounded border border-surface-3 shadow-lg bg-surface-1"
-              />
-              <div className="absolute top-2 right-2 bg-surface/85 border border-surface-3 px-2 py-0.5 rounded text-[10px] font-mono text-zinc-400 opacity-0 group-hover:opacity-100 transition">
-                {ext.toUpperCase()} IMAGE
-              </div>
-            </div>
-          </div>
-        );
       case 'pdf':
         return (
           <div className="h-full w-full flex flex-col items-center justify-center p-6 bg-surface-2/20 text-center font-mono">

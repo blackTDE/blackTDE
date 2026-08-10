@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { getVisiblePaneCount, hasWorkspacePath, useWorkspaceStore } from './store/workspaceStore';
+import { hasWorkspacePath, useWorkspaceStore } from './store/workspaceStore';
 import { dedupeSessions } from './sessionUtils';
+import { isLocalShell } from './shellRestore';
 import { TerminalGrid } from './components/TerminalGrid';
 import { SettingsPanel } from './components/SettingsPanel';
 import { FileTree } from './components/FileTree';
@@ -33,8 +34,7 @@ import {
   PanelLeftOpen,
   Search,
   Pin,
-  LayoutGrid,
-  Check
+  LayoutGrid
 } from 'lucide-react';
 
 const getFriendlySshHost = (sshHost?: string): string => {
@@ -61,10 +61,7 @@ function App() {
     setActiveRightPanel,
     gitBranch,
     setGitBranch,
-    paneLayout,
-    setPaneLayoutType,
     setPaneSessionId,
-    setActivePaneIndex,
     openFiles,
     activeFileTab,
     closeFile,
@@ -147,7 +144,7 @@ function App() {
     window.addEventListener('mouseup', onMouseUp);
   };
 
-  const [showSplitMenu, setShowSplitMenu] = useState(false);
+  const [shellSplitError, setShellSplitError] = useState<string | null>(null);
 
   // Expanded/Collapsed state for projects in Left Panel
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({
@@ -433,15 +430,6 @@ function App() {
       setSpawnSessionError('Enter a command to start.');
       return;
     }
-    if (manualResumeSessionId.trim()) {
-      const commandName = cmdInput.split(/[\\/]/).pop()?.toLowerCase();
-      const resumableAgents = ['agy', 'claude', 'codex', 'gemini', 'open-code', 'opencode', 'pi', 'omp', 'oh-my-pi'];
-      if (!commandName || !resumableAgents.includes(commandName)) {
-        setSpawnSessionError(`${commandName || 'This command'} does not support provider session resume.`);
-        return;
-      }
-    }
-
     const newSessionId = 'session_' + Math.random().toString(36).substring(2, 11);
     const mockWorkspaceId = modalTargetProject?.id || activeWorkspace?.id || 'project_default';
     const args = argsInput.trim() ? argsInput.split(/\s+/) : [];
@@ -501,7 +489,7 @@ function App() {
         ssh_host: finalSshHost || undefined,
       });
 
-      setPaneSessionId(paneLayout.activePaneIndex, newSessionId);
+      setPaneSessionId(0, newSessionId);
       setResumeSessionId('');
       setManualResumeSessionId('');
       loadPastSessions();
@@ -544,31 +532,17 @@ function App() {
   const handleSelectSession = (ws: any, sessionId: string) => {
     handleSelectProject(ws);
     setActiveFatherTabId(ws.id); // Ensure the project's father tab is active!
-    
-    // Read the updated state synchronously to avoid React closure batching issues
-    const state = useWorkspaceStore.getState();
-    const currentPaneLayout = state.paneLayout;
-
     setActiveSession(sessionId);
+    setPaneSessionId(0, sessionId);
+  };
 
-    // Auto-focus this session in PTY split cell if not focused, considering only visible panes
-    const visibleCount = getVisiblePaneCount(currentPaneLayout.type);
-    const visiblePanes = currentPaneLayout.panes.slice(0, visibleCount);
-    const isVisibleInPane = visiblePanes.some(p => p === sessionId);
-
-    if (!isVisibleInPane) {
-      // Find the first empty pane inside the visible range, or overwrite active pane if occupied
-      const emptyIndex = visiblePanes.indexOf(null);
-      const targetIndex = emptyIndex !== -1 ? emptyIndex : currentPaneLayout.activePaneIndex;
-      const finalIndex = targetIndex < visibleCount ? targetIndex : 0;
-      setPaneSessionId(finalIndex, sessionId);
-      setActivePaneIndex(finalIndex);
-    } else {
-      // Focus the pane that already holds this session
-      const paneIndex = visiblePanes.findIndex(p => p === sessionId);
-      if (paneIndex !== -1) {
-        setActivePaneIndex(paneIndex);
-      }
+  const handleShellSplit = async (direction: 'right' | 'down') => {
+    if (!activeSessionId) return;
+    try {
+      await invoke('split_shell_session', { id: activeSessionId, direction });
+      setShellSplitError(null);
+    } catch (error) {
+      setShellSplitError(String(error));
     }
   };
 
@@ -580,6 +554,10 @@ function App() {
   // Filter open workspaces for top tab bar
   const openWorkspaces = workspaces.filter(
     (ws) => openWorkspaceTabIds.length === 0 || openWorkspaceTabIds.includes(ws.id)
+  );
+  const activeSession = activeSessionId ? sessions[activeSessionId] : undefined;
+  const canSplitActiveShell = Boolean(
+    activeSession && isLocalShell(activeSession.cmd || activeSession.agentType, activeSession.ssh_host)
   );
 
   // Filter active sessions belonging to the active project path
@@ -1013,7 +991,7 @@ function App() {
                     )}
                   </div>
 
-                  {/* Right Side Controls of Left Part: Compact Pin button & Split Dropdown */}
+                  {/* Right Side Controls of Left Part */}
                   <div className="flex items-center space-x-1.5 shrink-0">
                     <button
                       onClick={toggleSessionPin}
@@ -1027,45 +1005,30 @@ function App() {
                       <Pin size={11} className={isSessionPinned ? 'rotate-45 text-brand-light' : ''} />
                     </button>
 
-                    {/* Compact Split Dropdown */}
-                    <div className="relative">
-                      <button
-                        onClick={() => setShowSplitMenu(!showSplitMenu)}
-                        className="flex items-center space-x-1 px-2 py-0.5 rounded border border-surface-3 bg-surface-2/80 text-zinc-300 hover:text-white text-[10px] font-mono cursor-pointer transition"
-                        title="Change Terminal Split Layout"
-                      >
-                        <LayoutGrid size={11} className="text-brand-light" />
-                        <span>{paneLayout.type}</span>
-                        <ChevronDown size={10} className="text-zinc-500" />
-                      </button>
-                      {showSplitMenu && (
-                        <div
-                          className="absolute right-0 top-full mt-1 bg-surface-1 border border-surface-3 rounded-md shadow-xl py-1 z-30 w-28 text-[10px] font-mono"
-                          onClick={() => setShowSplitMenu(false)}
+                    {canSplitActiveShell && (
+                      <div className="flex items-center rounded border border-surface-3 bg-surface-2/80 overflow-hidden">
+                        <LayoutGrid size={11} className="text-brand-light mx-1.5" />
+                        <button
+                          onClick={() => void handleShellSplit('right')}
+                          className="px-1.5 py-0.5 border-l border-surface-3 text-zinc-300 hover:text-white text-[10px] font-mono cursor-pointer transition"
+                          title="Split shell right with tmux (navigate panes with Ctrl+B then arrow)"
                         >
-                          {[
-                            { type: '1x1', label: '1x1 Single' },
-                            { type: '1x2', label: '1x2 Dual H' },
-                            { type: '2x1', label: '2x1 Dual V' },
-                            { type: '2x2', label: '2x2 Grid' },
-                          ].map((item) => (
-                            <button
-                              key={item.type}
-                              onClick={() => {
-                                setPaneLayoutType(item.type as any);
-                                setShowSplitMenu(false);
-                              }}
-                              className={`w-full text-left px-2.5 py-1 hover:bg-surface-2 transition flex items-center justify-between cursor-pointer ${
-                                paneLayout.type === item.type ? 'text-brand-light font-bold bg-brand/10' : 'text-zinc-300'
-                              }`}
-                            >
-                              <span>{item.label}</span>
-                              {paneLayout.type === item.type && <Check size={10} />}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                          Split →
+                        </button>
+                        <button
+                          onClick={() => void handleShellSplit('down')}
+                          className="px-1.5 py-0.5 border-l border-surface-3 text-zinc-300 hover:text-white text-[10px] font-mono cursor-pointer transition"
+                          title="Split shell down with tmux (navigate panes with Ctrl+B then arrow)"
+                        >
+                          Split ↓
+                        </button>
+                      </div>
+                    )}
+                    {shellSplitError && (
+                      <span className="max-w-40 truncate text-[9px] text-rose-400" title={shellSplitError}>
+                        {shellSplitError}
+                      </span>
+                    )}
                   </div>
                 </div>
 

@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const TMUX_SOCKET: &str = "black-tde";
+
 pub struct PersistentShell {
     pub command: String,
     pub args: Vec<String>,
@@ -29,6 +31,24 @@ pub fn tmux_session_name(id: &str) -> String {
     format!("tde-{safe_id}")
 }
 
+pub fn login_shell_args(command: &str, args: &[String]) -> Vec<String> {
+    let mut args = args.to_vec();
+    if is_local_shell(command, None) && !args.iter().any(|arg| arg == "-l" || arg == "--login") {
+        args.insert(0, "-l".into());
+    }
+    args
+}
+
+pub fn tmux_args<I, S>(args: I) -> Vec<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut result = vec!["-L".into(), TMUX_SOCKET.into()];
+    result.extend(args.into_iter().map(|arg| arg.as_ref().to_string()));
+    result
+}
+
 pub fn create_args(name: &str, cwd: &str, shell: &str, shell_args: &[String]) -> Vec<String> {
     let mut args = vec![
         "new-session".into(),
@@ -44,7 +64,23 @@ pub fn create_args(name: &str, cwd: &str, shell: &str, shell_args: &[String]) ->
 }
 
 pub fn attach_args(name: &str) -> Vec<String> {
-    vec!["attach-session".into(), "-t".into(), name.into()]
+    tmux_args(["attach-session", "-t", name])
+}
+
+pub fn split_args(name: &str, direction: &str) -> Result<Vec<String>, String> {
+    let flag = match direction {
+        "right" => "-h",
+        "down" => "-v",
+        _ => return Err("Split direction must be 'right' or 'down'".into()),
+    };
+    Ok(tmux_args([
+        "split-window",
+        flag,
+        "-t",
+        name,
+        "-c",
+        "#{pane_current_path}",
+    ]))
 }
 
 pub fn find_tmux() -> Option<PathBuf> {
@@ -70,7 +106,29 @@ pub fn prepare_shell(
     cwd: &str,
 ) -> Option<PersistentShell> {
     let tmux = find_tmux()?;
-    prepare_shell_with(&tmux, id, command, args, cwd)
+    prepare_shell_with(&tmux, id, command, &login_shell_args(command, args), cwd)
+}
+
+fn has_session(tmux: &Path, name: &str, dedicated: bool, path: &str) -> bool {
+    let mut command = Command::new(tmux);
+    if dedicated {
+        command.args(tmux_args(["has-session", "-t", name]));
+    } else {
+        command.args(["has-session", "-t", name]);
+    }
+    command.env("PATH", path).status().is_ok_and(|status| status.success())
+}
+
+fn refresh_path(tmux: &Path, path: &str, session: Option<&str>) {
+    let target = session.unwrap_or("-g");
+    let mut args = vec!["set-environment", target, "PATH", path];
+    if session.is_some() {
+        args.insert(1, "-t");
+    }
+    let _ = Command::new(tmux)
+        .args(tmux_args(args))
+        .env("PATH", path)
+        .status();
 }
 
 fn prepare_shell_with(
@@ -81,15 +139,30 @@ fn prepare_shell_with(
     cwd: &str,
 ) -> Option<PersistentShell> {
     let name = tmux_session_name(id);
-    let reattached = Command::new(tmux)
-        .args(["has-session", "-t", &name])
-        .status()
-        .ok()?
-        .success();
+    let path = crate::process::build_enriched_path();
+    refresh_path(tmux, &path, None);
 
-    if !reattached
-        && !Command::new(tmux)
-            .args(create_args(&name, cwd, command, args))
+    if has_session(tmux, &name, true, &path) {
+        refresh_path(tmux, &path, Some(&name));
+        return Some(PersistentShell {
+            command: tmux.to_string_lossy().into_owned(),
+            args: attach_args(&name),
+            reattached: true,
+        });
+    }
+
+    // Reattach shells created before TDE moved to its isolated tmux server.
+    if has_session(tmux, &name, false, &path) {
+        return Some(PersistentShell {
+            command: tmux.to_string_lossy().into_owned(),
+            args: vec!["attach-session".into(), "-t".into(), name],
+            reattached: true,
+        });
+    }
+
+    if !Command::new(tmux)
+            .args(tmux_args(create_args(&name, cwd, command, args)))
+            .env("PATH", &path)
             .status()
             .ok()?
             .success()
@@ -100,16 +173,47 @@ fn prepare_shell_with(
     Some(PersistentShell {
         command: tmux.to_string_lossy().into_owned(),
         args: attach_args(&name),
-        reattached,
+        reattached: false,
     })
+}
+
+pub fn split_shell_session(id: &str, direction: &str) -> Result<(), String> {
+    let tmux = find_tmux().ok_or("tmux is not installed")?;
+    let name = tmux_session_name(id);
+    let path = crate::process::build_enriched_path();
+    let args = if has_session(&tmux, &name, true, &path) {
+        refresh_path(&tmux, &path, Some(&name));
+        split_args(&name, direction)?
+    } else if has_session(&tmux, &name, false, &path) {
+        let mut args = split_args(&name, direction)?;
+        args.drain(0..2);
+        args
+    } else {
+        return Err("Shell session is not running".into());
+    };
+
+    let status = Command::new(tmux)
+        .args(args)
+        .env("PATH", path)
+        .status()
+        .map_err(|error| error.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("tmux failed to split the shell session".into())
+    }
 }
 
 pub fn kill_shell_session(id: &str) {
     let Some(tmux) = find_tmux() else {
         return;
     };
+    let name = tmux_session_name(id);
+    let _ = Command::new(&tmux)
+        .args(tmux_args(["kill-session", "-t", &name]))
+        .status();
     let _ = Command::new(tmux)
-        .args(["kill-session", "-t", &tmux_session_name(id)])
+        .args(["kill-session", "-t", &name])
         .status();
 }
 
@@ -128,7 +232,17 @@ mod tests {
 
     #[test]
     fn builds_safe_names_and_direct_argv() {
+        assert_eq!(login_shell_args("/bin/zsh", &[]), vec!["-l"]);
+        assert_eq!(
+            login_shell_args("/bin/zsh", &["-l".into()]),
+            vec!["-l"]
+        );
+        assert_eq!(login_shell_args("claude", &[]), Vec::<String>::new());
         assert_eq!(tmux_session_name("session/a b"), "tde-session_a_b");
+        assert_eq!(
+            tmux_args(["has-session", "-t", "tde-one"]),
+            vec!["-L", "black-tde", "has-session", "-t", "tde-one"]
+        );
         assert_eq!(
             create_args("tde-one", "/repo path", "/bin/zsh", &["-l".into()]),
             vec![
@@ -144,8 +258,22 @@ mod tests {
         );
         assert_eq!(
             attach_args("tde-one"),
-            vec!["attach-session", "-t", "tde-one"]
+            vec!["-L", "black-tde", "attach-session", "-t", "tde-one"]
         );
+        assert_eq!(
+            split_args("tde-one", "right").unwrap(),
+            vec![
+                "-L",
+                "black-tde",
+                "split-window",
+                "-h",
+                "-t",
+                "tde-one",
+                "-c",
+                "#{pane_current_path}"
+            ]
+        );
+        assert!(split_args("tde-one", "diagonal").is_err());
     }
 
     #[test]
@@ -190,6 +318,19 @@ mod tests {
 
         let resumed = prepare_shell(&id, "/bin/sh", &[], "/tmp").unwrap();
         assert!(resumed.reattached);
+
+        split_shell_session(&id, "right").unwrap();
+        let panes = Command::new(find_tmux().unwrap())
+            .args(tmux_args([
+                "list-panes",
+                "-t",
+                &tmux_session_name(&id),
+                "-F",
+                "#{pane_id}",
+            ]))
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&panes.stdout).lines().count(), 2);
         kill_shell_session(&id);
     }
 }

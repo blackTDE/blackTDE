@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import {
   isVideoFile,
   isAudioFile,
+  isImageFile,
   isPreviewableFile,
   isBinaryFile,
   getMediaMimeType,
   processHtmlWithBaseUrl,
   resolveMarkdownAssetUrl,
   getAbsolutePath,
-  base64ToBlobUrl
+  base64ToBlobUrl,
+  imageDataUrl
 } from '../src/utils/htmlPreviewUtils.ts';
 
 test('returns correct MIME types for media files', () => {
@@ -42,6 +44,15 @@ test('identifies previewable and binary file types', () => {
   assert.equal(isBinaryFile('wav'), true);
   assert.equal(isBinaryFile('png'), true);
   assert.equal(isBinaryFile('html'), false);
+});
+
+test('builds preview sources for every declared image type', () => {
+  for (const ext of ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico', 'bmp']) {
+    assert.equal(isImageFile(ext), true);
+    assert.equal(imageDataUrl(ext, 'YWJj'), `data:${getMediaMimeType(ext)};base64,YWJj`);
+  }
+  assert.equal(getMediaMimeType('jpg'), 'image/jpeg');
+  assert.equal(getMediaMimeType('ico'), 'image/x-icon');
 });
 
 test('injects base tag into head when head exists', () => {
