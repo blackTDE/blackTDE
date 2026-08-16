@@ -3,8 +3,19 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import { modifiedEnterSequence, restoreTerminal } from '../terminalRestore';
+import {
+  restoredTerminalViewportLine,
+  terminalScrollOffset,
+  restoreTerminal,
+} from '../terminalRestore';
 import { isLocalShell, shellResumeMessage, type ShellResumeKind } from '../shellRestore';
+import {
+  applyDownloadProgress,
+  downloadPercent,
+  formatBytes,
+  type DownloadProgress,
+  type DownloadTransfer,
+} from '../sftpTransfers';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import {
   Folder,
@@ -16,7 +27,10 @@ import {
   RefreshCw,
   Loader2,
   ArrowUp,
-  FolderOpen
+  FolderOpen,
+  CheckCircle2,
+  XCircle,
+  X,
 } from 'lucide-react';
 import '@xterm/xterm/css/xterm.css';
 
@@ -55,8 +69,8 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
       cursorStyle: 'underline',
       fontSize: 13,
       fontFamily: "'MesloLGS NF', 'Meslo LGS NF', 'MesloLGS Nerd Font', 'JetBrainsMono Nerd Font', 'JetBrains Mono Nerd Font', 'FiraCode Nerd Font', 'Fira Code Nerd Font', 'Hack Nerd Font', 'Symbols Nerd Font Mono', 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace",
-      customGlyphs: true,
       allowProposedApi: true,
+      vtExtensions: { kittyKeyboard: true },
       theme: {
         background: '#0a0a0a',
         foreground: '#fafafa',
@@ -101,7 +115,12 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
     const fitAndResize = async (resize = true) => {
       if (isDisposed || !isVisibleRef.current) return;
       try {
+        const scrollOffset = terminalScrollOffset(
+          term.buffer.active.baseY,
+          term.buffer.active.viewportY,
+        );
         fitAddon.fit();
+        term.scrollToLine(restoredTerminalViewportLine(term.buffer.active.baseY, scrollOffset));
         term.refresh(0, Math.max(0, term.rows - 1));
         if (resize && term.rows > 2 && term.cols > 2) {
           await invoke('resize_session', {
@@ -206,13 +225,6 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
       });
     };
 
-    term.attachCustomKeyEventHandler((event) => {
-      const sequence = modifiedEnterSequence(event);
-      if (!sequence) return true;
-      writeInput(sequence);
-      return false;
-    });
-
     // Handle user keyboard/mouse input
     const dataDisposer = term.onData(writeInput);
 
@@ -308,8 +320,33 @@ const SftpExplorer: React.FC<SftpExplorerProps> = ({ host, height, isCollapsed, 
   const [files, setFiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [transferringFile, setTransferringFile] = useState<string | null>(null);
-  const [transferType, setTransferType] = useState<'download' | 'upload' | null>(null);
+  const [uploadingFile, setUploadingFile] = useState<string | null>(null);
+  const [downloads, setDownloads] = useState<DownloadTransfer[]>([]);
+  const [showDownloads, setShowDownloads] = useState(false);
+  const [downloadNotice, setDownloadNotice] = useState<{ error: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<DownloadProgress>('sftp-download-progress', ({ payload }) => {
+      if (payload.host !== host) return;
+      setDownloads((current) => applyDownloadProgress(current, payload));
+      if (payload.status === 'completed' || payload.status === 'failed') {
+        setDownloadNotice({
+          error: payload.status === 'failed',
+          text: payload.status === 'completed'
+            ? `Downloaded ${payload.file_name}`
+            : payload.error || `Download failed: ${payload.file_name}`,
+        });
+      }
+    }).then((dispose) => { unlisten = dispose; });
+    return () => unlisten?.();
+  }, [host]);
+
+  useEffect(() => {
+    if (!downloadNotice) return;
+    const timer = window.setTimeout(() => setDownloadNotice(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [downloadNotice]);
 
   const loadDir = async (path: string) => {
     setLoading(true);
@@ -351,44 +388,62 @@ const SftpExplorer: React.FC<SftpExplorerProps> = ({ host, height, isCollapsed, 
 
   const handleDownload = async (file: any, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (transferringFile) return;
     try {
       const localPath = await invoke<string | null>('select_local_download_destination', { fileName: file.name });
       if (!localPath) return;
 
-      setTransferringFile(file.name);
-      setTransferType('download');
-      
       const remotePath = !remoteCwd ? file.name : `${remoteCwd}/${file.name}`;
-      await invoke('sftp_download_file', { host, remotePath, localPath });
+      const transferId = crypto.randomUUID();
+      const queued: DownloadTransfer = {
+        transfer_id: transferId,
+        host,
+        file_name: file.name,
+        local_path: localPath,
+        transferred_bytes: 0,
+        total_bytes: file.size,
+        speed_bytes_per_second: 0,
+        status: 'queued',
+        error: null,
+        started_at: Date.now(),
+      };
+      setDownloads((current) => [queued, ...current].slice(0, 20));
+      setShowDownloads(true);
+      void invoke('sftp_download_file', {
+        host,
+        remotePath,
+        localPath,
+        transferId,
+        fileName: file.name,
+        totalBytes: file.size,
+      }).catch((err) => {
+        const failed: DownloadProgress = { ...queued, status: 'failed', error: String(err) };
+        setDownloads((current) => applyDownloadProgress(current, failed));
+        setDownloadNotice({ error: true, text: `Download failed: ${file.name}` });
+      });
     } catch (err: any) {
-      alert(`Download failed: ${err}`);
-    } finally {
-      setTransferringFile(null);
-      setTransferType(null);
+      setDownloadNotice({ error: true, text: `Download failed: ${err}` });
     }
   };
 
   const handleUpload = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (transferringFile) return;
+    if (uploadingFile) return;
     try {
       const localPath = await invoke<string | null>('select_local_file_to_upload');
       if (!localPath) return;
 
       const fileName = localPath.split(/[/\\]/).pop() || 'uploaded_file';
       
-      setTransferringFile(fileName);
-      setTransferType('upload');
+      setUploadingFile(fileName);
 
       const remotePath = !remoteCwd ? fileName : `${remoteCwd}/${fileName}`;
       await invoke('sftp_upload_file', { host, localPath, remotePath });
-      loadDir(remoteCwd);
+      void loadDir(remoteCwd);
+      setDownloadNotice({ error: false, text: `Uploaded ${fileName}` });
     } catch (err: any) {
-      alert(`Upload failed: ${err}`);
+      setDownloadNotice({ error: true, text: `Upload failed: ${err}` });
     } finally {
-      setTransferringFile(null);
-      setTransferType(null);
+      setUploadingFile(null);
     }
   };
 
@@ -409,7 +464,7 @@ const SftpExplorer: React.FC<SftpExplorerProps> = ({ host, height, isCollapsed, 
   return (
     <div
       style={{ height: isCollapsed ? '26px' : `${height}px` }}
-      className="w-full bg-[#0d0d0d] flex flex-col min-h-0 border-t border-surface-3 transition-[height] duration-200"
+      className="relative w-full bg-[#0d0d0d] flex flex-col min-h-0 border-t border-surface-3 transition-[height] duration-200"
     >
       {/* Header Row */}
       <div className="flex items-center justify-between px-3 py-1 bg-surface-1 border-b border-surface-2 text-[10px] font-mono select-none h-[26px]">
@@ -421,19 +476,25 @@ const SftpExplorer: React.FC<SftpExplorerProps> = ({ host, height, isCollapsed, 
           </span>
         </div>
         <div className="flex items-center space-x-2.5">
-          {transferringFile && (
+          {uploadingFile && (
             <div className="flex items-center space-x-1 text-brand-light font-semibold animate-pulse">
               <Loader2 size={10} className="animate-spin" />
-              <span>
-                {transferType === 'upload' ? 'Uploading' : 'Downloading'} {transferringFile}...
-              </span>
+              <span>Uploading {uploadingFile}...</span>
             </div>
           )}
+          <button
+            onClick={() => setShowDownloads((visible) => !visible)}
+            className={`flex items-center gap-1 rounded px-1.5 py-0.5 transition ${showDownloads ? 'bg-brand/15 text-brand-light' : 'text-slate-400 hover:text-zinc-200'}`}
+            title={showDownloads ? 'Hide downloads' : 'Show downloads'}
+          >
+            <Download size={11} />
+            <span>{downloads.filter((item) => item.status === 'queued' || item.status === 'running').length || downloads.length}</span>
+          </button>
           {!isCollapsed && (
             <>
               <button
                 onClick={(e) => handleUpload(e)}
-                disabled={!!transferringFile}
+                disabled={!!uploadingFile}
                 className="flex items-center space-x-1 text-slate-400 hover:text-brand-light transition disabled:opacity-50 cursor-pointer"
                 title="Upload file to remote directory"
               >
@@ -458,6 +519,50 @@ const SftpExplorer: React.FC<SftpExplorerProps> = ({ host, height, isCollapsed, 
           </button>
         </div>
       </div>
+
+      {showDownloads && (
+        <div className="absolute bottom-[30px] right-2 z-50 flex max-h-64 w-[min(360px,calc(100%-16px))] flex-col overflow-hidden rounded-lg border border-surface-3 bg-[#111]/95 shadow-2xl backdrop-blur">
+          <div className="flex items-center justify-between border-b border-surface-3 px-3 py-2 font-mono text-[10px]">
+            <span className="font-bold text-zinc-200">Downloads</span>
+            <div className="flex items-center gap-2">
+              {downloads.every((item) => item.status === 'completed' || item.status === 'failed') && downloads.length > 0 && (
+                <button onClick={() => setDownloads([])} className="text-zinc-500 hover:text-zinc-300">Clear</button>
+              )}
+              <button onClick={() => setShowDownloads(false)} className="text-zinc-500 hover:text-zinc-200" aria-label="Hide downloads"><X size={12} /></button>
+            </div>
+          </div>
+          <div className="overflow-y-auto">
+            {downloads.length === 0 ? (
+              <div className="px-3 py-5 text-center font-mono text-[10px] text-zinc-600">No downloads yet</div>
+            ) : downloads.map((transfer) => {
+              const percent = downloadPercent(transfer);
+              const active = transfer.status === 'queued' || transfer.status === 'running';
+              return (
+                <div key={transfer.transfer_id} className="border-b border-surface-2/70 px-3 py-2 last:border-0">
+                  <div className="flex items-center gap-2 text-[10px] font-mono">
+                    {active ? <Loader2 size={11} className="shrink-0 animate-spin text-brand-light" /> : transfer.status === 'completed' ? <CheckCircle2 size={11} className="shrink-0 text-emerald-400" /> : <XCircle size={11} className="shrink-0 text-rose-400" />}
+                    <span className="min-w-0 flex-1 truncate text-zinc-300" title={transfer.local_path}>{transfer.file_name}</span>
+                    <span className="shrink-0 text-zinc-500">{active ? `${percent}%` : transfer.status}</span>
+                  </div>
+                  <div className="mt-1.5 h-1 overflow-hidden rounded bg-surface-3">
+                    <div className={`h-full transition-[width] duration-200 ${transfer.status === 'failed' ? 'bg-rose-500' : 'bg-brand'}`} style={{ width: `${transfer.status === 'completed' ? 100 : percent}%` }} />
+                  </div>
+                  <div className="mt-1 flex justify-between font-mono text-[9px] text-zinc-600">
+                    <span>{formatBytes(transfer.transferred_bytes)} / {transfer.total_bytes ? formatBytes(transfer.total_bytes) : 'unknown'}</span>
+                    <span>{active ? `${formatBytes(transfer.speed_bytes_per_second)}/s` : transfer.error || ''}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {downloadNotice && (
+        <div role={downloadNotice.error ? 'alert' : 'status'} aria-live="polite" className={`fixed bottom-4 right-4 z-[100] max-w-sm rounded border px-3 py-2 font-mono text-[10px] shadow-2xl ${downloadNotice.error ? 'border-rose-500/40 bg-rose-950/95 text-rose-200' : 'border-emerald-500/30 bg-[#102019]/95 text-emerald-200'}`}>
+          {downloadNotice.text}
+        </div>
+      )}
 
       {/* Directory Content Area */}
       {!isCollapsed && (
@@ -536,7 +641,6 @@ const SftpExplorer: React.FC<SftpExplorerProps> = ({ host, height, isCollapsed, 
                         {!file.is_dir && (
                           <button
                             onClick={(e) => handleDownload(file, e)}
-                            disabled={!!transferringFile}
                             className="p-1 hover:bg-surface-3 rounded text-zinc-500 hover:text-brand-light transition disabled:opacity-50 cursor-pointer"
                             title="Download file to local machine"
                           >

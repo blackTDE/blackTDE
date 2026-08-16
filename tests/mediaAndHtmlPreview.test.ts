@@ -11,7 +11,9 @@ import {
   resolveMarkdownAssetUrl,
   getAbsolutePath,
   base64ToBlobUrl,
-  imageDataUrl
+  imageDataUrl,
+  getCodeLanguage,
+  isCodeFile,
 } from '../src/utils/htmlPreviewUtils.ts';
 
 test('returns correct MIME types for media files', () => {
@@ -38,12 +40,22 @@ test('identifies previewable and binary file types', () => {
   assert.equal(isPreviewableFile('mp4'), true);
   assert.equal(isPreviewableFile('wav'), true);
   assert.equal(isPreviewableFile('png'), true);
-  assert.equal(isPreviewableFile('rs'), false);
+  assert.equal(isPreviewableFile('rs'), true);
 
   assert.equal(isBinaryFile('mp4'), true);
   assert.equal(isBinaryFile('wav'), true);
   assert.equal(isBinaryFile('png'), true);
   assert.equal(isBinaryFile('html'), false);
+});
+
+test('maps common code files to Monaco language modes', () => {
+  assert.equal(isCodeFile('py'), true);
+  assert.equal(isCodeFile('tsx'), true);
+  assert.equal(isCodeFile('png'), false);
+  assert.equal(getCodeLanguage('/repo/main.py'), 'python');
+  assert.equal(getCodeLanguage('/repo/app.tsx'), 'typescript');
+  assert.equal(getCodeLanguage('/repo/Dockerfile'), 'dockerfile');
+  assert.equal(getCodeLanguage('/repo/unknown.xyz'), 'plaintext');
 });
 
 test('builds preview sources for every declared image type', () => {

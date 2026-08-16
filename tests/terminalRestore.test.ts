@@ -1,11 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { modifiedEnterSequence, restoreTerminal } from '../src/terminalRestore.ts';
+import {
+  restoredTerminalViewportLine,
+  terminalScrollOffset,
+  restoreTerminal,
+} from '../src/terminalRestore.ts';
 
-test('encodes Shift+Enter separately from ordinary Enter', () => {
-  assert.equal(modifiedEnterSequence({ type: 'keydown', key: 'Enter', shiftKey: true }), '\x1b[13;2u');
-  assert.equal(modifiedEnterSequence({ type: 'keydown', key: 'Enter', shiftKey: false }), null);
-  assert.equal(modifiedEnterSequence({ type: 'keyup', key: 'Enter', shiftKey: true }), null);
+test('keeps the same scrollback distance from the bottom after terminal resize', () => {
+  const offset = terminalScrollOffset(240, 190);
+  assert.equal(offset, 50);
+  assert.equal(restoredTerminalViewportLine(310, offset), 260);
+  assert.equal(restoredTerminalViewportLine(20, 50), 0);
 });
 
 const createActions = (active: boolean | Error) => {

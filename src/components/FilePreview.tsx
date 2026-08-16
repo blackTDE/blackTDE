@@ -11,6 +11,8 @@ import {
   isVideoFile,
   isAudioFile,
   isImageFile,
+  isCodeFile,
+  getCodeLanguage,
   isPreviewableFile,
   isBinaryFile,
   getMediaMimeType,
@@ -111,7 +113,7 @@ export const FilePreview: React.FC = () => {
   const ext = activeFilePath ? activeFilePath.split('.').pop()?.toLowerCase() || '' : '';
 
   // Determine if this file is a previewable type
-  const isPreviewable = isPreviewableFile(ext);
+  const isPreviewable = isPreviewableFile(ext) || isCodeFile(activeFilePath || '');
   const isBinary = isBinaryFile(ext);
 
   useEffect(() => {
@@ -217,35 +219,6 @@ export const FilePreview: React.FC = () => {
     );
   }
 
-  // Detect file language based on file extension for Monaco
-  const getLanguage = (path: string) => {
-    const ext = path.split('.').pop()?.toLowerCase();
-    switch (ext) {
-      case 'js':
-      case 'jsx':
-        return 'javascript';
-      case 'ts':
-      case 'tsx':
-        return 'typescript';
-      case 'rs':
-        return 'rust';
-      case 'json':
-        return 'json';
-      case 'html':
-        return 'html';
-      case 'css':
-        return 'css';
-      case 'md':
-        return 'markdown';
-      case 'sql':
-        return 'sql';
-      case 'toml':
-        return 'ini';
-      default:
-        return 'plaintext';
-    }
-  };
-
   const handleEditorChange = (value: string | undefined) => {
     const val = value || '';
     setEditorVal(val);
@@ -314,6 +287,28 @@ export const FilePreview: React.FC = () => {
             </div>
           </div>
         </div>
+      );
+    }
+
+    if (isCodeFile(activeFilePath) && !['md', 'html', 'htm'].includes(ext)) {
+      return (
+        <MonacoEditor
+          height="100%"
+          language={getCodeLanguage(activeFilePath)}
+          value={textContent}
+          theme="vs-dark"
+          options={{
+            readOnly: true,
+            domReadOnly: true,
+            fontSize: 12,
+            fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace',
+            minimap: { enabled: true, maxColumn: 80, showSlider: 'mouseover' },
+            automaticLayout: true,
+            lineNumbers: 'on',
+            scrollBeyondLastLine: false,
+            renderLineHighlight: 'none',
+          }}
+        />
       );
     }
 
@@ -423,23 +418,6 @@ export const FilePreview: React.FC = () => {
           </div>
         );
       }
-      case 'json':
-        try {
-          const parsed = JSON.parse(textContent);
-          return (
-            <div className="h-full overflow-y-auto p-4 bg-surface select-text">
-              <pre className="text-emerald-400 font-mono text-xs leading-relaxed bg-surface-2 p-4 rounded border border-surface-3 shadow-inner">
-                <code>{JSON.stringify(parsed, null, 2)}</code>
-              </pre>
-            </div>
-          );
-        } catch {
-          return (
-            <div className="h-full overflow-y-auto p-4 bg-surface select-text">
-              <pre className="text-zinc-300 font-mono text-xs bg-surface-2 p-4 rounded border border-surface-3">{textContent}</pre>
-            </div>
-          );
-        }
       case 'pdf':
         return (
           <div className="h-full w-full flex flex-col items-center justify-center p-6 bg-surface-2/20 text-center font-mono">
@@ -578,7 +556,7 @@ export const FilePreview: React.FC = () => {
           <div className="w-full h-full">
             <MonacoEditor
               height="100%"
-              language={getLanguage(activeFilePath)}
+              language={getCodeLanguage(activeFilePath)}
               value={editorVal}
               onMount={handleEditorMount}
               onChange={handleEditorChange}

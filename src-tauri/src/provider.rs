@@ -1,4 +1,4 @@
-use sqlx::{SqlitePool, Row};
+use sqlx::{Row, SqlitePool};
 use tauri::State;
 
 #[derive(serde::Serialize)]

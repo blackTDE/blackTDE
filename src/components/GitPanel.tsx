@@ -90,6 +90,11 @@ export const GitPanel: React.FC = () => {
 
   const handleUnstageFile = (filePath: string) => void runGitOperation('git_unstage_file', 'Unstage file', { filePath });
 
+  const handleRestoreFile = (filePath: string) => {
+    if (!window.confirm(`Discard all unstaged changes to “${filePath}”? This cannot be undone.`)) return;
+    void runGitOperation('git_restore_file', 'Restore file', { filePath });
+  };
+
   const handleCommit = async () => {
     if (!commitMessage.trim()) {
       alert('Please enter a commit message');
@@ -130,6 +135,12 @@ export const GitPanel: React.FC = () => {
     const timer = window.setInterval(() => void loadGitStatus(false), 3000);
     return () => window.clearInterval(timer);
   }, [workspacePath]);
+
+  useEffect(() => {
+    if (!operationMessage) return;
+    const timer = window.setTimeout(() => setOperationMessage(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [operationMessage]);
 
   const staged = gitFiles.filter(f => f.staged);
   const unstaged = gitFiles.filter(f => !f.staged);
@@ -220,14 +231,10 @@ export const GitPanel: React.FC = () => {
           ) : (
             <div className="text-[10px] italic text-slate-500">No Git remote configured</div>
           )}
-          {activeOperation ? (
+          {activeOperation && (
             <div role="status" aria-live="polite" className="mt-2 flex items-center gap-1 text-[9px] text-brand-light">
               <Loader2 size={10} className="animate-spin" />
               <span>{activeOperation.label}…</span>
-            </div>
-          ) : operationMessage && (
-            <div role={operationMessage.error ? 'alert' : 'status'} aria-live="polite" className={`mt-2 break-words text-[9px] ${operationMessage.error ? 'text-rose-400' : 'text-emerald-400'}`}>
-              {operationMessage.text}
             </div>
           )}
         </div>
@@ -325,17 +332,30 @@ export const GitPanel: React.FC = () => {
                     </span>
                     <span className="truncate text-slate-300">{file.path}</span>
                   </div>
-                  <button
-                    disabled={!!activeOperation}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleStageFile(file.path);
-                    }}
-                    className="p-1 hover:bg-slate-700/65 text-slate-400 rounded hover:text-emerald-400 disabled:opacity-40"
-                    title="Stage File"
-                  >
-                    <Plus size={11} />
-                  </button>
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <button
+                      disabled={!!activeOperation}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRestoreFile(file.path);
+                      }}
+                      className="p-1 hover:bg-slate-700/65 text-slate-500 rounded hover:text-rose-400 disabled:opacity-40"
+                      title="Restore File (discard changes)"
+                    >
+                      <Minus size={11} />
+                    </button>
+                    <button
+                      disabled={!!activeOperation}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStageFile(file.path);
+                      }}
+                      className="p-1 hover:bg-slate-700/65 text-slate-400 rounded hover:text-emerald-400 disabled:opacity-40"
+                      title="Stage File"
+                    >
+                      <Plus size={11} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -437,6 +457,12 @@ export const GitPanel: React.FC = () => {
           )}
         </div>
       </div>
+
+      {operationMessage && (
+        <div role={operationMessage.error ? 'alert' : 'status'} aria-live="polite" className={`fixed bottom-4 right-4 z-[100] max-w-sm rounded border px-3 py-2 font-mono text-[10px] shadow-2xl ${operationMessage.error ? 'border-rose-500/40 bg-rose-950/95 text-rose-200' : 'border-emerald-500/30 bg-[#102019]/95 text-emerald-200'}`}>
+          {operationMessage.text}
+        </div>
+      )}
 
     </div>
   );

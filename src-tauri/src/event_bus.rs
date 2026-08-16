@@ -3,6 +3,7 @@ use portable_pty::MasterPty;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::io::Read;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 use uuid::Uuid;
@@ -21,6 +22,7 @@ pub fn start_stdout_reader(
     active_sessions: Arc<Mutex<HashMap<String, ActiveProcess>>>,
     db_pool: SqlitePool,
     app_handle: tauri::AppHandle,
+    agy_log_path: Option<PathBuf>,
 ) {
     let session_id_clone = session_id.clone();
     let app_handle_clone = app_handle.clone();
@@ -49,7 +51,7 @@ pub fn start_stdout_reader(
                     // Scan chunk for remote session_id/conversation_id (e.g. from Claude Code, AGY, Codex, OpenCode, Pi Agent payloads)
                     if let Ok(text) = std::str::from_utf8(&data_chunk) {
                         let mut found_sid = None;
-                        
+
                         // 1. Scan for JSON keys ("session_id", "conversation_id", etc.)
                         let keys = vec![
                             "\"session_id\"",
@@ -98,6 +100,10 @@ pub fn start_stdout_reader(
                                     }
                                 }
                             }
+                        }
+
+                        if found_sid.is_none() {
+                            found_sid = crate::agy_session::extract_conversation_id(text);
                         }
 
                         if let Some(captured_sid) = found_sid {
@@ -165,13 +171,17 @@ pub fn start_stdout_reader(
             },
         );
 
-        // Update session status to terminated in database
+        // Update session status and capture AGY's process-specific conversation ID.
+        let remote_session_id = agy_log_path
+            .as_deref()
+            .and_then(crate::agy_session::read_conversation_id);
         let pool = db_pool_clone.clone();
         let s_id = session_id_clone.clone();
         tauri::async_runtime::spawn(async move {
             let _ = sqlx::query(
-                "UPDATE sessions SET status = 'terminated', updated_at = CURRENT_TIMESTAMP WHERE id = $1"
+                "UPDATE sessions SET status = 'terminated', remote_session_id = COALESCE($1, remote_session_id), updated_at = CURRENT_TIMESTAMP WHERE id = $2"
             )
+            .bind(remote_session_id)
             .bind(s_id)
             .execute(&pool)
             .await;

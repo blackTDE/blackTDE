@@ -1,11 +1,13 @@
+use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 use std::fs;
 use tauri::Manager;
-use sqlx::{SqlitePool, sqlite::SqliteConnectOptions};
 
-pub async fn initialize_db(app_handle: &tauri::AppHandle) -> Result<SqlitePool, Box<dyn std::error::Error>> {
+pub async fn initialize_db(
+    app_handle: &tauri::AppHandle,
+) -> Result<SqlitePool, Box<dyn std::error::Error>> {
     // Resolve the application data directory
     let app_dir = app_handle.path().app_data_dir()?;
-    
+
     // Ensure the directory exists
     if !app_dir.exists() {
         fs::create_dir_all(&app_dir)?;
@@ -22,9 +24,7 @@ pub async fn initialize_db(app_handle: &tauri::AppHandle) -> Result<SqlitePool, 
     let pool = SqlitePool::connect_with(connect_options).await?;
 
     // Run migrations
-    sqlx::migrate!("./migrations")
-        .run(&pool)
-        .await?;
+    sqlx::migrate!("./migrations").run(&pool).await?;
 
     Ok(pool)
 }

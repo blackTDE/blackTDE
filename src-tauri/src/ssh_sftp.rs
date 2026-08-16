@@ -1,7 +1,10 @@
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter};
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct RemoteFile {
@@ -11,11 +14,24 @@ pub struct RemoteFile {
     pub mtime: u64,
 }
 
+#[derive(serde::Serialize, Clone)]
+struct DownloadProgress {
+    transfer_id: String,
+    host: String,
+    file_name: String,
+    local_path: String,
+    transferred_bytes: u64,
+    total_bytes: u64,
+    speed_bytes_per_second: u64,
+    status: String,
+    error: Option<String>,
+}
+
 fn parse_ssh_host_args(host_str: &str) -> (String, Vec<String>) {
     let parts: Vec<&str> = host_str.split_whitespace().collect();
     let mut clean_host = String::new();
     let mut extra_args = Vec::new();
-    
+
     let mut i = 0;
     while i < parts.len() {
         if parts[i] == "-p" && i + 1 < parts.len() {
@@ -37,7 +53,7 @@ fn parse_ssh_host_args(host_str: &str) -> (String, Vec<String>) {
     (clean_host, extra_args)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_ssh_config_hosts() -> Result<Vec<String>, String> {
     let mut hosts = Vec::new();
     let home = std::env::var("HOME").unwrap_or_default();
@@ -71,7 +87,7 @@ pub fn get_ssh_config_hosts() -> Result<Vec<String>, String> {
     Ok(hosts)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sftp_list_dir(host: String, path: String) -> Result<Vec<RemoteFile>, String> {
     // Clean path (handling default/empty as remote home "~")
     let target_path = if path.trim().is_empty() {
@@ -99,9 +115,12 @@ pub fn sftp_list_dir(host: String, path: String) -> Result<Vec<RemoteFile>, Stri
     let (clean_host, extra_args) = parse_ssh_host_args(&host);
 
     let mut cmd = Command::new("ssh");
-    cmd.arg("-o").arg("BatchMode=yes")
-       .arg("-o").arg("StrictHostKeyChecking=accept-new")
-       .arg("-o").arg("ConnectTimeout=5");
+    cmd.arg("-o")
+        .arg("BatchMode=yes")
+        .arg("-o")
+        .arg("StrictHostKeyChecking=accept-new")
+        .arg("-o")
+        .arg("ConnectTimeout=5");
     for arg in &extra_args {
         cmd.arg(arg);
     }
@@ -131,9 +150,12 @@ pub fn sftp_list_dir(host: String, path: String) -> Result<Vec<RemoteFile>, Stri
     // Fallback: parse `ls -ap`
     let fallback_cmd = format!("ls -ap '{}'", target_path.replace("'", "\\'"));
     let mut cmd = Command::new("ssh");
-    cmd.arg("-o").arg("BatchMode=yes")
-       .arg("-o").arg("StrictHostKeyChecking=accept-new")
-       .arg("-o").arg("ConnectTimeout=5");
+    cmd.arg("-o")
+        .arg("BatchMode=yes")
+        .arg("-o")
+        .arg("StrictHostKeyChecking=accept-new")
+        .arg("-o")
+        .arg("ConnectTimeout=5");
     for arg in &extra_args {
         cmd.arg(arg);
     }
@@ -182,45 +204,133 @@ pub fn sftp_list_dir(host: String, path: String) -> Result<Vec<RemoteFile>, Stri
     }
 }
 
-#[tauri::command]
-pub fn sftp_download_file(host: String, remote_path: String, local_path: String) -> Result<(), String> {
+#[tauri::command(async)]
+pub fn sftp_download_file(
+    app: AppHandle,
+    host: String,
+    remote_path: String,
+    local_path: String,
+    transfer_id: String,
+    file_name: String,
+    total_bytes: u64,
+) -> Result<(), String> {
     let (clean_host, extra_args) = parse_ssh_host_args(&host);
 
     let mut cmd = Command::new("scp");
-    cmd.arg("-o").arg("BatchMode=yes")
-       .arg("-o").arg("StrictHostKeyChecking=accept-new");
+    cmd.arg("-q")
+        .arg("-o")
+        .arg("BatchMode=yes")
+        .arg("-o")
+        .arg("StrictHostKeyChecking=accept-new");
     for arg in &extra_args {
         cmd.arg(arg);
     }
-    cmd.arg(format!("{}:{}", clean_host, remote_path))
-       .arg(local_path);
-    let output = cmd.output();
+    let mut child = cmd
+        .arg(format!("{}:{}", clean_host, remote_path))
+        .arg(&local_path)
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    let started = Instant::now();
+    let mut previous_at = started;
+    let mut previous_bytes = 0;
 
-    match output {
-        Ok(out) => {
-            if out.status.success() {
-                Ok(())
-            } else {
-                let stderr = String::from_utf8_lossy(&out.stderr);
-                Err(format!("Download failed: {}", stderr))
+    loop {
+        thread::sleep(Duration::from_millis(250));
+        let now = Instant::now();
+        let transferred_bytes = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
+        let elapsed = now.duration_since(previous_at).as_secs_f64();
+        let speed = if elapsed > 0.0 {
+            ((transferred_bytes.saturating_sub(previous_bytes)) as f64 / elapsed) as u64
+        } else {
+            0
+        };
+
+        match child.try_wait().map_err(|e| e.to_string())? {
+            Some(status) if status.success() => {
+                let final_speed = if started.elapsed().as_secs_f64() > 0.0 {
+                    (transferred_bytes as f64 / started.elapsed().as_secs_f64()) as u64
+                } else {
+                    speed
+                };
+                let _ = app.emit(
+                    "sftp-download-progress",
+                    DownloadProgress {
+                        transfer_id,
+                        host,
+                        file_name,
+                        local_path,
+                        transferred_bytes,
+                        total_bytes: total_bytes.max(transferred_bytes),
+                        speed_bytes_per_second: final_speed,
+                        status: "completed".into(),
+                        error: None,
+                    },
+                );
+                return Ok(());
+            }
+            Some(_) => {
+                let mut stderr = String::new();
+                if let Some(mut pipe) = child.stderr.take() {
+                    let _ = pipe.read_to_string(&mut stderr);
+                }
+                let error = format!("Download failed: {}", stderr.trim());
+                let _ = app.emit(
+                    "sftp-download-progress",
+                    DownloadProgress {
+                        transfer_id,
+                        host,
+                        file_name,
+                        local_path,
+                        transferred_bytes,
+                        total_bytes,
+                        speed_bytes_per_second: 0,
+                        status: "failed".into(),
+                        error: Some(error.clone()),
+                    },
+                );
+                return Err(error);
+            }
+            None => {
+                let _ = app.emit(
+                    "sftp-download-progress",
+                    DownloadProgress {
+                        transfer_id: transfer_id.clone(),
+                        host: host.clone(),
+                        file_name: file_name.clone(),
+                        local_path: local_path.clone(),
+                        transferred_bytes,
+                        total_bytes,
+                        speed_bytes_per_second: speed,
+                        status: "running".into(),
+                        error: None,
+                    },
+                );
             }
         }
-        Err(e) => Err(e.to_string()),
+        previous_at = now;
+        previous_bytes = transferred_bytes;
     }
 }
 
-#[tauri::command]
-pub fn sftp_upload_file(host: String, local_path: String, remote_path: String) -> Result<(), String> {
+#[tauri::command(async)]
+pub fn sftp_upload_file(
+    host: String,
+    local_path: String,
+    remote_path: String,
+) -> Result<(), String> {
     let (clean_host, extra_args) = parse_ssh_host_args(&host);
 
     let mut cmd = Command::new("scp");
-    cmd.arg("-o").arg("BatchMode=yes")
-       .arg("-o").arg("StrictHostKeyChecking=accept-new");
+    cmd.arg("-o")
+        .arg("BatchMode=yes")
+        .arg("-o")
+        .arg("StrictHostKeyChecking=accept-new");
     for arg in &extra_args {
         cmd.arg(arg);
     }
     cmd.arg(local_path)
-       .arg(format!("{}:{}", clean_host, remote_path));
+        .arg(format!("{}:{}", clean_host, remote_path));
     let output = cmd.output();
 
     match output {
@@ -238,14 +348,14 @@ pub fn sftp_upload_file(host: String, local_path: String, remote_path: String) -
 
 #[tauri::command]
 pub async fn select_local_file_to_upload() -> Result<Option<String>, String> {
-    let file = rfd::AsyncFileDialog::new()
-        .pick_file()
-        .await;
+    let file = rfd::AsyncFileDialog::new().pick_file().await;
     Ok(file.map(|f| f.path().to_string_lossy().to_string()))
 }
 
 #[tauri::command]
-pub async fn select_local_download_destination(file_name: String) -> Result<Option<String>, String> {
+pub async fn select_local_download_destination(
+    file_name: String,
+) -> Result<Option<String>, String> {
     let file = rfd::AsyncFileDialog::new()
         .set_file_name(&file_name)
         .save_file()

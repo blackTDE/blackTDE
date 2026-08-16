@@ -59,7 +59,7 @@ fn parse_remote_status(stdout: &str) -> GitRemoteStatus {
     status
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_git_status(cwd: String) -> Result<Vec<GitFileStatus>, String> {
     let output = Command::new("git")
         .args(["status", "--porcelain"])
@@ -71,30 +71,45 @@ pub fn get_git_status(cwd: String) -> Result<Vec<GitFileStatus>, String> {
         return Err(String::from_utf8_lossy(&output.stderr).to_string());
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(parse_git_status(&String::from_utf8_lossy(&output.stdout)))
+}
+
+fn parse_git_status(stdout: &str) -> Vec<GitFileStatus> {
     let mut statuses = Vec::new();
 
     for line in stdout.lines() {
         if line.len() < 4 {
             continue;
         }
-        let (x_y, path) = line.split_at(3);
-        let status_code = x_y.trim().to_string();
+        let status_chars: Vec<char> = line.chars().take(2).collect();
+        let staged_status = status_chars[0];
+        let unstaged_status = status_chars[1];
+        let path = line[3..].trim().to_string();
 
-        let first_char = x_y.chars().next().unwrap_or(' ');
-        let staged = first_char != ' ' && first_char != '?';
-
-        statuses.push(GitFileStatus {
-            path: path.trim().to_string(),
-            status: status_code,
-            staged,
-        });
+        if staged_status != ' ' && staged_status != '?' {
+            statuses.push(GitFileStatus {
+                path: path.clone(),
+                status: staged_status.to_string(),
+                staged: true,
+            });
+        }
+        if unstaged_status != ' ' || staged_status == '?' {
+            statuses.push(GitFileStatus {
+                path,
+                status: if staged_status == '?' {
+                    "??".into()
+                } else {
+                    unstaged_status.to_string()
+                },
+                staged: false,
+            });
+        }
     }
 
-    Ok(statuses)
+    statuses
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_git_diff(cwd: String, file_path: String) -> Result<String, String> {
     let output = Command::new("git")
         .args(["diff", "HEAD", "--", &file_path])
@@ -118,7 +133,7 @@ pub fn get_git_diff(cwd: String, file_path: String) -> Result<String, String> {
     Ok(stdout)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_stage_file(cwd: String, file_path: String) -> Result<(), String> {
     let output = Command::new("git")
         .args(["add", &file_path])
@@ -132,7 +147,7 @@ pub fn git_stage_file(cwd: String, file_path: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_unstage_file(cwd: String, file_path: String) -> Result<(), String> {
     let output = Command::new("git")
         .args(["restore", "--staged", &file_path])
@@ -146,7 +161,25 @@ pub fn git_unstage_file(cwd: String, file_path: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
+pub fn git_restore_file(cwd: String, file_path: String) -> Result<(), String> {
+    let tracked = Command::new("git")
+        .args(["ls-files", "--error-unmatch", "--", &file_path])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| e.to_string())?
+        .status
+        .success();
+
+    if tracked {
+        run_git(&cwd, &["restore", "--", &file_path])?;
+    } else {
+        run_git(&cwd, &["clean", "-f", "--", &file_path])?;
+    }
+    Ok(())
+}
+
+#[tauri::command(async)]
 pub fn git_commit_changes(cwd: String, message: String) -> Result<(), String> {
     let output = Command::new("git")
         .args(["commit", "-m", &message])
@@ -160,7 +193,7 @@ pub fn git_commit_changes(cwd: String, message: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_git_branch(cwd: String) -> Result<String, String> {
     let output = Command::new("git")
         .args(["branch", "--show-current"])
@@ -180,7 +213,7 @@ pub fn get_git_branch(cwd: String) -> Result<String, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_git_branches(cwd: String) -> Result<Vec<String>, String> {
     let output = Command::new("git")
         .args(["branch", "--format=%(refname:short)"])
@@ -202,12 +235,12 @@ pub fn get_git_branches(cwd: String) -> Result<Vec<String>, String> {
     Ok(branches)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_checkout_branch(cwd: String, branch: String) -> Result<String, String> {
     run_git(&cwd, &["checkout", &branch])
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_git_user(cwd: String) -> GitUser {
     let config = |key: &str| {
         Command::new("git")
@@ -225,7 +258,7 @@ pub fn get_git_user(cwd: String) -> GitUser {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_git_remote_status(cwd: String) -> Result<GitRemoteStatus, String> {
     let mut status =
         parse_remote_status(&run_git(&cwd, &["status", "--porcelain=v2", "--branch"])?);
@@ -242,17 +275,17 @@ pub fn get_git_remote_status(cwd: String) -> Result<GitRemoteStatus, String> {
     Ok(status)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_fetch_remote(cwd: String) -> Result<String, String> {
     run_git(&cwd, &["fetch", "--prune"])
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_pull_remote(cwd: String) -> Result<String, String> {
     run_git(&cwd, &["pull", "--ff-only"])
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_push_remote(cwd: String) -> Result<String, String> {
     if run_git(&cwd, &["rev-parse", "--abbrev-ref", "@{upstream}"]).is_ok() {
         return run_git(&cwd, &["push"]);
@@ -269,12 +302,12 @@ pub fn git_push_remote(cwd: String) -> Result<String, String> {
     run_git(&cwd, &["push", "--set-upstream", &remote, &branch])
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_stage_all(cwd: String) -> Result<String, String> {
     run_git(&cwd, &["add", "--all"])
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_unstage_all(cwd: String) -> Result<String, String> {
     run_git(&cwd, &["reset"])
 }
@@ -287,7 +320,7 @@ pub struct GitCommit {
     pub message: String,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_git_commit_log(cwd: String) -> Result<Vec<GitCommit>, String> {
     let output = Command::new("git")
         .args(["log", "--pretty=format:%H|%an|%cr|%s", "-n", "50"])
@@ -317,7 +350,7 @@ pub fn get_git_commit_log(cwd: String) -> Result<Vec<GitCommit>, String> {
     Ok(commits)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_git_commit_files(cwd: String, hash: String) -> Result<Vec<GitFileStatus>, String> {
     let output = Command::new("git")
         .args([
@@ -354,7 +387,7 @@ fn parse_name_status(stdout: &str) -> Vec<GitFileStatus> {
     files
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_git_file_content_at_rev(
     cwd: String,
     rev: String,
@@ -373,14 +406,15 @@ pub fn get_git_file_content_at_rev(
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_git_worktree_file_content(cwd: String, file_path: String) -> String {
     std::fs::read_to_string(std::path::Path::new(&cwd).join(file_path)).unwrap_or_default()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_name_status, parse_remote_status};
+    use super::{git_restore_file, parse_git_status, parse_name_status, parse_remote_status};
+    use std::{fs, process::Command};
 
     #[test]
     fn parses_root_commit_files_and_paths_with_spaces() {
@@ -398,5 +432,63 @@ mod tests {
         assert_eq!(status.upstream, "origin/main");
         assert_eq!(status.ahead, 7);
         assert_eq!(status.behind, 2);
+    }
+
+    #[test]
+    fn lists_index_and_worktree_changes_separately() {
+        let files = parse_git_status("MM both.rs\nM  staged.rs\n M unstaged.rs\n?? new.rs\n");
+        assert_eq!(files.len(), 5);
+        assert_eq!(
+            files.iter().filter(|file| file.path == "both.rs").count(),
+            2
+        );
+        assert!(files
+            .iter()
+            .any(|file| file.path == "both.rs" && file.staged));
+        assert!(files
+            .iter()
+            .any(|file| file.path == "both.rs" && !file.staged));
+    }
+
+    #[test]
+    fn restores_tracked_files_and_removes_untracked_files() {
+        let repo = std::env::temp_dir().join(format!("tde-git-restore-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&repo).unwrap();
+        Command::new("git")
+            .arg("init")
+            .current_dir(&repo)
+            .output()
+            .unwrap();
+        fs::write(repo.join("tracked.txt"), "original").unwrap();
+        Command::new("git")
+            .args(["add", "tracked.txt"])
+            .current_dir(&repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args([
+                "-c",
+                "user.name=TDE",
+                "-c",
+                "user.email=tde@example.com",
+                "commit",
+                "-m",
+                "initial",
+            ])
+            .current_dir(&repo)
+            .output()
+            .unwrap();
+        fs::write(repo.join("tracked.txt"), "changed").unwrap();
+        fs::write(repo.join("untracked.txt"), "temporary").unwrap();
+
+        git_restore_file(repo.to_string_lossy().into_owned(), "tracked.txt".into()).unwrap();
+        git_restore_file(repo.to_string_lossy().into_owned(), "untracked.txt".into()).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(repo.join("tracked.txt")).unwrap(),
+            "original"
+        );
+        assert!(!repo.join("untracked.txt").exists());
+        fs::remove_dir_all(repo).unwrap();
     }
 }

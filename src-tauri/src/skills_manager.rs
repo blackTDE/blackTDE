@@ -23,7 +23,11 @@ pub fn get_vault_dir() -> Option<PathBuf> {
     Some(vault)
 }
 
-pub fn get_agent_skills_dir(agent_type: &str, scope: &str, workspace_path: Option<&str>) -> Option<PathBuf> {
+pub fn get_agent_skills_dir(
+    agent_type: &str,
+    scope: &str,
+    workspace_path: Option<&str>,
+) -> Option<PathBuf> {
     if scope == "vault" {
         return get_vault_dir();
     }
@@ -128,7 +132,11 @@ fn count_files_and_size(dir: &Path) -> (usize, u64) {
     count_files_and_size_bounded(dir, 0, 4)
 }
 
-fn count_files_and_size_bounded(dir: &Path, current_depth: usize, max_depth: usize) -> (usize, u64) {
+fn count_files_and_size_bounded(
+    dir: &Path,
+    current_depth: usize,
+    max_depth: usize,
+) -> (usize, u64) {
     if current_depth > max_depth {
         return (0, 0);
     }
@@ -243,9 +251,12 @@ pub fn list_agent_skills_sync(workspace_path: Option<String>) -> Result<Vec<Skil
                                 for entry in entries.filter_map(|e| e.ok()) {
                                     let p = entry.path();
                                     if p.is_dir() {
-                                        if let Some(item) =
-                                            parse_skill_info(&p, agent_type, "plugin", Some(&plugin_name))
-                                        {
+                                        if let Some(item) = parse_skill_info(
+                                            &p,
+                                            agent_type,
+                                            "plugin",
+                                            Some(&plugin_name),
+                                        ) {
                                             items.push(item);
                                         }
                                     }
@@ -255,9 +266,12 @@ pub fn list_agent_skills_sync(workspace_path: Option<String>) -> Result<Vec<Skil
 
                         // Also check if plugin_dir itself is a skill (contains SKILL.md)
                         if plugin_dir.join("SKILL.md").exists() {
-                            if let Some(item) =
-                                parse_skill_info(&plugin_dir, agent_type, "plugin", Some(&plugin_name))
-                            {
+                            if let Some(item) = parse_skill_info(
+                                &plugin_dir,
+                                agent_type,
+                                "plugin",
+                                Some(&plugin_name),
+                            ) {
                                 if !items.iter().any(|i| i.path == item.path) {
                                     items.push(item);
                                 }
@@ -335,11 +349,15 @@ pub async fn copy_skill(
 
     fs::create_dir_all(&target_parent).map_err(|e| e.to_string())?;
 
-    let folder_name = new_name.unwrap_or_else(|| src.file_name().unwrap().to_str().unwrap().to_string());
+    let folder_name =
+        new_name.unwrap_or_else(|| src.file_name().unwrap().to_str().unwrap().to_string());
     let dest = target_parent.join(&folder_name);
 
     if dest.exists() {
-        return Err(format!("Skill '{}' already exists in target directory", folder_name));
+        return Err(format!(
+            "Skill '{}' already exists in target directory",
+            folder_name
+        ));
     }
 
     copy_dir_recursive(src, &dest)?;
@@ -365,11 +383,15 @@ pub async fn move_skill(
 
     fs::create_dir_all(&target_parent).map_err(|e| e.to_string())?;
 
-    let folder_name = new_name.unwrap_or_else(|| src.file_name().unwrap().to_str().unwrap().to_string());
+    let folder_name =
+        new_name.unwrap_or_else(|| src.file_name().unwrap().to_str().unwrap().to_string());
     let dest = target_parent.join(&folder_name);
 
     if dest.exists() {
-        return Err(format!("Skill '{}' already exists in target directory", folder_name));
+        return Err(format!(
+            "Skill '{}' already exists in target directory",
+            folder_name
+        ));
     }
 
     fs::rename(src, &dest).or_else(|_| {
@@ -391,7 +413,8 @@ pub async fn delete_skill(path: String, permanent: Option<bool>) -> Result<(), S
     if permanent.unwrap_or(false) {
         fs::remove_dir_all(p).map_err(|e| e.to_string())
     } else {
-        let vault_dir = get_vault_dir().ok_or_else(|| "Vault directory resolution failed".to_string())?;
+        let vault_dir =
+            get_vault_dir().ok_or_else(|| "Vault directory resolution failed".to_string())?;
         move_to_vault_dir(p, &vault_dir)?;
         Ok(())
     }
@@ -415,11 +438,15 @@ pub async fn install_from_vault(
 
     fs::create_dir_all(&target_parent).map_err(|e| e.to_string())?;
 
-    let folder_name = new_name.unwrap_or_else(|| src.file_name().unwrap().to_str().unwrap().to_string());
+    let folder_name =
+        new_name.unwrap_or_else(|| src.file_name().unwrap().to_str().unwrap().to_string());
     let dest = target_parent.join(&folder_name);
 
     if dest.exists() {
-        return Err(format!("Skill '{}' already exists in target directory", folder_name));
+        return Err(format!(
+            "Skill '{}' already exists in target directory",
+            folder_name
+        ));
     }
 
     if move_from_vault.unwrap_or(false) {
@@ -446,11 +473,17 @@ pub async fn create_skill(
     let target_parent = get_agent_skills_dir(&agent_type, &scope, workspace_path.as_deref())
         .ok_or_else(|| "Target skills directory resolution failed".to_string())?;
 
-    let safe_dir_name = name.to_lowercase().replace(' ', "-").replace(|c: char| !c.is_alphanumeric() && c != '-', "");
+    let safe_dir_name = name
+        .to_lowercase()
+        .replace(' ', "-")
+        .replace(|c: char| !c.is_alphanumeric() && c != '-', "");
     let skill_dir = target_parent.join(&safe_dir_name);
 
     if skill_dir.exists() {
-        return Err(format!("Skill directory '{}' already exists", safe_dir_name));
+        return Err(format!(
+            "Skill directory '{}' already exists",
+            safe_dir_name
+        ));
     }
 
     fs::create_dir_all(&skill_dir).map_err(|e| e.to_string())?;
@@ -517,14 +550,21 @@ pub async fn read_skill_file(skill_path: String, relative_file: String) -> Resul
 }
 
 #[tauri::command]
-pub async fn save_skill_file(skill_path: String, relative_file: String, content: String) -> Result<(), String> {
+pub async fn save_skill_file(
+    skill_path: String,
+    relative_file: String,
+    content: String,
+) -> Result<(), String> {
     let p = Path::new(&skill_path).join(&relative_file);
     fs::write(p, content).map_err(|e| e.to_string())
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
     fs::create_dir_all(dst).map_err(|e| e.to_string())?;
-    for entry in fs::read_dir(src).map_err(|e| e.to_string())?.filter_map(|e| e.ok()) {
+    for entry in fs::read_dir(src)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok())
+    {
         let ty = entry.file_type().map_err(|e| e.to_string())?;
         let dest_path = dst.join(entry.file_name());
         if ty.is_dir() {
@@ -542,7 +582,8 @@ mod tests {
 
     #[test]
     fn test_create_and_parse_skill() {
-        let temp_base = std::env::temp_dir().join(format!("tde-skill-test-{}", uuid::Uuid::new_v4()));
+        let temp_base =
+            std::env::temp_dir().join(format!("tde-skill-test-{}", uuid::Uuid::new_v4()));
         let skill_dir = temp_base.join("my-test-skill");
         fs::create_dir_all(&skill_dir).unwrap();
         fs::write(
@@ -561,10 +602,15 @@ mod tests {
 
     #[test]
     fn test_vault_soft_delete_and_install() {
-        let temp_home = std::env::temp_dir().join(format!("tde-vault-test-{}", uuid::Uuid::new_v4()));
+        let temp_home =
+            std::env::temp_dir().join(format!("tde-vault-test-{}", uuid::Uuid::new_v4()));
         let agent_skill = temp_home.join(".claude/skills/custom-reviewer");
         fs::create_dir_all(&agent_skill).unwrap();
-        fs::write(agent_skill.join("SKILL.md"), "---\nname: Custom Reviewer\n---\n").unwrap();
+        fs::write(
+            agent_skill.join("SKILL.md"),
+            "---\nname: Custom Reviewer\n---\n",
+        )
+        .unwrap();
 
         let vault_dir = temp_home.join(".tde/skills_vault");
         fs::create_dir_all(&vault_dir).unwrap();

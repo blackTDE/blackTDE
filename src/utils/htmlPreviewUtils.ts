@@ -7,6 +7,30 @@ export const AUDIO_EXTENSIONS = ['wav', 'mp3', 'ogg', 'flac', 'aac', 'm4a'];
 export const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico', 'bmp'];
 export const DOC_EXTENSIONS = ['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'];
 
+const CODE_LANGUAGES: Record<string, string> = {
+  js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
+  ts: 'typescript', tsx: 'typescript', py: 'python', pyw: 'python', rs: 'rust', go: 'go',
+  java: 'java', c: 'c', h: 'c', cc: 'cpp', cpp: 'cpp', cxx: 'cpp', hpp: 'cpp',
+  cs: 'csharp', php: 'php', rb: 'ruby', swift: 'swift', kt: 'kotlin', kts: 'kotlin',
+  sh: 'shell', bash: 'shell', zsh: 'shell', fish: 'shell', ps1: 'powershell', sql: 'sql',
+  html: 'html', htm: 'html', css: 'css', scss: 'scss', less: 'less', json: 'json',
+  jsonc: 'json', yaml: 'yaml', yml: 'yaml', toml: 'ini', xml: 'xml', md: 'markdown',
+};
+
+const CODE_FILENAMES: Record<string, string> = {
+  dockerfile: 'dockerfile',
+  makefile: 'makefile',
+};
+
+export function getCodeLanguage(pathOrExtension: string): string {
+  const filename = pathOrExtension.toLowerCase().replace(/\\/g, '/').split('/').pop() || '';
+  return CODE_FILENAMES[filename] || CODE_LANGUAGES[filename.split('.').pop() || ''] || 'plaintext';
+}
+
+export function isCodeFile(pathOrExtension: string): boolean {
+  return getCodeLanguage(pathOrExtension) !== 'plaintext';
+}
+
 export function isVideoFile(ext: string): boolean {
   return VIDEO_EXTENSIONS.includes(ext.toLowerCase());
 }
@@ -23,6 +47,7 @@ export function isPreviewableFile(ext: string): boolean {
   const normalized = ext.toLowerCase();
   return (
     ['md', 'html', 'htm', 'json'].includes(normalized) ||
+    isCodeFile(normalized) ||
     isVideoFile(normalized) ||
     isAudioFile(normalized) ||
     isImageFile(normalized) ||

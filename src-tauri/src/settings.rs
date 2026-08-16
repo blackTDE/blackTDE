@@ -1,6 +1,6 @@
-use sqlx::{SqlitePool, Row};
-use tauri::State;
+use sqlx::{Row, SqlitePool};
 use std::process::Command;
+use tauri::State;
 
 #[derive(serde::Serialize)]
 pub struct LocalProxyEntry {
@@ -72,10 +72,11 @@ pub async fn save_local_proxy(
 pub async fn get_local_proxies(
     pool: State<'_, SqlitePool>,
 ) -> Result<Vec<LocalProxyEntry>, String> {
-    let rows = sqlx::query("SELECT id, provider, base_url, default_model, active FROM local_proxies")
-        .fetch_all(&*pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let rows =
+        sqlx::query("SELECT id, provider, base_url, default_model, active FROM local_proxies")
+            .fetch_all(&*pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
     let mut entries = Vec::new();
     for row in rows {
@@ -103,23 +104,19 @@ pub async fn save_mcp_server(
     args: String,
     pool: State<'_, SqlitePool>,
 ) -> Result<(), String> {
-    sqlx::query(
-        "INSERT OR REPLACE INTO mcp_servers (name, command, args) VALUES ($1, $2, $3)"
-    )
-    .bind(name)
-    .bind(command)
-    .bind(args)
-    .execute(&*pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    sqlx::query("INSERT OR REPLACE INTO mcp_servers (name, command, args) VALUES ($1, $2, $3)")
+        .bind(name)
+        .bind(command)
+        .bind(args)
+        .execute(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }
 
 #[tauri::command]
-pub async fn get_mcp_servers(
-    pool: State<'_, SqlitePool>,
-) -> Result<Vec<McpServerEntry>, String> {
+pub async fn get_mcp_servers(pool: State<'_, SqlitePool>) -> Result<Vec<McpServerEntry>, String> {
     let rows = sqlx::query("SELECT name, command, args FROM mcp_servers")
         .fetch_all(&*pool)
         .await
@@ -130,7 +127,11 @@ pub async fn get_mcp_servers(
         let name: String = row.get("name");
         let command: String = row.get("command");
         let args: String = row.get("args");
-        entries.push(McpServerEntry { name, command, args });
+        entries.push(McpServerEntry {
+            name,
+            command,
+            args,
+        });
     }
 
     Ok(entries)
@@ -142,9 +143,7 @@ pub fn check_cli_version(binary: String) -> Result<String, String> {
         return Err("Unsupported binary check".into());
     }
 
-    let output = Command::new(&binary)
-        .arg("--version")
-        .output();
+    let output = Command::new(&binary).arg("--version").output();
 
     match output {
         Ok(out) => {
@@ -155,9 +154,7 @@ pub fn check_cli_version(binary: String) -> Result<String, String> {
             }
         }
         Err(_) => {
-            let out_v = Command::new(&binary)
-                .arg("-v")
-                .output();
+            let out_v = Command::new(&binary).arg("-v").output();
             match out_v {
                 Ok(out) => {
                     if out.status.success() {
@@ -166,7 +163,10 @@ pub fn check_cli_version(binary: String) -> Result<String, String> {
                         Err(format!("Binary '{}' is not installed", binary))
                     }
                 }
-                Err(_) => Err(format!("Binary '{}' is not installed or not in PATH", binary)),
+                Err(_) => Err(format!(
+                    "Binary '{}' is not installed or not in PATH",
+                    binary
+                )),
             }
         }
     }
@@ -214,10 +214,12 @@ pub async fn save_proxy_provider(
 pub async fn get_proxy_providers(
     pool: State<'_, SqlitePool>,
 ) -> Result<Vec<ProxyProvider>, String> {
-    let rows = sqlx::query("SELECT name, type, base_url, api_key, default_model, is_default FROM proxy_providers")
-        .fetch_all(&*pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let rows = sqlx::query(
+        "SELECT name, type, base_url, api_key, default_model, is_default FROM proxy_providers",
+    )
+    .fetch_all(&*pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
     let mut list = Vec::new();
     for row in rows {
@@ -227,7 +229,7 @@ pub async fn get_proxy_providers(
         let api_key: String = row.get("api_key");
         let default_model: String = row.get("default_model");
         let is_default: i32 = row.get("is_default");
-        
+
         list.push(ProxyProvider {
             name,
             r#type,
@@ -281,7 +283,7 @@ pub async fn save_proxy_virtual_model(
     pool: State<'_, SqlitePool>,
 ) -> Result<(), String> {
     sqlx::query(
-        "INSERT OR REPLACE INTO proxy_virtual_models (name, provider, model) VALUES ($1, $2, $3)"
+        "INSERT OR REPLACE INTO proxy_virtual_models (name, provider, model) VALUES ($1, $2, $3)",
     )
     .bind(name)
     .bind(provider)
@@ -307,7 +309,11 @@ pub async fn get_proxy_virtual_models(
         let name: String = row.get("name");
         let provider: String = row.get("provider");
         let model: String = row.get("model");
-        list.push(ProxyVirtualModel { name, provider, model });
+        list.push(ProxyVirtualModel {
+            name,
+            provider,
+            model,
+        });
     }
     Ok(list)
 }

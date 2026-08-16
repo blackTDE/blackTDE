@@ -8,8 +8,11 @@ export interface TerminalRestoreActions {
   onLookupError: (error: unknown) => void;
 }
 
-export const modifiedEnterSequence = (event: Pick<KeyboardEvent, 'key' | 'shiftKey' | 'type'>): string | null =>
-  event.type === 'keydown' && event.key === 'Enter' && event.shiftKey ? '\x1b[13;2u' : null;
+export const terminalScrollOffset = (baseY: number, viewportY: number): number =>
+  Math.max(0, baseY - viewportY);
+
+export const restoredTerminalViewportLine = (baseY: number, offset: number): number =>
+  Math.max(0, baseY - offset);
 
 export const restoreTerminal = async (actions: TerminalRestoreActions): Promise<void> => {
   let isActive: boolean;

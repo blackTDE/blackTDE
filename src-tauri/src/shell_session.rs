@@ -39,6 +39,50 @@ pub fn login_shell_args(command: &str, args: &[String]) -> Vec<String> {
     args
 }
 
+pub fn wrap_agent_in_default_shell(
+    agent_command: String,
+    agent_args: Vec<String>,
+) -> (String, Vec<String>) {
+    #[cfg(unix)]
+    {
+        let shell = std::env::var("SHELL")
+            .ok()
+            .filter(|shell| !shell.trim().is_empty())
+            .unwrap_or_else(|| "/bin/bash".into());
+        let args = agent_shell_args(&shell, agent_command, agent_args);
+        (shell, args)
+    }
+
+    #[cfg(not(unix))]
+    {
+        (agent_command, agent_args)
+    }
+}
+
+#[cfg(unix)]
+fn agent_shell_args(shell: &str, agent_command: String, agent_args: Vec<String>) -> Vec<String> {
+    let shell_name = shell.rsplit(['/', '\\']).next().unwrap_or(shell);
+    let login_flag = match shell_name {
+        "bash" | "zsh" | "fish" => "--login",
+        _ => "-l",
+    };
+    let script = if shell_name == "fish" {
+        "exec $argv"
+    } else {
+        "exec \"$@\""
+    };
+    let mut args = vec![
+        login_flag.into(),
+        "-i".into(),
+        "-c".into(),
+        script.into(),
+        "--".into(),
+        agent_command,
+    ];
+    args.extend(agent_args);
+    args
+}
+
 pub fn tmux_args<I, S>(args: I) -> Vec<String>
 where
     I: IntoIterator<Item = S>,
@@ -298,6 +342,28 @@ mod tests {
             ]
         );
         assert!(split_args("tde-one", "diagonal").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn starts_agents_through_a_login_shell_without_shell_interpolation() {
+        assert_eq!(
+            agent_shell_args(
+                "/bin/zsh",
+                "claude".into(),
+                vec!["--model".into(), "value with spaces; no shell".into()],
+            ),
+            vec![
+                "--login",
+                "-i",
+                "-c",
+                "exec \"$@\"",
+                "--",
+                "claude",
+                "--model",
+                "value with spaces; no shell",
+            ]
+        );
     }
 
     #[test]

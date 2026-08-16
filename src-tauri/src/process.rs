@@ -69,7 +69,10 @@ pub fn build_enriched_path() -> String {
         priority_dirs.push(format!("{}/.npm-global/bin", home));
         priority_dirs.push(format!("{}/.bun/bin", home));
 
-        let nvm_dir = std::path::Path::new(&home).join(".nvm").join("versions").join("node");
+        let nvm_dir = std::path::Path::new(&home)
+            .join(".nvm")
+            .join("versions")
+            .join("node");
         if let Ok(entries) = std::fs::read_dir(nvm_dir) {
             for entry in entries.flatten() {
                 let bin_dir = entry.path().join("bin");

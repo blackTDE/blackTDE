@@ -1,3 +1,4 @@
+mod agy_session;
 mod db;
 mod event_bus;
 mod file_manager;
@@ -231,6 +232,7 @@ async fn spawn_session(
     }
 
     let mut initial_remote_id = None;
+    let mut agy_log_path = None;
 
     for arg in privileged_agent_args(&clean_cmd, privileged) {
         if !command_args.contains(&arg) {
@@ -250,12 +252,22 @@ async fn spawn_session(
         }
         initial_remote_id = Some(r_id.clone());
     } else {
-        // Brand new session: generate a unique UUID for supported agents (claude, agy, opencode)
+        // Brand new session: generate a unique UUID for agents that support caller-assigned IDs.
         let new_uuid = uuid::Uuid::new_v4().to_string();
         if let Some(new_args) = agent_new_session_args(&clean_cmd, &new_uuid) {
             command_args.extend(new_args);
             initial_remote_id = Some(new_uuid);
         }
+    }
+
+    if clean_cmd == "agy"
+        && ssh_host
+            .as_deref()
+            .map_or(true, |host| host.trim().is_empty())
+    {
+        let path = agy_session::log_path(&app_handle, &id)?;
+        command_args.extend(["--log-file".into(), path.to_string_lossy().into_owned()]);
+        agy_log_path = Some(path);
     }
 
     // If SSH host is provided, append its components to command_args
@@ -305,6 +317,13 @@ async fn spawn_session(
             resolved_command = shell.command;
             command_args = shell.args;
         }
+    } else if ssh_host
+        .as_deref()
+        .map_or(true, |host| host.trim().is_empty())
+        && is_supported_agent(&clean_cmd)
+    {
+        (resolved_command, command_args) =
+            shell_session::wrap_agent_in_default_shell(resolved_command, command_args);
     }
 
     let spawn_result =
@@ -338,6 +357,7 @@ async fn spawn_session(
         manager.active_sessions.clone(),
         pool.inner().clone(),
         app_handle,
+        agy_log_path,
     );
 
     Ok(())
@@ -870,12 +890,19 @@ fn agent_session_flags(command: &str) -> Option<(Option<&'static str>, &'static 
     let kind = extract_agent_kind(command);
     match kind.as_str() {
         "claude" => Some((Some("--session-id"), "--resume")),
-        "agy" => Some((Some("--conversation"), "--conversation")),
+        "agy" => Some((None, "--conversation")),
         "opencode" | "pi" | "omp" => Some((Some("--session"), "--session")),
         "codex" => Some((None, "resume")),
         "gemini" => Some((None, "--resume")),
         _ => None,
     }
+}
+
+fn is_supported_agent(command: &str) -> bool {
+    matches!(
+        command,
+        "claude" | "codex" | "gemini" | "aider" | "agy" | "opencode" | "pi" | "omp"
+    )
 }
 
 fn requested_resume_args(command: &str, remote_id: &str) -> Result<Vec<String>, String> {
@@ -895,7 +922,7 @@ fn resume_args_for_session(
     if let Some(args) = remote_id.and_then(|id| agent_resume_args(command, id)) {
         return Ok(Some(args));
     }
-    if agent_resume_args(command, "required").is_some() {
+    if extract_agent_kind(command) != "agy" && agent_resume_args(command, "required").is_some() {
         return Err(format!(
             "No provider session ID found for {} session {}",
             command, local_session_id
@@ -904,31 +931,17 @@ fn resume_args_for_session(
     Ok(None)
 }
 
-fn resolve_agy_conversation_id(home: &Path, cwd: &str) -> Option<String> {
-    let cache = home.join(".gemini/antigravity-cli/cache/last_conversations.json");
-    let conversations: std::collections::HashMap<String, String> =
-        serde_json::from_str(&fs::read_to_string(cache).ok()?).ok()?;
-    conversations
-        .get(cwd)
-        .filter(|id| !id.trim().is_empty())
-        .cloned()
-}
-
 #[cfg(test)]
 mod session_resume_tests {
     use super::{
         agent_new_session_args, agent_resume_args, extract_agent_kind, privileged_agent_args,
-        requested_resume_args, resolve_agy_conversation_id, resolve_codex_session_id,
-        resume_args_for_session,
+        requested_resume_args, resolve_codex_session_id, resume_args_for_session,
     };
     use std::fs;
 
     #[test]
     fn builds_provider_specific_new_session_arguments() {
-        assert_eq!(
-            agent_new_session_args("agy", "conv-uuid-1234"),
-            Some(vec!["--conversation".into(), "conv-uuid-1234".into()])
-        );
+        assert_eq!(agent_new_session_args("agy", "conv-uuid-1234"), None);
         assert_eq!(
             agent_new_session_args("claude", "claude-uuid-5678"),
             Some(vec!["--session-id".into(), "claude-uuid-5678".into()])
@@ -1048,32 +1061,17 @@ mod session_resume_tests {
     }
 
     #[test]
-    fn refuses_to_fresh_launch_a_resumable_session_without_a_provider_id() {
-        let error = resume_args_for_session("agy", None, "local-1").unwrap_err();
-        assert!(error.contains("No provider session ID"));
+    fn only_fresh_launches_agy_without_a_provider_id() {
         assert_eq!(
-            resume_args_for_session("zsh", None, "local-2").unwrap(),
+            resume_args_for_session("agy", None, "local-1").unwrap(),
             None
         );
-    }
-
-    #[test]
-    fn resolves_agy_conversation_for_the_exact_workspace() {
-        let home = std::env::temp_dir().join(format!("tde-agy-test-{}", uuid::Uuid::new_v4()));
-        let cache = home.join(".gemini/antigravity-cli/cache");
-        fs::create_dir_all(&cache).unwrap();
-        fs::write(
-            cache.join("last_conversations.json"),
-            r#"{"/repo/one":"conversation-1","/repo/two":"conversation-2"}"#,
-        )
-        .unwrap();
-
+        let error = resume_args_for_session("codex", None, "local-2").unwrap_err();
+        assert!(error.contains("No provider session ID"));
         assert_eq!(
-            resolve_agy_conversation_id(&home, "/repo/two"),
-            Some("conversation-2".into())
+            resume_args_for_session("zsh", None, "local-3").unwrap(),
+            None
         );
-        assert_eq!(resolve_agy_conversation_id(&home, "/repo/missing"), None);
-        fs::remove_dir_all(home).unwrap();
     }
 }
 
@@ -1081,6 +1079,7 @@ mod session_resume_tests {
 async fn get_remote_session_id(
     id: String,
     pool: State<'_, SqlitePool>,
+    app_handle: tauri::AppHandle,
 ) -> Result<Option<String>, String> {
     // 1. Fetch details of the session from DB
     let row = sqlx::query(
@@ -1146,16 +1145,6 @@ async fn get_remote_session_id(
                     .map_err(|e| e.to_string())?;
                 return Ok(Some(resolved));
             }
-        } else if clean_cmd == "agy" && ssh_host.is_none() {
-            if let Some(resolved) = resolve_agy_conversation_id(&home_path, &cwd) {
-                sqlx::query("UPDATE sessions SET remote_session_id = $1 WHERE id = $2")
-                    .bind(&resolved)
-                    .bind(&id)
-                    .execute(&*pool)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                return Ok(Some(resolved));
-            }
         } else if clean_cmd == "opencode" || clean_cmd == "open-code" {
             let opencode_dir = home_path
                 .join(".local")
@@ -1175,6 +1164,19 @@ async fn get_remote_session_id(
                     return Ok(Some(resolved));
                 }
             }
+        }
+    }
+
+    if clean_cmd == "agy" && ssh_host.is_none() {
+        let path = agy_session::log_path(&app_handle, &id)?;
+        if let Some(resolved) = agy_session::read_conversation_id(&path) {
+            sqlx::query("UPDATE sessions SET remote_session_id = $1 WHERE id = $2")
+                .bind(&resolved)
+                .bind(&id)
+                .execute(&*pool)
+                .await
+                .map_err(|e| e.to_string())?;
+            return Ok(Some(resolved));
         }
     }
 
@@ -1230,6 +1232,11 @@ async fn resume_terminated_session(
     let ssh_host: Option<String> = row.get("ssh_host");
 
     let clean_cmd = extract_agent_kind(&command);
+    let agy_log_path = if clean_cmd == "agy" && ssh_host.is_none() {
+        Some(agy_session::log_path(&app_handle, &id)?)
+    } else {
+        None
+    };
 
     if clean_cmd == "codex"
         && ssh_host.is_none()
@@ -1252,29 +1259,17 @@ async fn resume_terminated_session(
     if remote_session_id
         .as_deref()
         .map_or(true, |id| id.trim().is_empty())
-        && clean_cmd == "agy"
-        && ssh_host.is_none()
     {
-        if let Some(home) = std::env::var("HOME").ok().map(PathBuf::from) {
-            if let Some(resolved) = resolve_agy_conversation_id(&home, &cwd) {
-                // Check if this resolved conversation ID is already claimed by a different session in SQLite
-                let claimed: Result<Option<(String,)>, _> = sqlx::query_as(
-                    "SELECT id FROM sessions WHERE remote_session_id = $1 AND id != $2"
-                )
+        if let Some(resolved) = agy_log_path
+            .as_deref()
+            .and_then(agy_session::read_conversation_id)
+        {
+            remote_session_id = Some(resolved.clone());
+            let _ = sqlx::query("UPDATE sessions SET remote_session_id = $1 WHERE id = $2")
                 .bind(&resolved)
                 .bind(&id)
-                .fetch_optional(&*pool)
+                .execute(&*pool)
                 .await;
-
-                if matches!(claimed, Ok(None)) {
-                    remote_session_id = Some(resolved.clone());
-                    let _ = sqlx::query("UPDATE sessions SET remote_session_id = $1 WHERE id = $2")
-                        .bind(&resolved)
-                        .bind(&id)
-                        .execute(&*pool)
-                        .await;
-                }
-            }
         }
     }
 
@@ -1454,6 +1449,10 @@ async fn resume_terminated_session(
         command_args.push("stream-json".to_string());
     }
 
+    if let Some(path) = agy_log_path.as_deref() {
+        command_args.extend(["--log-file".into(), path.to_string_lossy().into_owned()]);
+    }
+
     if let Some(resume_args) =
         resume_args_for_session(&clean_cmd, remote_session_id.as_deref(), &id)?
     {
@@ -1494,6 +1493,13 @@ async fn resume_terminated_session(
         } else {
             resume_kind = "restarted";
         }
+    } else if ssh_host
+        .as_deref()
+        .map_or(true, |host| host.trim().is_empty())
+        && is_supported_agent(&clean_cmd)
+    {
+        (resolved_command, command_args) =
+            shell_session::wrap_agent_in_default_shell(resolved_command, command_args);
     }
 
     let active_process = process::spawn_pty_process(
@@ -1540,6 +1546,7 @@ async fn resume_terminated_session(
         manager.active_sessions.clone(),
         pool.inner().clone(),
         app_handle,
+        agy_log_path,
     );
 
     Ok(ResumeOutcome { kind: resume_kind })
@@ -1592,6 +1599,7 @@ fn main() {
             git_runner::get_git_diff,
             git_runner::git_stage_file,
             git_runner::git_unstage_file,
+            git_runner::git_restore_file,
             git_runner::git_commit_changes,
             git_runner::get_git_branch,
             git_runner::get_git_branches,
