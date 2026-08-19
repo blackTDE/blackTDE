@@ -17,6 +17,7 @@ import {
   type DownloadTransfer,
 } from '../sftpTransfers';
 import { canNavigateUp, resolveSftpPath } from '../sftpUtils';
+import { handleTerminalKeyEvent } from '../terminalKeyHandler';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import {
   Folder,
@@ -94,6 +95,23 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
     // Attach terminal to the DOM container
     containerRef.current.innerHTML = '';
     term.open(containerRef.current);
+
+    // Attach custom keyboard shortcut handler for Copy/Paste/SelectAll/Clear in terminal
+    term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+      return handleTerminalKeyEvent(event, {
+        hasSelection: () => term.hasSelection(),
+        getSelection: () => term.getSelection(),
+        paste: (text: string) => term.paste(text),
+        selectAll: () => term.selectAll(),
+        clear: () => term.clear(),
+        writeClipboard: async (text: string) => {
+          await navigator.clipboard.writeText(text);
+        },
+        readClipboard: async () => {
+          return await navigator.clipboard.readText();
+        },
+      });
+    });
     
     // Initial measure fit
     try {

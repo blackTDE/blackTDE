@@ -1562,6 +1562,10 @@ fn main() {
         .setup(|app| {
             let app_handle = app.handle().clone();
 
+            // Set up default native application menu so shortcuts like Copy, Paste, Cut, Select All, Undo, Redo work properly on macOS
+            let menu = tauri::menu::Menu::default(&app_handle)?;
+            app.set_menu(menu)?;
+
             // Initialize process manager state
             let process_manager = process::ProcessManager::default();
             app.manage(process_manager);
