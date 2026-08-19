@@ -16,6 +16,7 @@ import {
   type DownloadProgress,
   type DownloadTransfer,
 } from '../sftpTransfers';
+import { canNavigateUp, resolveSftpPath } from '../sftpUtils';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import {
   Folder,
@@ -27,6 +28,7 @@ import {
   RefreshCw,
   Loader2,
   ArrowUp,
+  ArrowLeft,
   FolderOpen,
   CheckCircle2,
   XCircle,
@@ -366,24 +368,11 @@ const SftpExplorer: React.FC<SftpExplorerProps> = ({ host, height, isCollapsed, 
   }, [remoteCwd, host]);
 
   const handleNavigate = (dirName: string) => {
-    let newPath = remoteCwd;
-    if (dirName === '..') {
-      if (!remoteCwd || remoteCwd === '.' || remoteCwd === '/') {
-        return;
-      }
-      const parts = remoteCwd.split('/');
-      parts.pop();
-      newPath = parts.join('/') || '';
-    } else {
-      if (!remoteCwd) {
-        newPath = dirName;
-      } else if (remoteCwd === '/') {
-        newPath = '/' + dirName;
-      } else {
-        newPath = remoteCwd + '/' + dirName;
-      }
+    if (loading) return;
+    const nextPath = resolveSftpPath(remoteCwd, dirName);
+    if (nextPath !== remoteCwd) {
+      setRemoteCwd(nextPath);
     }
-    setRemoteCwd(newPath);
   };
 
   const handleDownload = async (file: any, e: React.MouseEvent) => {
@@ -469,9 +458,18 @@ const SftpExplorer: React.FC<SftpExplorerProps> = ({ host, height, isCollapsed, 
       {/* Header Row */}
       <div className="flex items-center justify-between px-3 py-1 bg-surface-1 border-b border-surface-2 text-[10px] font-mono select-none h-[26px]">
         <div className="flex items-center space-x-2 truncate">
-          <FolderOpen size={12} className="text-brand-light" />
-          <span className="text-[10px] font-bold text-zinc-300">SFTP Remote Files ({host})</span>
-          <span className="text-zinc-500 font-semibold truncate">
+          <button
+            onClick={() => handleNavigate('..')}
+            disabled={loading || !canNavigateUp(remoteCwd)}
+            className="flex items-center space-x-1 px-1.5 py-0.5 rounded text-slate-400 hover:text-zinc-200 hover:bg-surface-2 transition disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 cursor-pointer disabled:cursor-not-allowed shrink-0"
+            title={canNavigateUp(remoteCwd) ? 'Return to parent directory (..)' : 'Already at top directory'}
+          >
+            <ArrowLeft size={11} />
+            <span className="font-sans font-medium text-[10px]">Back</span>
+          </button>
+          <FolderOpen size={12} className="text-brand-light shrink-0" />
+          <span className="text-[10px] font-bold text-zinc-300 shrink-0">SFTP ({host})</span>
+          <span className="text-zinc-500 font-semibold truncate" title={remoteCwd || 'Home'}>
             {remoteCwd ? `/ ${remoteCwd}` : '/ (Home)'}
           </span>
         </div>
@@ -503,7 +501,8 @@ const SftpExplorer: React.FC<SftpExplorerProps> = ({ host, height, isCollapsed, 
               </button>
               <button
                 onClick={() => loadDir(remoteCwd)}
-                className="text-slate-400 hover:text-zinc-200 transition cursor-pointer"
+                disabled={loading}
+                className="text-slate-400 hover:text-zinc-200 transition cursor-pointer disabled:opacity-50"
                 title="Refresh remote files list"
               >
                 <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
@@ -566,7 +565,7 @@ const SftpExplorer: React.FC<SftpExplorerProps> = ({ host, height, isCollapsed, 
 
       {/* Directory Content Area */}
       {!isCollapsed && (
-        <div className="flex-grow overflow-y-auto text-[11px] font-mono text-zinc-350 bg-[#070707] min-h-0 select-none font-sans">
+        <div className="relative flex-grow overflow-y-auto text-[11px] font-mono text-zinc-350 bg-[#070707] min-h-0 select-none font-sans">
           {loading && files.length === 0 ? (
             <div className="w-full py-8 flex flex-col items-center justify-center text-zinc-500 space-y-2">
               <Loader2 size={16} className="animate-spin text-brand" />
@@ -576,83 +575,119 @@ const SftpExplorer: React.FC<SftpExplorerProps> = ({ host, height, isCollapsed, 
             <div className="w-full p-4 flex flex-col items-center justify-center text-rose-400 space-y-2 text-center">
               <span className="font-bold">Error reading remote files:</span>
               <p className="text-[10px] text-zinc-400 max-w-xs">{error}</p>
-              <button
-                onClick={() => loadDir(remoteCwd)}
-                className="bg-surface-3 border border-surface-4 text-zinc-300 px-3 py-1 rounded hover:bg-surface-2 transition text-[10px] cursor-pointer"
-              >
-                Retry Connection
-              </button>
+              <div className="flex items-center gap-2 mt-1">
+                <button
+                  onClick={() => loadDir(remoteCwd)}
+                  disabled={loading}
+                  className="bg-surface-3 border border-surface-4 text-zinc-300 px-3 py-1 rounded hover:bg-surface-2 transition text-[10px] cursor-pointer"
+                >
+                  Retry Connection
+                </button>
+                {canNavigateUp(remoteCwd) && (
+                  <button
+                    onClick={() => handleNavigate('..')}
+                    disabled={loading}
+                    className="bg-surface-3 border border-surface-4 text-zinc-300 px-3 py-1 rounded hover:bg-surface-2 transition text-[10px] cursor-pointer"
+                  >
+                    Return to Parent
+                  </button>
+                )}
+                {remoteCwd && (
+                  <button
+                    onClick={() => setRemoteCwd('')}
+                    disabled={loading}
+                    className="bg-surface-3 border border-surface-4 text-zinc-300 px-3 py-1 rounded hover:bg-surface-2 transition text-[10px] cursor-pointer"
+                  >
+                    Return to Home
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
-            <table className="w-full text-left border-collapse font-mono">
-              <thead>
-                <tr className="border-b border-surface-2/60 text-[9px] text-zinc-500 bg-surface-1/40 sticky top-0">
-                  <th className="py-1 px-3 font-semibold w-1/2">Name</th>
-                  <th className="py-1 px-3 font-semibold">Size</th>
-                  <th className="py-1 px-3 font-semibold">Modified</th>
-                  <th className="py-1 px-3 font-semibold text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {/* Back Link */}
-                {remoteCwd && (
-                  <tr
-                    onClick={() => handleNavigate('..')}
-                    className="border-b border-surface-2/30 hover:bg-surface-2/20 cursor-pointer transition"
-                  >
-                    <td className="py-1.5 px-3 flex items-center space-x-2 text-brand/80">
-                      <ArrowUp size={12} />
-                      <span className="font-bold">..</span>
-                    </td>
-                    <td className="py-1.5 px-3">-</td>
-                    <td className="py-1.5 px-3">-</td>
-                    <td className="py-1.5 px-3 text-right">-</td>
+            <div className="relative w-full min-h-full">
+              {loading && (
+                <div className="sticky top-0 z-20 flex items-center justify-center gap-1.5 bg-brand/15 text-brand-light py-1 text-[10px] font-mono border-b border-brand/30 backdrop-blur">
+                  <Loader2 size={11} className="animate-spin" />
+                  <span>Opening remote directory...</span>
+                </div>
+              )}
+              <table className={`w-full text-left border-collapse font-mono ${loading ? 'pointer-events-none opacity-50' : ''}`}>
+                <thead>
+                  <tr className="border-b border-surface-2/60 text-[9px] text-zinc-500 bg-surface-1/40 sticky top-0">
+                    <th className="py-1 px-3 font-semibold w-1/2">Name</th>
+                    <th className="py-1 px-3 font-semibold">Size</th>
+                    <th className="py-1 px-3 font-semibold">Modified</th>
+                    <th className="py-1 px-3 font-semibold text-right">Actions</th>
                   </tr>
-                )}
-
-                {files.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="py-6 text-center text-zinc-600">
-                      Empty directory
-                    </td>
-                  </tr>
-                ) : (
-                  files.map((file) => (
+                </thead>
+                <tbody>
+                  {/* Back Link */}
+                  {remoteCwd && (
                     <tr
-                      key={file.name}
-                      onClick={() => file.is_dir && handleNavigate(file.name)}
-                      className={`border-b border-surface-2/30 hover:bg-surface-2/30 transition ${
-                        file.is_dir ? 'cursor-pointer text-zinc-200' : 'text-zinc-400'
+                      onClick={() => !loading && handleNavigate('..')}
+                      className={`border-b border-surface-2/30 transition ${
+                        loading ? 'opacity-40 cursor-not-allowed' : 'hover:bg-surface-2/20 cursor-pointer'
                       }`}
                     >
-                      <td className="py-1.5 px-3">
-                        <div className="flex items-center space-x-2 truncate">
-                          {file.is_dir ? (
-                            <Folder size={12} className="text-amber-500/80 fill-amber-500/10" />
-                          ) : (
-                            <File size={12} className="text-zinc-500" />
-                          )}
-                          <span className={file.is_dir ? 'font-semibold' : ''}>{file.name}</span>
-                        </div>
+                      <td className="py-1.5 px-3 flex items-center space-x-2 text-brand/80">
+                        <ArrowUp size={12} />
+                        <span className="font-bold">..</span>
                       </td>
-                      <td className="py-1.5 px-3 text-zinc-500">{formatSize(file.size)}</td>
-                      <td className="py-1.5 px-3 text-zinc-500">{formatTime(file.mtime)}</td>
-                      <td className="py-1.5 px-3 text-right">
-                        {!file.is_dir && (
-                          <button
-                            onClick={(e) => handleDownload(file, e)}
-                            className="p-1 hover:bg-surface-3 rounded text-zinc-500 hover:text-brand-light transition disabled:opacity-50 cursor-pointer"
-                            title="Download file to local machine"
-                          >
-                            <Download size={11} />
-                          </button>
-                        )}
+                      <td className="py-1.5 px-3">-</td>
+                      <td className="py-1.5 px-3">-</td>
+                      <td className="py-1.5 px-3 text-right">-</td>
+                    </tr>
+                  )}
+
+                  {files.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="py-6 text-center text-zinc-600">
+                        Empty directory
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    files.map((file) => (
+                      <tr
+                        key={file.name}
+                        onClick={() => !loading && file.is_dir && handleNavigate(file.name)}
+                        className={`border-b border-surface-2/30 transition ${
+                          loading
+                            ? 'cursor-not-allowed opacity-60'
+                            : file.is_dir
+                            ? 'cursor-pointer hover:bg-surface-2/30 text-zinc-200'
+                            : 'text-zinc-400'
+                        }`}
+                      >
+                        <td className="py-1.5 px-3">
+                          <div className="flex items-center space-x-2 truncate">
+                            {file.is_dir ? (
+                              <Folder size={12} className="text-amber-500/80 fill-amber-500/10" />
+                            ) : (
+                              <File size={12} className="text-zinc-500" />
+                            )}
+                            <span className={file.is_dir ? 'font-semibold' : ''}>{file.name}</span>
+                          </div>
+                        </td>
+                        <td className="py-1.5 px-3 text-zinc-500">{formatSize(file.size)}</td>
+                        <td className="py-1.5 px-3 text-zinc-500">{formatTime(file.mtime)}</td>
+                        <td className="py-1.5 px-3 text-right">
+                          {!file.is_dir && (
+                            <button
+                              onClick={(e) => handleDownload(file, e)}
+                              disabled={loading}
+                              className="p-1 hover:bg-surface-3 rounded text-zinc-500 hover:text-brand-light transition disabled:opacity-50 cursor-pointer"
+                              title="Download file to local machine"
+                            >
+                              <Download size={11} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
