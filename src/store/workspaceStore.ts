@@ -75,10 +75,11 @@ interface WorkspaceState {
   // Session Pin layout
   isSessionPinned: boolean;
 
-  // Panel sizing & Right Panel Pin/Auto-hide layout
+  // Panel sizing & Panel Pin/Auto-hide layout
   leftPanelWidth: number;
   rightPanelWidth: number;
   pinnedSessionWidthPercent: number;
+  isLeftPanelPinned: boolean;
   isRightPanelPinned: boolean;
 
   // Workspace top bar tabs
@@ -111,6 +112,8 @@ interface WorkspaceState {
   setLeftPanelWidth: (w: number) => void;
   setRightPanelWidth: (w: number) => void;
   setPinnedSessionWidthPercent: (p: number) => void;
+  setLeftPanelPinned: (pinned: boolean) => void;
+  toggleLeftPanelPin: () => void;
   setRightPanelPinned: (pinned: boolean) => void;
   toggleRightPanelPin: () => void;
 
@@ -156,6 +159,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
   leftPanelWidth: 320,
   rightPanelWidth: 320,
   pinnedSessionWidthPercent: 50,
+  isLeftPanelPinned: false,
   isRightPanelPinned: true,
 
   openWorkspaceTabIds: [],
@@ -315,6 +319,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
   setLeftPanelWidth: (w) => set({ leftPanelWidth: w }),
   setRightPanelWidth: (w) => set({ rightPanelWidth: w }),
   setPinnedSessionWidthPercent: (p) => set({ pinnedSessionWidthPercent: p }),
+  setLeftPanelPinned: (pinned) => set({ isLeftPanelPinned: pinned }),
+  toggleLeftPanelPin: () => set((state) => ({ isLeftPanelPinned: !state.isLeftPanelPinned })),
   setRightPanelPinned: (pinned) => set({ isRightPanelPinned: pinned }),
   toggleRightPanelPin: () => set((state) => ({ isRightPanelPinned: !state.isRightPanelPinned })),
 
@@ -487,6 +493,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
     leftPanelWidth: state.leftPanelWidth,
     rightPanelWidth: state.rightPanelWidth,
     pinnedSessionWidthPercent: state.pinnedSessionWidthPercent,
+    isLeftPanelPinned: state.isLeftPanelPinned,
     isRightPanelPinned: state.isRightPanelPinned,
   }),
 }));

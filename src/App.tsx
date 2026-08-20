@@ -30,8 +30,6 @@ import {
   PlusCircle,
   PlayCircle,
   FolderOpen,
-  PanelLeftClose,
-  PanelLeftOpen,
   Search,
   Pin,
   LayoutGrid
@@ -82,6 +80,8 @@ function App() {
     setRightPanelWidth,
     pinnedSessionWidthPercent,
     setPinnedSessionWidthPercent,
+    isLeftPanelPinned,
+    toggleLeftPanelPin,
     isRightPanelPinned,
     toggleRightPanelPin
   } = useWorkspaceStore();
@@ -89,7 +89,7 @@ function App() {
   const [draggedTabIndex, setDraggedTabIndex] = useState<number | null>(null);
   const [isRightPaneExpanded, setIsRightPaneExpanded] = useState(true);
   const [activeFatherTabId, setActiveFatherTabId] = useState('');
-  const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(true);
+  const [isLeftPanelHovered, setIsLeftPanelHovered] = useState(false);
 
   // Mouse drag resize handlers
   const handleLeftResizeStart = (e: React.MouseEvent) => {
@@ -565,31 +565,83 @@ function App() {
 
   return (
     <div className="flex h-screen w-screen bg-surface text-zinc-100 overflow-hidden font-sans flex-col select-none relative">
-      
       {/* Main Container */}
       <div className="flex flex-1 min-h-0 w-full overflow-hidden relative">
-        
-        {/* Left Sidebar Panel (Projects Tree Viewer) */}
-        {isLeftPanelVisible && (
-          <>
-            <div
-              style={{ width: `${leftPanelWidth}px` }}
-              className="shrink-0 border-r border-surface-2 bg-surface-1 flex flex-col select-none overflow-hidden font-sans"
-            >
-              {/* Header */}
-              <div className="p-4 border-b border-surface-2 flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <img src={brandIcon} alt="Black TDE Logo" className="w-8 h-8 rounded object-cover" />
-                  <div>
-                    <h1 className="font-bold text-xs tracking-wider text-zinc-100 font-mono uppercase">TDE Cockpit</h1>
-                    <p className="text-[9px] text-zinc-500 font-mono">v1.2.0</p>
-                  </div>
+        {/* Left Edge Hover Trigger Zone (Active in Auto-Hide mode when panel is closed) */}
+        {!isLeftPanelPinned && !isLeftPanelHovered && (
+          <div
+            onMouseEnter={() => setIsLeftPanelHovered(true)}
+            className="absolute left-0 top-0 bottom-0 w-2.5 z-30 cursor-pointer bg-transparent hover:bg-brand/30 transition-colors"
+            title="Hover to show Project Tree"
+          />
+        )}
+
+        {/* Left Sidebar Panel (Projects Tree Viewer) - Rendered when Pinned or Hovered */}
+        {(isLeftPanelPinned || isLeftPanelHovered) && (
+          <div
+            style={{ width: `${leftPanelWidth}px` }}
+            onMouseLeave={() => {
+              if (!isLeftPanelPinned) {
+                setIsLeftPanelHovered(false);
+              }
+            }}
+            className={`bg-surface-1 flex flex-col select-none overflow-hidden font-sans transition-all border-r border-surface-2 ${
+              isLeftPanelPinned
+                ? 'shrink-0 z-10'
+                : 'absolute left-0 top-0 bottom-0 z-40 shadow-2xl animate-in slide-in-from-left-2 duration-150'
+            }`}
+          >
+            {/* Floating Resizer Handle on Right Edge when Unpinned */}
+            {!isLeftPanelPinned && (
+              <div
+                onMouseDown={handleLeftResizeStart}
+                className="absolute right-0 top-0 bottom-0 w-1.5 hover:w-2 cursor-col-resize bg-transparent hover:bg-brand/60 transition-all z-50 select-none"
+                title="Drag to resize Left Panel"
+              />
+            )}
+
+            {/* Header */}
+            <div className="p-4 border-b border-surface-2 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <img src={brandIcon} alt="Black TDE Logo" className="w-8 h-8 rounded object-cover" />
+                <div>
+                  <h1 className="font-bold text-xs tracking-wider text-zinc-100 font-mono uppercase">TDE Cockpit</h1>
+                  <p className="text-[9px] text-zinc-500 font-mono">v1.2.0</p>
                 </div>
+              </div>
+              <div className="flex items-center space-x-2">
                 <div className="flex items-center space-x-1 text-success text-[10px] font-semibold bg-success/10 px-2 py-0.5 rounded-full border border-success/20">
                   <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
                   <span>Online</span>
                 </div>
+                {/* Pin / Auto-Hide Switch Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    toggleLeftPanelPin();
+                    if (isLeftPanelPinned) {
+                      setIsLeftPanelHovered(false);
+                    }
+                  }}
+                  className={`p-1 rounded hover:bg-surface-2 transition cursor-pointer ${
+                    isLeftPanelPinned ? 'text-brand-light' : 'text-zinc-500 hover:text-zinc-200'
+                  }`}
+                  title={isLeftPanelPinned ? "Unpin (Enable Auto-Hide on mouse leave)" : "Pin Project Tree (Fix in layout)"}
+                >
+                  <Pin size={13} className={isLeftPanelPinned ? 'rotate-45 text-brand-light' : 'text-zinc-500'} />
+                </button>
+                {!isLeftPanelPinned && (
+                  <button
+                    type="button"
+                    onClick={() => setIsLeftPanelHovered(false)}
+                    className="p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-surface-2 transition cursor-pointer"
+                    title="Hide Panel"
+                  >
+                    <Minimize2 size={13} />
+                  </button>
+                )}
               </div>
+            </div>
 
               {/* Left panel body: Project list tree with nested active sessions */}
               <div className="flex-grow overflow-y-auto flex flex-col p-4 space-y-3 min-h-0">
@@ -831,27 +883,42 @@ function App() {
                 </div>
               </div>
             </div>
+        )}
 
-            {/* Left Resizer Handle Divider */}
-            <div
-              onMouseDown={handleLeftResizeStart}
-              className="w-1 hover:w-1.5 cursor-col-resize bg-transparent hover:bg-brand/60 transition-all z-20 shrink-0 select-none"
-              title="Drag to resize Left Panel"
-            />
-          </>
+        {/* Left Resizer Handle Divider (Only when Pinned in layout) */}
+        {isLeftPanelPinned && (
+          <div
+            onMouseDown={handleLeftResizeStart}
+            className="w-1.5 hover:w-2 cursor-col-resize bg-surface-2/40 hover:bg-brand/60 transition-all z-20 shrink-0 select-none"
+            title="Drag to resize Left Panel"
+          />
         )}
 
         {/* Center Panel (Swappable Workbench) */}
         <div className="flex-grow flex flex-col min-w-0 bg-surface">
           {/* Level 1: Father Tabs (Projects/Workspaces list + Settings Tab) */}
           <div className="shrink-0 flex items-center border-b border-surface-2 bg-surface-2/20 overflow-x-auto select-none">
-            {/* Toggle Sidebar Button */}
+            {/* Auto-Hide / Fix Sidebar Button */}
             <button
-              onClick={() => setIsLeftPanelVisible(!isLeftPanelVisible)}
-              className="flex items-center justify-center px-3 py-3 border-r border-surface-2 hover:bg-surface-2/15 transition cursor-pointer text-zinc-500 hover:text-zinc-200 shrink-0"
-              title={isLeftPanelVisible ? "Hide Project Tree Panel" : "Show Project Tree Panel"}
+              onClick={() => {
+                toggleLeftPanelPin();
+                setIsLeftPanelHovered(false);
+              }}
+              onMouseEnter={() => {
+                if (!isLeftPanelPinned) {
+                  setIsLeftPanelHovered(true);
+                }
+              }}
+              className={`flex items-center justify-center px-3 py-3 border-r border-surface-2 hover:bg-surface-2/15 transition cursor-pointer shrink-0 ${
+                isLeftPanelPinned ? 'bg-surface-1/40 text-brand-light' : 'text-zinc-500 hover:text-zinc-200'
+              }`}
+              title={
+                isLeftPanelPinned
+                  ? "Project Tree is fixed in layout. Click to enable Auto-Hide (Unpin)"
+                  : "Auto-Hide is active (Hover left edge to pop out). Click to fix Project Tree in layout (Pin)"
+              }
             >
-              {isLeftPanelVisible ? <PanelLeftClose size={13} /> : <PanelLeftOpen size={13} />}
+              <Pin size={13} className={isLeftPanelPinned ? 'rotate-45 text-brand-light' : 'text-zinc-500'} />
             </button>
 
             {/* Settings button on the far left of Level 1 */}
