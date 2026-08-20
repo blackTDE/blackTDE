@@ -84,6 +84,7 @@ interface WorkspaceState {
 
   // Workspace top bar tabs
   openWorkspaceTabIds: string[];
+  sessionOrderIdsByProject: Record<string, string[]>;
 
   // Actions
   setWorkspace: (ws: WorkspaceEntry | null) => void;
@@ -93,6 +94,8 @@ interface WorkspaceState {
   closeWorkspaceTab: (id: string) => void;
   openWorkspaceTab: (id: string) => void;
   setOpenWorkspaceTabIds: (ids: string[]) => void;
+  reorderWorkspaceTabs: (fromIndex: number, toIndex: number) => void;
+  reorderSessionTabs: (projectId: string, fromIndex: number, toIndex: number) => void;
   addSession: (session: SessionInfo) => void;
   setSessions: (sessions: Record<string, SessionInfo>) => void;
   setActiveSession: (id: string | null) => void;
@@ -163,6 +166,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
   isRightPanelPinned: true,
 
   openWorkspaceTabIds: [],
+  sessionOrderIdsByProject: {},
 
   setWorkspace: (ws) =>
     set((state) => {
@@ -249,6 +253,77 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
         : [...state.openWorkspaceTabIds, id],
     })),
   setOpenWorkspaceTabIds: (ids) => set({ openWorkspaceTabIds: ids }),
+
+  reorderWorkspaceTabs: (fromIndex, toIndex) =>
+    set((state) => {
+      const currentTabIds =
+        state.openWorkspaceTabIds.length > 0
+          ? [...state.openWorkspaceTabIds]
+          : state.workspaces.map((w) => w.id);
+      if (
+        fromIndex < 0 ||
+        fromIndex >= currentTabIds.length ||
+        toIndex < 0 ||
+        toIndex >= currentTabIds.length ||
+        fromIndex === toIndex
+      ) {
+        return {};
+      }
+      const [movedId] = currentTabIds.splice(fromIndex, 1);
+      currentTabIds.splice(toIndex, 0, movedId);
+
+      const newWorkspaces = [...state.workspaces];
+      const wsFromIdx = newWorkspaces.findIndex((w) => w.id === movedId);
+      if (wsFromIdx !== -1) {
+        const [movedWs] = newWorkspaces.splice(wsFromIdx, 1);
+        const targetWsId = currentTabIds[toIndex];
+        const wsToIdx = newWorkspaces.findIndex((w) => w.id === targetWsId);
+        if (wsToIdx !== -1) {
+          newWorkspaces.splice(toIndex > fromIndex ? wsToIdx + 1 : wsToIdx, 0, movedWs);
+        } else {
+          newWorkspaces.splice(toIndex, 0, movedWs);
+        }
+      }
+
+      return {
+        openWorkspaceTabIds: currentTabIds,
+        workspaces: newWorkspaces,
+      };
+    }),
+
+  reorderSessionTabs: (projectId, fromIndex, toIndex) =>
+    set((state) => {
+      const ws = state.workspaces.find((w) => w.id === projectId) || state.activeWorkspace;
+      const projectPath = ws?.path || '';
+      const matchingSessions = Object.values(state.sessions).filter((s) => s.cwd === projectPath);
+      const currentOrder = state.sessionOrderIdsByProject[projectId] || matchingSessions.map((s) => s.id);
+      const existingIds = currentOrder.filter((id) => matchingSessions.some((s) => s.id === id));
+      matchingSessions.forEach((s) => {
+        if (!existingIds.includes(s.id)) {
+          existingIds.push(s.id);
+        }
+      });
+
+      if (
+        fromIndex < 0 ||
+        fromIndex >= existingIds.length ||
+        toIndex < 0 ||
+        toIndex >= existingIds.length ||
+        fromIndex === toIndex
+      ) {
+        return {};
+      }
+
+      const [movedId] = existingIds.splice(fromIndex, 1);
+      existingIds.splice(toIndex, 0, movedId);
+
+      return {
+        sessionOrderIdsByProject: {
+          ...state.sessionOrderIdsByProject,
+          [projectId]: existingIds,
+        },
+      };
+    }),
 
   addSession: (session) =>
     set((state) => ({
@@ -495,5 +570,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
     pinnedSessionWidthPercent: state.pinnedSessionWidthPercent,
     isLeftPanelPinned: state.isLeftPanelPinned,
     isRightPanelPinned: state.isRightPanelPinned,
+    openWorkspaceTabIds: state.openWorkspaceTabIds,
+    sessionOrderIdsByProject: state.sessionOrderIdsByProject,
   }),
 }));

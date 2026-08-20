@@ -5,6 +5,7 @@ interface AgentIconProps {
   name: string;
   size?: number;
   className?: string;
+  selected?: boolean;
 }
 
 const antigravityIcon = 'data:image/png;base64,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';
@@ -48,7 +49,7 @@ function initials(name: string) {
   return (parts.length > 1 ? parts[0][0] + parts[1][0] : clean.slice(0, 2)).toUpperCase() || 'AG';
 }
 
-export function AgentIcon({ name, size = 18, className = '' }: AgentIconProps) {
+export function AgentIcon({ name, size = 18, className = '', selected = false }: AgentIconProps) {
   const kind = getAgentIconKind(name);
   const icon = kind === 'claude' ? <ClaudeIcon size={size} />
     : kind === 'codex' ? <OpenAIIcon size={size} />
@@ -59,5 +60,9 @@ export function AgentIcon({ name, size = 18, className = '' }: AgentIconProps) {
     : kind === 'omp' ? <OmpIcon size={size} />
     : <span className="flex h-full w-full items-center justify-center rounded bg-slate-700 text-[7px] font-bold text-white">{initials(name)}</span>;
 
-  return <span className={`inline-flex shrink-0 items-center justify-center ${className}`} style={{ width: size, height: size }} title={name}>{icon}</span>;
+  const highlightClasses = selected
+    ? 'ring-1.5 ring-brand ring-offset-1 ring-offset-surface-1 shadow-[0_0_8px_rgba(249,115,22,0.6)] brightness-110 drop-shadow-md rounded scale-105 transition-all duration-150'
+    : '';
+
+  return <span className={`inline-flex shrink-0 items-center justify-center transition-all ${highlightClasses} ${className}`} style={{ width: size, height: size }} title={name}>{icon}</span>;
 }

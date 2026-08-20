@@ -6,6 +6,18 @@ const resetPaneState = () => {
   useWorkspaceStore.setState({
     activeWorkspace: { id: 'project', name: 'Project', path: '/project' },
     activeSessionId: null,
+    workspaces: [
+      { id: 'proj-1', name: 'Proj 1', path: '/proj1' },
+      { id: 'proj-2', name: 'Proj 2', path: '/proj2' },
+      { id: 'proj-3', name: 'Proj 3', path: '/proj3' },
+    ],
+    openWorkspaceTabIds: ['proj-1', 'proj-2', 'proj-3'],
+    sessions: {
+      'sess-1': { id: 'sess-1', name: 'Shell 1', agentType: 'bash', cwd: '/proj1' },
+      'sess-2': { id: 'sess-2', name: 'Shell 2', agentType: 'claude', cwd: '/proj1' },
+      'sess-3': { id: 'sess-3', name: 'Shell 3', agentType: 'gemini', cwd: '/proj1' },
+    },
+    sessionOrderIdsByProject: {},
     paneLayout: {
       type: '1x2',
       activePaneIndex: 0,
@@ -70,4 +82,30 @@ test('opens a search result at its target line and clears it for normal navigati
 
   useWorkspaceStore.getState().openFile('/project/src/app.ts', 'app.ts');
   assert.equal(useWorkspaceStore.getState().activeFileLine, null);
+});
+
+test('reorders workspace top tabs correctly', () => {
+  resetPaneState();
+  const store = useWorkspaceStore.getState();
+
+  // Move proj-1 (index 0) to index 2
+  store.reorderWorkspaceTabs(0, 2);
+  assert.deepEqual(useWorkspaceStore.getState().openWorkspaceTabIds, ['proj-2', 'proj-3', 'proj-1']);
+
+  // Move proj-1 (index 2) back to index 1
+  store.reorderWorkspaceTabs(2, 1);
+  assert.deepEqual(useWorkspaceStore.getState().openWorkspaceTabIds, ['proj-2', 'proj-1', 'proj-3']);
+});
+
+test('reorders session tabs for specific workspace correctly', () => {
+  resetPaneState();
+  const store = useWorkspaceStore.getState();
+
+  // Move sess-1 (index 0) to index 2 in proj-1
+  store.reorderSessionTabs('proj-1', 0, 2);
+  assert.deepEqual(useWorkspaceStore.getState().sessionOrderIdsByProject['proj-1'], ['sess-2', 'sess-3', 'sess-1']);
+
+  // Move sess-3 (index 1) to index 0
+  store.reorderSessionTabs('proj-1', 1, 0);
+  assert.deepEqual(useWorkspaceStore.getState().sessionOrderIdsByProject['proj-1'], ['sess-3', 'sess-2', 'sess-1']);
 });

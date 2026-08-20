@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { hasWorkspacePath, useWorkspaceStore } from './store/workspaceStore';
 import { dedupeSessions } from './sessionUtils';
 import { isLocalShell } from './shellRestore';
@@ -60,16 +60,19 @@ function App() {
     gitBranch,
     setGitBranch,
     setPaneSessionId,
+    workspaces,
+    activeWorkspace,
+    openWorkspaceTabIds,
+    openWorkspaceTab,
+    closeWorkspaceTab,
+    reorderWorkspaceTabs,
+    sessionOrderIdsByProject,
+    reorderSessionTabs,
     openFiles,
     activeFileTab,
     closeFile,
     reorderOpenFiles,
     setActiveFileTab,
-    activeWorkspace,
-    workspaces,
-    openWorkspaceTabIds,
-    closeWorkspaceTab,
-    openWorkspaceTab,
     setWorkspace,
     setWorkspaces,
     isSessionPinned,
@@ -86,7 +89,9 @@ function App() {
     toggleRightPanelPin
   } = useWorkspaceStore();
 
-  const [draggedTabIndex, setDraggedTabIndex] = useState<number | null>(null);
+  const [draggedFileTabIndex, setDraggedFileTabIndex] = useState<number | null>(null);
+  const [draggedProjectTabIndex, setDraggedProjectTabIndex] = useState<number | null>(null);
+  const [draggedSessionTabIndex, setDraggedSessionTabIndex] = useState<number | null>(null);
   const [isRightPaneExpanded, setIsRightPaneExpanded] = useState(true);
   const [activeFatherTabId, setActiveFatherTabId] = useState('');
   const [isLeftPanelHovered, setIsLeftPanelHovered] = useState(false);
@@ -551,17 +556,46 @@ function App() {
     return pastSessions.filter(s => s.cwd === projectPath);
   };
 
-  // Filter open workspaces for top tab bar
-  const openWorkspaces = workspaces.filter(
-    (ws) => openWorkspaceTabIds.length === 0 || openWorkspaceTabIds.includes(ws.id)
-  );
+  // Filter and sort open workspaces for top tab bar preserving tab order
+  const openWorkspaces = useMemo(() => {
+    if (openWorkspaceTabIds.length === 0) {
+      return workspaces;
+    }
+    const wsMap = new Map(workspaces.map((w) => [w.id, w]));
+    const ordered: typeof workspaces = [];
+    openWorkspaceTabIds.forEach((id) => {
+      const ws = wsMap.get(id);
+      if (ws) {
+        ordered.push(ws);
+        wsMap.delete(id);
+      }
+    });
+    // Include any remaining workspaces not explicitly listed in openWorkspaceTabIds
+    wsMap.forEach((ws) => ordered.push(ws));
+    return ordered;
+  }, [workspaces, openWorkspaceTabIds]);
+
   const activeSession = activeSessionId ? sessions[activeSessionId] : undefined;
   const canSplitActiveShell = Boolean(
     activeSession && isLocalShell(activeSession.cmd || activeSession.agentType, activeSession.ssh_host)
   );
 
-  // Filter active sessions belonging to the active project path
-  const activeProjectSessions = Object.values(sessions).filter(s => s.cwd === (activeWorkspace?.path || ''));
+  // Filter active sessions belonging to the active project path, sorted by customized session order
+  const activeProjectSessions = useMemo(() => {
+    const projectPath = activeWorkspace?.path || '';
+    const projectId = activeWorkspace?.id || 'default';
+    const list = Object.values(sessions).filter((s) => s.cwd === projectPath);
+    const order = sessionOrderIdsByProject[projectId] || [];
+    if (order.length === 0) return list;
+    return [...list].sort((a, b) => {
+      const idxA = order.indexOf(a.id);
+      const idxB = order.indexOf(b.id);
+      if (idxA === -1 && idxB === -1) return 0;
+      if (idxA === -1) return 1;
+      if (idxB === -1) return -1;
+      return idxA - idxB;
+    });
+  }, [sessions, activeWorkspace, sessionOrderIdsByProject]);
 
   return (
     <div className="flex h-screen w-screen bg-surface text-zinc-100 overflow-hidden font-sans flex-col select-none relative">
@@ -727,8 +761,19 @@ function App() {
                   {workspaces.map((ws) => {
                     const isExpanded = expandedProjects[ws.id];
                     const isActive = activeWorkspace?.id === ws.id;
-                    // Filter active sessions inside this project
-                    const projectSessions = Object.values(sessions).filter(s => s.cwd === ws.path);
+                    // Filter active sessions inside this project respecting custom order
+                    const rawProjectSessions = Object.values(sessions).filter(s => s.cwd === ws.path);
+                    const wsSessionOrder = sessionOrderIdsByProject[ws.id] || [];
+                    const projectSessions = wsSessionOrder.length > 0
+                      ? [...rawProjectSessions].sort((a, b) => {
+                          const idxA = wsSessionOrder.indexOf(a.id);
+                          const idxB = wsSessionOrder.indexOf(b.id);
+                          if (idxA === -1 && idxB === -1) return 0;
+                          if (idxA === -1) return 1;
+                          if (idxB === -1) return -1;
+                          return idxA - idxB;
+                        })
+                      : rawProjectSessions;
 
                     return (
                       <div key={ws.id} className="space-y-1">
@@ -754,7 +799,7 @@ function App() {
                               {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                             </button>
                             <Folder size={14} className={isActive ? 'text-brand-light' : 'text-zinc-500'} />
-                            <span className="text-xs truncate font-mono">{ws.name}</span>
+                            <span className="text-xs font-mono font-medium truncate">{ws.name}</span>
                           </div>
                           
                           {/* Action buttons next to project name on hover */}
@@ -795,7 +840,7 @@ function App() {
                                 }`}
                               >
                                 <div className="flex items-center space-x-2 truncate min-w-0 flex-1 mr-1">
-                                  <AgentIcon name={session.agentType} size={20} />
+                                  <AgentIcon name={session.agentType} size={20} selected={activeSessionId === session.id} />
                                   {editingSessionId === session.id ? (
                                     <input
                                       type="text"
@@ -939,12 +984,34 @@ function App() {
             </button>
 
             {/* Project tabs */}
-            {openWorkspaces.map((ws) => {
+            {openWorkspaces.map((ws, index) => {
               const isActive = activeFatherTabId === ws.id;
               return (
                 <div
                   key={ws.id}
-                  className={`group relative flex items-center border-b-2 transition shrink-0 ${
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggedProjectTabIndex(index);
+                    e.dataTransfer.setData('text/plain', index.toString());
+                    e.dataTransfer.effectAllowed = 'move';
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const fromIndex =
+                      draggedProjectTabIndex !== null
+                        ? draggedProjectTabIndex
+                        : parseInt(e.dataTransfer.getData('text/plain'), 10);
+                    if (!isNaN(fromIndex)) {
+                      reorderWorkspaceTabs(fromIndex, index);
+                    }
+                    setDraggedProjectTabIndex(null);
+                  }}
+                  onDragEnd={() => setDraggedProjectTabIndex(null)}
+                  className={`group relative flex items-center border-b-2 transition shrink-0 cursor-grab active:cursor-grabbing ${
                     isActive
                       ? 'border-brand text-brand-light bg-surface-1/40 font-bold'
                       : 'border-transparent text-zinc-500 hover:text-zinc-350 hover:bg-surface-2/5 font-semibold'
@@ -957,7 +1024,7 @@ function App() {
                     }}
                     className="flex items-center space-x-1.5 pl-3.5 pr-1.5 py-2.5 text-xs cursor-pointer"
                   >
-                    <Folder size={12} className={isActive ? 'text-brand-light' : 'text-zinc-650'} />
+                    <Folder size={12} className={isActive ? 'text-brand-light drop-shadow-[0_0_6px_rgba(249,115,22,0.4)]' : 'text-zinc-650'} />
                     <span>{ws.name}</span>
                   </button>
 
@@ -1008,14 +1075,36 @@ function App() {
                   <div className="flex-1 flex items-center space-x-2 overflow-x-auto min-w-0 mr-2 scrollbar-none">
                     <span title="Active Terminal Sessions"><SquareTerminal size={14} className="text-brand-light shrink-0" /></span>
                     {sessionDeleteError && <span className="text-[9px] text-rose-400 truncate" title={sessionDeleteError}>{sessionDeleteError}</span>}
-                    {activeProjectSessions.map((session) => {
+                    {activeProjectSessions.map((session, index) => {
                       const isSelected = activeSessionId === session.id;
                       return (
                         <div
                           key={session.id}
-                          className={`flex items-center space-x-1.5 px-2 py-0.5 rounded text-[10px] font-mono border transition shrink-0 ${
+                          draggable
+                          onDragStart={(e) => {
+                            setDraggedSessionTabIndex(index);
+                            e.dataTransfer.setData('text/plain', index.toString());
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const fromIndex =
+                              draggedSessionTabIndex !== null
+                                ? draggedSessionTabIndex
+                                : parseInt(e.dataTransfer.getData('text/plain'), 10);
+                            if (!isNaN(fromIndex) && activeWorkspace) {
+                              reorderSessionTabs(activeWorkspace.id, fromIndex, index);
+                            }
+                            setDraggedSessionTabIndex(null);
+                          }}
+                          onDragEnd={() => setDraggedSessionTabIndex(null)}
+                          className={`group flex items-center space-x-1.5 px-2 py-0.5 rounded text-[10px] font-mono border transition shrink-0 cursor-grab active:cursor-grabbing ${
                             isSelected
-                              ? 'bg-brand/10 border-brand/40 text-brand-light font-bold'
+                              ? 'bg-brand/10 border-brand/40 text-brand-light font-bold shadow-sm'
                               : 'bg-surface-3/30 border-surface-3 text-zinc-450 hover:text-zinc-200'
                           }`}
                         >
@@ -1023,7 +1112,12 @@ function App() {
                             onClick={() => handleSelectSession(activeWorkspace, session.id)}
                             className="flex items-center space-x-1.5 cursor-pointer py-0.5"
                           >
-                            <AgentIcon name={session.agentType} size={16} />
+                            <AgentIcon
+                              name={session.agentType}
+                              size={16}
+                              selected={isSelected}
+                              className="cursor-grab active:cursor-grabbing group-hover:scale-105"
+                            />
                             <span>{session.name || session.agentType}</span>
                             <span className="text-[8px] text-zinc-500 font-normal">({session.id.substring(8, 12)})</span>
                           </button>
@@ -1112,7 +1206,7 @@ function App() {
                             key={f.path}
                             draggable
                             onDragStart={(e) => {
-                              setDraggedTabIndex(index);
+                              setDraggedFileTabIndex(index);
                               e.dataTransfer.setData('text/plain', index.toString());
                             }}
                             onDragOver={(e) => {
@@ -1121,15 +1215,15 @@ function App() {
                             onDrop={(e) => {
                               e.preventDefault();
                               const fromIndex =
-                                draggedTabIndex !== null
-                                  ? draggedTabIndex
+                                draggedFileTabIndex !== null
+                                  ? draggedFileTabIndex
                                   : parseInt(e.dataTransfer.getData('text/plain'), 10);
                               if (!isNaN(fromIndex)) {
                                 reorderOpenFiles(fromIndex, index);
                               }
-                              setDraggedTabIndex(null);
+                              setDraggedFileTabIndex(null);
                             }}
-                            onDragEnd={() => setDraggedTabIndex(null)}
+                            onDragEnd={() => setDraggedFileTabIndex(null)}
                             className={`flex items-center space-x-1 border-r border-surface-2 border-b-2 transition shrink-0 cursor-grab active:cursor-grabbing ${
                               isActive
                                 ? 'border-brand text-zinc-100 bg-surface/40'
