@@ -94,8 +94,23 @@ const MarkdownImage: React.FC<{ src?: string; alt?: string; activeFilePath: stri
   );
 };
 
-export const FilePreview: React.FC = () => {
-  const { activeFilePath, activeFileLine, fileNavigationCounter, setActiveFileContent, fileUpdateCounter } = useWorkspaceStore();
+export interface FilePreviewProps {
+  filePath?: string;
+  isVisible?: boolean;
+}
+
+export const FilePreview: React.FC<FilePreviewProps> = ({ filePath: propFilePath, isVisible = true }) => {
+  const {
+    activeFilePath: storeActiveFilePath,
+    activeFileLine,
+    fileNavigationCounter,
+    setActiveFileContent,
+    fileUpdateCounter
+  } = useWorkspaceStore();
+
+  const activeFilePath = propFilePath || storeActiveFilePath;
+  const isCurrentFileActive = Boolean(activeFilePath && activeFilePath === storeActiveFilePath && isVisible);
+
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editorVal, setEditorVal] = useState<string>('');
@@ -142,7 +157,7 @@ export const FilePreview: React.FC = () => {
   useEffect(() => {
     if (!activeFilePath) return;
 
-    // Reset editing state on file swap
+    // Initialize editing state on file load
     setIsEditMode(activeFileLine ? true : !isPreviewable);
     setLoadError(null);
     setConfirmCreate(false);
@@ -170,7 +185,9 @@ export const FilePreview: React.FC = () => {
           const text = await invoke<string>('read_file_content', { path: activeFilePath });
           setTextContent(text);
           setEditorVal(text);
-          setActiveFileContent(text);
+          if (isCurrentFileActive) {
+            setActiveFileContent(text);
+          }
         }
       } catch (err: any) {
         console.error('Error loading file preview:', err);
@@ -185,12 +202,19 @@ export const FilePreview: React.FC = () => {
     loadData();
   }, [activeFilePath, fileUpdateCounter]);
 
+  // Layout recalculation and line reveal when tab becomes visible or receives navigation
   useEffect(() => {
-    if (!activeFileLine || isLoading) return;
-    setIsEditMode(true);
-    editorRef.current?.setPosition({ lineNumber: activeFileLine, column: 1 });
-    editorRef.current?.revealLineInCenter(activeFileLine);
-  }, [activeFileLine, fileNavigationCounter, isLoading]);
+    if (!isVisible) return;
+    if (editorRef.current) {
+      editorRef.current.layout();
+    }
+    if (isCurrentFileActive && activeFileLine && !isLoading) {
+      setIsEditMode(true);
+      editorRef.current?.setPosition({ lineNumber: activeFileLine, column: 1 });
+      editorRef.current?.revealLineInCenter(activeFileLine);
+      editorRef.current?.focus();
+    }
+  }, [isVisible, isCurrentFileActive, activeFileLine, fileNavigationCounter, isLoading]);
 
   const handleEditorMount: OnMount = (editor) => {
     editorRef.current = editor;
@@ -203,7 +227,7 @@ export const FilePreview: React.FC = () => {
     editorNode?.addEventListener('mouseover', suppressFindControlTooltip, true);
     editor.onDidDispose(() => editorNode?.removeEventListener('mouseover', suppressFindControlTooltip, true));
 
-    if (activeFileLine) {
+    if (isCurrentFileActive && activeFileLine) {
       editor.setPosition({ lineNumber: activeFileLine, column: 1 });
       editor.revealLineInCenter(activeFileLine);
       editor.focus();
@@ -223,6 +247,9 @@ export const FilePreview: React.FC = () => {
     const val = value || '';
     setEditorVal(val);
     setIsSaved(val === textContent);
+    if (isCurrentFileActive) {
+      setActiveFileContent(val);
+    }
   };
 
   const saveFile = async (allowCreate = false) => {
@@ -233,7 +260,9 @@ export const FilePreview: React.FC = () => {
       }
       await invoke('write_file_content', { path: activeFilePath, content: editorVal });
       setTextContent(editorVal);
-      setActiveFileContent(editorVal);
+      if (isCurrentFileActive) {
+        setActiveFileContent(editorVal);
+      }
       setIsSaved(true);
       setConfirmCreate(false);
       setSaveError(null);

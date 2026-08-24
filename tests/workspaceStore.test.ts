@@ -18,6 +18,11 @@ const resetPaneState = () => {
       'sess-3': { id: 'sess-3', name: 'Shell 3', agentType: 'gemini', cwd: '/proj1' },
     },
     sessionOrderIdsByProject: {},
+    openFiles: [],
+    openFilesByProject: {},
+    activeFileTab: null,
+    activeFilePath: null,
+    activeFileTabByProject: {},
     paneLayout: {
       type: '1x2',
       activePaneIndex: 0,
@@ -108,4 +113,34 @@ test('reorders session tabs for specific workspace correctly', () => {
   // Move sess-3 (index 1) to index 0
   store.reorderSessionTabs('proj-1', 1, 0);
   assert.deepEqual(useWorkspaceStore.getState().sessionOrderIdsByProject['proj-1'], ['sess-3', 'sess-2', 'sess-1']);
+});
+
+test('manages multiple open file tabs and active tab switching correctly', () => {
+  resetPaneState();
+  const store = useWorkspaceStore.getState();
+
+  // Open file A
+  store.openFile('/project/src/a.ts', 'a.ts');
+  assert.equal(useWorkspaceStore.getState().activeFileTab, '/project/src/a.ts');
+  assert.equal(useWorkspaceStore.getState().openFiles.length, 1);
+
+  // Open file B
+  store.openFile('/project/src/b.ts', 'b.ts');
+  assert.equal(useWorkspaceStore.getState().activeFileTab, '/project/src/b.ts');
+  assert.equal(useWorkspaceStore.getState().openFiles.length, 2);
+  assert.deepEqual(useWorkspaceStore.getState().openFiles, [
+    { path: '/project/src/a.ts', name: 'a.ts' },
+    { path: '/project/src/b.ts', name: 'b.ts' },
+  ]);
+
+  // Switch active tab back to file A
+  store.setActiveFileTab('/project/src/a.ts');
+  assert.equal(useWorkspaceStore.getState().activeFileTab, '/project/src/a.ts');
+  // Open files list must remain intact with all opened files
+  assert.equal(useWorkspaceStore.getState().openFiles.length, 2);
+
+  // Close file B
+  store.closeFile('/project/src/b.ts');
+  assert.equal(useWorkspaceStore.getState().activeFileTab, '/project/src/a.ts');
+  assert.equal(useWorkspaceStore.getState().openFiles.length, 1);
 });

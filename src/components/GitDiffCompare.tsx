@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DiffEditor } from '@monaco-editor/react';
 import { invoke } from '@tauri-apps/api/core';
 import { useWorkspaceStore } from '../store/workspaceStore';
@@ -6,14 +6,22 @@ import { AlertCircle, FileCode } from 'lucide-react';
 
 interface GitDiffCompareProps {
   tabPath: string; // format: "git-diff:commit_hash:file_path"
+  isVisible?: boolean;
 }
 
-export const GitDiffCompare: React.FC<GitDiffCompareProps> = ({ tabPath }) => {
+export const GitDiffCompare: React.FC<GitDiffCompareProps> = ({ tabPath, isVisible = true }) => {
   const { activeWorkspace } = useWorkspaceStore();
+  const diffEditorRef = useRef<any>(null);
   const [originalContent, setOriginalContent] = useState<string>('');
   const [modifiedContent, setModifiedContent] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isVisible && diffEditorRef.current) {
+      diffEditorRef.current.layout();
+    }
+  }, [isVisible]);
 
   const workspacePath = activeWorkspace?.path || '/Users/ray/git-repo/black_tde';
 
@@ -127,6 +135,9 @@ export const GitDiffCompare: React.FC<GitDiffCompareProps> = ({ tabPath }) => {
           original={originalContent}
           modified={modifiedContent}
           language={getLanguage(filePath)}
+          onMount={(editor) => {
+            diffEditorRef.current = editor;
+          }}
           theme="vs-dark"
           options={{
             readOnly: true,

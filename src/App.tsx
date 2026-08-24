@@ -1295,18 +1295,38 @@ function App() {
                   />
                 )}
 
-                {/* Active File Preview / Diff View */}
+                {/* Active File Preview / Diff View Container */}
                 {activeFileTab !== null && (
                   <div
                     style={{
                       width: isSessionPinned ? `${100 - pinnedSessionWidthPercent}%` : '100%'
                     }}
-                    className="h-full min-w-0 bg-[#0a0a0a] overflow-hidden flex-1"
+                    className="relative h-full min-w-0 bg-[#0a0a0a] overflow-hidden flex-1"
                   >
-                    {activeFileTab.startsWith('git-diff:') ? (
-                      <GitDiffCompare tabPath={activeFileTab} />
-                    ) : (
-                      <FilePreview />
+                    {openFiles.map((f) => {
+                      const isVisible = activeFileTab === f.path;
+                      return (
+                        <div
+                          key={f.path}
+                          className={isVisible ? 'w-full h-full' : 'hidden'}
+                          aria-hidden={!isVisible}
+                        >
+                          {f.path.startsWith('git-diff:') ? (
+                            <GitDiffCompare tabPath={f.path} isVisible={isVisible} />
+                          ) : (
+                            <FilePreview filePath={f.path} isVisible={isVisible} />
+                          )}
+                        </div>
+                      );
+                    })}
+                    {activeFileTab && !openFiles.some((f) => f.path === activeFileTab) && (
+                      <div className="w-full h-full">
+                        {activeFileTab.startsWith('git-diff:') ? (
+                          <GitDiffCompare tabPath={activeFileTab} isVisible={true} />
+                        ) : (
+                          <FilePreview filePath={activeFileTab} isVisible={true} />
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
