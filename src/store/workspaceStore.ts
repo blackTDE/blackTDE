@@ -163,7 +163,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
   rightPanelWidth: 320,
   pinnedSessionWidthPercent: 50,
   isLeftPanelPinned: false,
-  isRightPanelPinned: true,
+  isRightPanelPinned: false,
 
   openWorkspaceTabIds: [],
   sessionOrderIdsByProject: {},

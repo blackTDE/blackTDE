@@ -8,7 +8,7 @@ test('manages panel widths and left/right panel pin states', () => {
   assert.equal(store.rightPanelWidth, 320);
   assert.equal(store.pinnedSessionWidthPercent, 50);
   assert.equal(store.isLeftPanelPinned, false); // Default auto-hide for left panel
-  assert.equal(store.isRightPanelPinned, true);
+  assert.equal(store.isRightPanelPinned, false); // Default auto-hide for right panel
 
   store.setLeftPanelWidth(400);
   assert.equal(useWorkspaceStore.getState().leftPanelWidth, 400);
@@ -28,8 +28,8 @@ test('manages panel widths and left/right panel pin states', () => {
 
   // Right panel pin toggle & set
   store.toggleRightPanelPin();
-  assert.equal(useWorkspaceStore.getState().isRightPanelPinned, false);
-
-  store.setRightPanelPinned(true);
   assert.equal(useWorkspaceStore.getState().isRightPanelPinned, true);
+
+  store.setRightPanelPinned(false);
+  assert.equal(useWorkspaceStore.getState().isRightPanelPinned, false);
 });

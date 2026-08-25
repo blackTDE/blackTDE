@@ -92,7 +92,7 @@ function App() {
   const [draggedFileTabIndex, setDraggedFileTabIndex] = useState<number | null>(null);
   const [draggedProjectTabIndex, setDraggedProjectTabIndex] = useState<number | null>(null);
   const [draggedSessionTabIndex, setDraggedSessionTabIndex] = useState<number | null>(null);
-  const [isRightPaneExpanded, setIsRightPaneExpanded] = useState(true);
+  const [isRightPanelHovered, setIsRightPanelHovered] = useState(false);
   const [activeFatherTabId, setActiveFatherTabId] = useState('');
   const [isLeftPanelHovered, setIsLeftPanelHovered] = useState(false);
 
@@ -389,7 +389,7 @@ function App() {
       const isCmdOrCtrl = e.metaKey || e.ctrlKey;
       if (isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
-        setIsRightPaneExpanded(true);
+        setIsRightPanelHovered(true);
         setActiveRightPanel('search');
       }
     };
@@ -408,12 +408,6 @@ function App() {
       unlistenPromise.then((unlisten) => unlisten());
     };
   }, []);
-
-  useEffect(() => {
-    if (activeFileTab) {
-      setIsRightPaneExpanded(true);
-    }
-  }, [activeFileTab]);
 
   const handleCreateSession = async () => {
     if (isSpawningSession) return;
@@ -942,114 +936,139 @@ function App() {
         {/* Center Panel (Swappable Workbench) */}
         <div className="flex-grow flex flex-col min-w-0 bg-surface">
           {/* Level 1: Father Tabs (Projects/Workspaces list + Settings Tab) */}
-          <div className="shrink-0 flex items-center border-b border-surface-2 bg-surface-2/20 overflow-x-auto select-none">
-            {/* Auto-Hide / Fix Sidebar Button */}
+          <div className="shrink-0 flex items-center justify-between border-b border-surface-2 bg-surface-2/20 select-none">
+            <div className="flex items-center overflow-x-auto min-w-0 flex-1 scrollbar-none">
+              {/* Auto-Hide / Fix Sidebar Button */}
+              <button
+                onClick={() => {
+                  toggleLeftPanelPin();
+                  setIsLeftPanelHovered(false);
+                }}
+                onMouseEnter={() => {
+                  if (!isLeftPanelPinned) {
+                    setIsLeftPanelHovered(true);
+                  }
+                }}
+                className={`flex items-center justify-center px-3 py-3 border-r border-surface-2 hover:bg-surface-2/15 transition cursor-pointer shrink-0 ${
+                  isLeftPanelPinned ? 'bg-surface-1/40 text-brand-light' : 'text-zinc-500 hover:text-zinc-200'
+                }`}
+                title={
+                  isLeftPanelPinned
+                    ? "Project Tree is fixed in layout. Click to enable Auto-Hide (Unpin)"
+                    : "Auto-Hide is active (Hover left edge to pop out). Click to fix Project Tree in layout (Pin)"
+                }
+              >
+                <Pin size={13} className={isLeftPanelPinned ? 'rotate-45 text-brand-light' : 'text-zinc-500'} />
+              </button>
+
+              {/* Settings button on the far left of Level 1 */}
+              <button
+                onClick={() => {
+                  if (activeFatherTabId === 'settings') {
+                    setActiveFatherTabId(activeWorkspace?.id || '');
+                  } else {
+                    setActiveFatherTabId('settings');
+                  }
+                }}
+                className={`flex items-center justify-center px-3 py-3 border-r border-surface-2 hover:bg-surface-2/15 transition cursor-pointer text-zinc-500 hover:text-zinc-200 shrink-0 ${
+                  activeFatherTabId === 'settings' ? 'bg-surface-1/40 text-brand-light' : ''
+                }`}
+                title={activeFatherTabId === 'settings' ? "Close Settings" : "Open Settings"}
+              >
+                <Settings size={13} />
+              </button>
+
+              {/* Project tabs */}
+              {openWorkspaces.map((ws, index) => {
+                const isActive = activeFatherTabId === ws.id;
+                return (
+                  <div
+                    key={ws.id}
+                    draggable
+                    onDragStart={(e) => {
+                      setDraggedProjectTabIndex(index);
+                      e.dataTransfer.setData('text/plain', index.toString());
+                      e.dataTransfer.effectAllowed = 'move';
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const fromIndex =
+                        draggedProjectTabIndex !== null
+                          ? draggedProjectTabIndex
+                          : parseInt(e.dataTransfer.getData('text/plain'), 10);
+                      if (!isNaN(fromIndex)) {
+                        reorderWorkspaceTabs(fromIndex, index);
+                      }
+                      setDraggedProjectTabIndex(null);
+                    }}
+                    onDragEnd={() => setDraggedProjectTabIndex(null)}
+                    className={`group relative flex items-center border-b-2 transition shrink-0 cursor-grab active:cursor-grabbing ${
+                      isActive
+                        ? 'border-brand text-brand-light bg-surface-1/40 font-bold'
+                        : 'border-transparent text-zinc-500 hover:text-zinc-350 hover:bg-surface-2/5 font-semibold'
+                    }`}
+                  >
+                    <button
+                      onClick={() => {
+                        handleSelectProject(ws);
+                        setActiveFatherTabId(ws.id);
+                      }}
+                      className="flex items-center space-x-1.5 pl-3.5 pr-1.5 py-2.5 text-xs cursor-pointer"
+                    >
+                      <Folder size={12} className={isActive ? 'text-brand-light drop-shadow-[0_0_6px_rgba(249,115,22,0.4)]' : 'text-zinc-650'} />
+                      <span>{ws.name}</span>
+                    </button>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeWorkspaceTab(ws.id);
+                        if (activeFatherTabId === ws.id) {
+                          const remaining = openWorkspaces.filter((w) => w.id !== ws.id);
+                          if (remaining.length > 0) {
+                            handleSelectProject(remaining[0]);
+                            setActiveFatherTabId(remaining[0].id);
+                          } else {
+                            setActiveFatherTabId('');
+                          }
+                        }
+                      }}
+                      className="pr-2.5 opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-rose-450 transition cursor-pointer"
+                      title={`Close ${ws.name} tab`}
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Right Panel Pin / Auto-Hide Switch on Far Right of Level 1 */}
             <button
               onClick={() => {
-                toggleLeftPanelPin();
-                setIsLeftPanelHovered(false);
+                toggleRightPanelPin();
+                setIsRightPanelHovered(false);
               }}
               onMouseEnter={() => {
-                if (!isLeftPanelPinned) {
-                  setIsLeftPanelHovered(true);
+                if (!isRightPanelPinned) {
+                  setIsRightPanelHovered(true);
                 }
               }}
-              className={`flex items-center justify-center px-3 py-3 border-r border-surface-2 hover:bg-surface-2/15 transition cursor-pointer shrink-0 ${
-                isLeftPanelPinned ? 'bg-surface-1/40 text-brand-light' : 'text-zinc-500 hover:text-zinc-200'
+              className={`flex items-center justify-center px-3 py-3 border-l border-surface-2 hover:bg-surface-2/15 transition cursor-pointer shrink-0 ${
+                isRightPanelPinned ? 'bg-surface-1/40 text-brand-light' : 'text-zinc-500 hover:text-zinc-200'
               }`}
               title={
-                isLeftPanelPinned
-                  ? "Project Tree is fixed in layout. Click to enable Auto-Hide (Unpin)"
-                  : "Auto-Hide is active (Hover left edge to pop out). Click to fix Project Tree in layout (Pin)"
+                isRightPanelPinned
+                  ? "Multi-Menu Panel is fixed in layout. Click to enable Auto-Hide (Unpin)"
+                  : "Auto-Hide is active (Hover right edge to pop out). Click to fix Multi-Menu Panel in layout (Pin)"
               }
             >
-              <Pin size={13} className={isLeftPanelPinned ? 'rotate-45 text-brand-light' : 'text-zinc-500'} />
+              <Pin size={13} className={isRightPanelPinned ? 'rotate-45 text-brand-light' : 'text-zinc-500'} />
             </button>
-
-            {/* Settings button on the far left of Level 1 */}
-            <button
-              onClick={() => {
-                if (activeFatherTabId === 'settings') {
-                  setActiveFatherTabId(activeWorkspace?.id || '');
-                } else {
-                  setActiveFatherTabId('settings');
-                }
-              }}
-              className={`flex items-center justify-center px-3 py-3 border-r border-surface-2 hover:bg-surface-2/15 transition cursor-pointer text-zinc-500 hover:text-zinc-200 shrink-0 ${
-                activeFatherTabId === 'settings' ? 'bg-surface-1/40 text-brand-light' : ''
-              }`}
-              title={activeFatherTabId === 'settings' ? "Close Settings" : "Open Settings"}
-            >
-              <Settings size={13} />
-            </button>
-
-            {/* Project tabs */}
-            {openWorkspaces.map((ws, index) => {
-              const isActive = activeFatherTabId === ws.id;
-              return (
-                <div
-                  key={ws.id}
-                  draggable
-                  onDragStart={(e) => {
-                    setDraggedProjectTabIndex(index);
-                    e.dataTransfer.setData('text/plain', index.toString());
-                    e.dataTransfer.effectAllowed = 'move';
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'move';
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const fromIndex =
-                      draggedProjectTabIndex !== null
-                        ? draggedProjectTabIndex
-                        : parseInt(e.dataTransfer.getData('text/plain'), 10);
-                    if (!isNaN(fromIndex)) {
-                      reorderWorkspaceTabs(fromIndex, index);
-                    }
-                    setDraggedProjectTabIndex(null);
-                  }}
-                  onDragEnd={() => setDraggedProjectTabIndex(null)}
-                  className={`group relative flex items-center border-b-2 transition shrink-0 cursor-grab active:cursor-grabbing ${
-                    isActive
-                      ? 'border-brand text-brand-light bg-surface-1/40 font-bold'
-                      : 'border-transparent text-zinc-500 hover:text-zinc-350 hover:bg-surface-2/5 font-semibold'
-                  }`}
-                >
-                  <button
-                    onClick={() => {
-                      handleSelectProject(ws);
-                      setActiveFatherTabId(ws.id);
-                    }}
-                    className="flex items-center space-x-1.5 pl-3.5 pr-1.5 py-2.5 text-xs cursor-pointer"
-                  >
-                    <Folder size={12} className={isActive ? 'text-brand-light drop-shadow-[0_0_6px_rgba(249,115,22,0.4)]' : 'text-zinc-650'} />
-                    <span>{ws.name}</span>
-                  </button>
-
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      closeWorkspaceTab(ws.id);
-                      if (activeFatherTabId === ws.id) {
-                        const remaining = openWorkspaces.filter((w) => w.id !== ws.id);
-                        if (remaining.length > 0) {
-                          handleSelectProject(remaining[0]);
-                          setActiveFatherTabId(remaining[0].id);
-                        } else {
-                          setActiveFatherTabId('');
-                        }
-                      }
-                    }}
-                    className="pr-2.5 opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-rose-450 transition cursor-pointer"
-                    title={`Close ${ws.name} tab`}
-                  >
-                    <X size={10} />
-                  </button>
-                </div>
-              );
-            })}
           </div>
 
           {activeFatherTabId === 'settings' && (
@@ -1335,7 +1354,7 @@ function App() {
         </div>
 
         {/* Right Resizer Handle Divider (Only when Pinned) */}
-        {isRightPaneExpanded && isRightPanelPinned && (
+        {isRightPanelPinned && (
           <div
             onMouseDown={handleRightResizeStart}
             className="w-1.5 hover:w-1.5 cursor-col-resize bg-surface-2/40 hover:bg-brand/60 transition-all z-20 shrink-0 select-none"
@@ -1343,26 +1362,35 @@ function App() {
           />
         )}
 
-        {/* Right Panel (Inspector tabs) */}
-        {isRightPaneExpanded ? (
+        {/* Right Edge Hover Trigger Zone (Active in Auto-Hide mode when panel is closed) */}
+        {!isRightPanelPinned && !isRightPanelHovered && (
+          <div
+            onMouseEnter={() => setIsRightPanelHovered(true)}
+            className="absolute right-0 top-0 bottom-0 w-2.5 z-30 cursor-pointer bg-transparent hover:bg-brand/30 transition-colors"
+            title="Hover to show Multi-Menu Panel"
+          />
+        )}
+
+        {/* Right Panel (Inspector tabs) - Rendered when Pinned or Hovered */}
+        {(isRightPanelPinned || isRightPanelHovered) && (
           <div
             style={{ width: `${rightPanelWidth}px` }}
             onMouseLeave={() => {
               if (!isRightPanelPinned) {
-                setIsRightPaneExpanded(false);
+                setIsRightPanelHovered(false);
               }
             }}
-            className={`bg-surface-1 flex flex-col overflow-hidden transition-all border-l border-surface-2 ${
+            className={`bg-surface-1 flex flex-col select-none overflow-hidden font-sans transition-all border-l border-surface-2 ${
               isRightPanelPinned
                 ? 'shrink-0 z-10'
-                : 'absolute right-0 top-0 bottom-0 z-30 shadow-2xl'
+                : 'absolute right-0 top-0 bottom-0 z-40 shadow-2xl animate-in slide-in-from-right-2 duration-150'
             }`}
           >
             {/* Floating Resizer Handle on Left Edge when Unpinned */}
             {!isRightPanelPinned && (
               <div
                 onMouseDown={handleRightResizeStart}
-                className="absolute left-0 top-0 bottom-0 w-1.5 hover:w-2 cursor-col-resize bg-transparent hover:bg-brand/60 transition-all z-40 select-none"
+                className="absolute left-0 top-0 bottom-0 w-1.5 hover:w-2 cursor-col-resize bg-transparent hover:bg-brand/60 transition-all z-50 select-none"
                 title="Drag to resize Right Inspector Panel"
               />
             )}
@@ -1416,22 +1444,31 @@ function App() {
               {/* Pin / Unpin Button */}
               <button
                 type="button"
-                onClick={toggleRightPanelPin}
+                onClick={() => {
+                  toggleRightPanelPin();
+                  setIsRightPanelHovered(false);
+                }}
                 className={`px-2.5 text-zinc-500 hover:text-zinc-200 transition cursor-pointer ${
                   isRightPanelPinned ? 'text-brand-light' : ''
                 }`}
-                title={isRightPanelPinned ? "Unpin Right Panel (Auto-Hide on mouse leave)" : "Pin Right Panel (Keep open)"}
+                title={
+                  isRightPanelPinned
+                    ? "Multi-Menu Panel is fixed in layout. Click to enable Auto-Hide (Unpin)"
+                    : "Auto-Hide is active (Hover right edge to pop out). Click to fix Multi-Menu Panel in layout (Pin)"
+                }
               >
                 <Pin size={12} className={isRightPanelPinned ? 'rotate-45 text-brand-light' : 'text-zinc-500'} />
               </button>
 
-              <button
-                onClick={() => setIsRightPaneExpanded(false)}
-                className="pr-3 text-zinc-500 hover:text-zinc-300 transition cursor-pointer"
-                title="Collapse Panel"
-              >
-                <Minimize2 size={13} />
-              </button>
+              {!isRightPanelPinned && (
+                <button
+                  onClick={() => setIsRightPanelHovered(false)}
+                  className="pr-3 text-zinc-500 hover:text-zinc-300 transition cursor-pointer"
+                  title="Close Panel"
+                >
+                  <Minimize2 size={13} />
+                </button>
+              )}
             </div>
 
             {/* Tab content area */}
@@ -1457,53 +1494,6 @@ function App() {
                 <SearchPanel />
               </div>
             </div>
-          </div>
-        ) : null}
-
-        {/* Expand Right Pane Dock Trigger Bar */}
-        {!isRightPaneExpanded && (
-          <div
-            onMouseEnter={() => {
-              if (!isRightPanelPinned) {
-                if (activeRightPanel === 'none') {
-                  setActiveRightPanel('files');
-                }
-                setIsRightPaneExpanded(true);
-              }
-            }}
-            className="w-10 bg-surface-1 border-l border-surface-2 flex flex-col items-center py-3 space-y-3 shrink-0 select-none z-10 cursor-pointer"
-          >
-            {[
-              { id: 'files', icon: Folder, label: 'Files' },
-              { id: 'git', icon: GitBranch, label: 'Git' },
-              { id: 'search', icon: Search, label: 'Search' },
-              { id: 'skills', icon: Sparkles, label: 'Skills' },
-            ].map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setActiveRightPanel(item.id as any);
-                    setIsRightPaneExpanded(true);
-                  }}
-                  onMouseEnter={() => {
-                    if (!isRightPanelPinned) {
-                      setActiveRightPanel(item.id as any);
-                      setIsRightPaneExpanded(true);
-                    }
-                  }}
-                  className={`p-2 rounded-md transition cursor-pointer ${
-                    activeRightPanel === item.id
-                      ? 'bg-brand/20 text-brand-light'
-                      : 'text-zinc-500 hover:text-zinc-200 hover:bg-surface-2'
-                  }`}
-                  title={`Expand ${item.label}`}
-                >
-                  <Icon size={14} />
-                </button>
-              );
-            })}
           </div>
         )}
 
