@@ -51,3 +51,9 @@ input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--primary);
 }
+
+/* Ensure xterm text selection is always enabled and not blocked by parent select-none */
+.xterm, .xterm-screen, .xterm-rows, .xterm-selection {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}

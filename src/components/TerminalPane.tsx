@@ -74,10 +74,16 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
       fontFamily: "'MesloLGS NF', 'Meslo LGS NF', 'MesloLGS Nerd Font', 'JetBrainsMono Nerd Font', 'JetBrains Mono Nerd Font', 'FiraCode Nerd Font', 'Fira Code Nerd Font', 'Hack Nerd Font', 'Symbols Nerd Font Mono', 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace",
       allowProposedApi: true,
       vtExtensions: { kittyKeyboard: true },
+      mouseEventsRequireAlt: true,
+      macOptionClickForcesSelection: true,
+      rightClickSelectsWord: true,
+      scrollback: 5000,
       theme: {
         background: '#0a0a0a',
         foreground: '#fafafa',
         cursor: '#e5e5e5',
+        selectionBackground: 'rgba(249, 115, 22, 0.35)',
+        selectionInactiveBackground: 'rgba(249, 115, 22, 0.2)',
         black: '#262626',
         red: '#ff6568',
         green: '#86efac',
@@ -260,12 +266,25 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
       void fitAndResize();
     }, 100);
 
+    // Copy selection to clipboard on right click if text is selected
+    const element = containerRef.current;
+    const handleContextMenu = () => {
+      if (term.hasSelection()) {
+        const text = term.getSelection();
+        if (text) {
+          navigator.clipboard.writeText(text).catch(console.error);
+        }
+      }
+    };
+    element.addEventListener('contextmenu', handleContextMenu);
+
     return () => {
       isDisposed = true;
       fitAndResizeRef.current = null;
       clearTimeout(resizeTimeout);
       resizeObserver.disconnect();
       dataDisposer.dispose();
+      element.removeEventListener('contextmenu', handleContextMenu);
       if (unlistenFn) {
         unlistenFn();
       }
@@ -298,23 +317,23 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
 
   if (!sshHost) {
     return (
-      <div className="w-full h-full min-h-0 bg-[#0a0a0a] overflow-hidden">
-        <div ref={containerRef} className="w-full h-full min-h-0" />
+      <div className="w-full h-full min-h-0 bg-[#0a0a0a] overflow-hidden select-text">
+        <div ref={containerRef} className="w-full h-full min-h-0 select-text" />
       </div>
     );
   }
 
   return (
-    <div className="w-full h-full min-h-0 bg-[#0a0a0a] flex flex-col overflow-hidden select-none">
+    <div className="w-full h-full min-h-0 bg-[#0a0a0a] flex flex-col overflow-hidden">
       {/* Upper Panel: Terminal Console */}
-      <div className="flex-grow min-h-0 relative">
-        <div ref={containerRef} className="w-full h-full min-h-0" />
+      <div className="flex-grow min-h-0 relative select-text">
+        <div ref={containerRef} className="w-full h-full min-h-0 select-text" />
       </div>
 
       {/* Resizer Handle */}
       <div
         onMouseDown={handleMouseDown}
-        className="h-1 bg-surface-3 hover:bg-brand cursor-row-resize transition duration-150 relative z-10 border-y border-surface-2/40"
+        className="h-1 bg-surface-3 hover:bg-brand cursor-row-resize transition duration-150 relative z-10 border-y border-surface-2/40 select-none"
       />
 
       {/* Lower Panel: SFTP Remote Explorer */}
