@@ -552,20 +552,14 @@ function App() {
 
   // Filter and sort open workspaces for top tab bar preserving tab order
   const openWorkspaces = useMemo(() => {
-    if (openWorkspaceTabIds.length === 0) {
-      return workspaces;
-    }
     const wsMap = new Map(workspaces.map((w) => [w.id, w]));
     const ordered: typeof workspaces = [];
     openWorkspaceTabIds.forEach((id) => {
       const ws = wsMap.get(id);
       if (ws) {
         ordered.push(ws);
-        wsMap.delete(id);
       }
     });
-    // Include any remaining workspaces not explicitly listed in openWorkspaceTabIds
-    wsMap.forEach((ws) => ordered.push(ws));
     return ordered;
   }, [workspaces, openWorkspaceTabIds]);
 
@@ -1026,13 +1020,14 @@ function App() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        const remaining = openWorkspaces.filter((w) => w.id !== ws.id);
                         closeWorkspaceTab(ws.id);
                         if (activeFatherTabId === ws.id) {
-                          const remaining = openWorkspaces.filter((w) => w.id !== ws.id);
                           if (remaining.length > 0) {
                             handleSelectProject(remaining[0]);
                             setActiveFatherTabId(remaining[0].id);
                           } else {
+                            setWorkspace(null);
                             setActiveFatherTabId('');
                           }
                         }

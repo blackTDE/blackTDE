@@ -215,7 +215,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
       workspaces: wsList,
       openWorkspaceTabIds:
         state.openWorkspaceTabIds.length > 0
-          ? state.openWorkspaceTabIds
+          ? state.openWorkspaceTabIds.filter((tabId) => wsList.some((w) => w.id === tabId))
           : wsList.map((w) => w.id),
     })),
   addWorkspace: (ws) =>
@@ -243,9 +243,15 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
       };
     }),
   closeWorkspaceTab: (id) =>
-    set((state) => ({
-      openWorkspaceTabIds: state.openWorkspaceTabIds.filter((tabId) => tabId !== id),
-    })),
+    set((state) => {
+      const currentTabIds =
+        state.openWorkspaceTabIds.length > 0
+          ? state.openWorkspaceTabIds
+          : state.workspaces.map((w) => w.id);
+      return {
+        openWorkspaceTabIds: currentTabIds.filter((tabId) => tabId !== id),
+      };
+    }),
   openWorkspaceTab: (id) =>
     set((state) => ({
       openWorkspaceTabIds: state.openWorkspaceTabIds.includes(id)

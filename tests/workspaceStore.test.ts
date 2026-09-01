@@ -144,3 +144,24 @@ test('manages multiple open file tabs and active tab switching correctly', () =>
   assert.equal(useWorkspaceStore.getState().activeFileTab, '/project/src/a.ts');
   assert.equal(useWorkspaceStore.getState().openFiles.length, 1);
 });
+
+test('closes and reopens top project workspace tabs correctly', () => {
+  resetPaneState();
+  const store = useWorkspaceStore.getState();
+
+  assert.deepEqual(useWorkspaceStore.getState().openWorkspaceTabIds, ['proj-1', 'proj-2', 'proj-3']);
+
+  // Close proj-2 tab
+  store.closeWorkspaceTab('proj-2');
+  assert.deepEqual(useWorkspaceStore.getState().openWorkspaceTabIds, ['proj-1', 'proj-3']);
+
+  // Reopen proj-2 tab
+  store.openWorkspaceTab('proj-2');
+  assert.deepEqual(useWorkspaceStore.getState().openWorkspaceTabIds, ['proj-1', 'proj-3', 'proj-2']);
+
+  // Close remaining tabs
+  store.closeWorkspaceTab('proj-1');
+  store.closeWorkspaceTab('proj-3');
+  store.closeWorkspaceTab('proj-2');
+  assert.deepEqual(useWorkspaceStore.getState().openWorkspaceTabIds, []);
+});
