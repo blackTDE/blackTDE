@@ -80,6 +80,50 @@ pub fn list_directory(path: String) -> Result<Vec<FileEntry>, String> {
     Ok(entries)
 }
 
+fn decode_text_buffer(buffer: &[u8]) -> (String, bool) {
+    // Check for UTF-16 BOMs
+    if buffer.starts_with(&[0xFE, 0xFF]) || buffer.starts_with(&[0xFF, 0xFE]) {
+        if let Some((enc, bom_len)) = encoding_rs::Encoding::for_bom(buffer) {
+            let (cow, _had_errors) = enc.decode_without_bom_handling(&buffer[bom_len..]);
+            return (cow.into_owned(), false);
+        }
+    }
+
+    // Detect if binary: check for NULL bytes in the first 8000 bytes
+    let sample_len = buffer.len().min(8000);
+    let is_binary = buffer[..sample_len].contains(&0);
+    if is_binary {
+        return (String::new(), true);
+    }
+
+    // Check for UTF-8 BOM
+    if let Some((enc, bom_len)) = encoding_rs::Encoding::for_bom(buffer) {
+        let (cow, _had_errors) = enc.decode_without_bom_handling(&buffer[bom_len..]);
+        return (cow.into_owned(), false);
+    }
+
+    // Try standard UTF-8 validation
+    match std::str::from_utf8(buffer) {
+        Ok(s) => (s.to_string(), false),
+        Err(_) => {
+            // If UTF-8 validation fails, attempt GB18030 (standard Chinese encoding covering GBK, GB2312, and GB18030)
+            let (gbk_cow, gbk_had_errors) = encoding_rs::GB18030.decode_without_bom_handling(buffer);
+            if !gbk_had_errors {
+                (gbk_cow.into_owned(), false)
+            } else {
+                // Try Big5 (Traditional Chinese)
+                let (big5_cow, big5_had_errors) = encoding_rs::BIG5.decode_without_bom_handling(buffer);
+                if !big5_had_errors {
+                    (big5_cow.into_owned(), false)
+                } else {
+                    // Fall back to lossy UTF-8
+                    (String::from_utf8_lossy(buffer).to_string(), false)
+                }
+            }
+        }
+    }
+}
+
 const DEFAULT_MAX_FILE_BYTES: u64 = 4 * 1024 * 1024; // 4 MB chunk limit for large file previews
 
 #[tauri::command]
@@ -107,15 +151,7 @@ pub fn read_file_content(path: String, max_bytes: Option<u64>) -> Result<FileRea
     let mut buffer = vec![0u8; bytes_to_read as usize];
     file.read_exact(&mut buffer).map_err(|e| format!("Failed to read file content: {}", e))?;
 
-    // Detect binary content by checking for NULL bytes in the first 8000 bytes
-    let check_len = buffer.len().min(8000);
-    let is_binary = buffer[..check_len].contains(&0);
-
-    let content = if is_binary {
-        String::new()
-    } else {
-        String::from_utf8_lossy(&buffer).to_string()
-    };
+    let (content, is_binary) = decode_text_buffer(&buffer);
 
     Ok(FileReadResult {
         content,

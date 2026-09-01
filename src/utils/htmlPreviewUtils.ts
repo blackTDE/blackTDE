@@ -129,12 +129,13 @@ export function processHtmlWithBaseUrl(
   const assetUrl = convertFileSrcFn(parentDir);
   const baseAssetUrl = assetUrl.endsWith('/') ? assetUrl : `${assetUrl}/`;
   const baseTag = `<base href="${baseAssetUrl}">`;
+  const metaCharset = /<meta[^>]+charset/i.test(htmlContent) ? '' : '<meta charset="UTF-8">\n  ';
 
   if (/<head[^>]*>/i.test(htmlContent)) {
-    return htmlContent.replace(/(<head[^>]*>)/i, `$1\n  ${baseTag}`);
+    return htmlContent.replace(/(<head[^>]*>)/i, `$1\n  ${metaCharset}${baseTag}`);
   }
 
-  return `${baseTag}\n${htmlContent}`;
+  return `${metaCharset}${baseTag}\n${htmlContent}`;
 }
 
 /**

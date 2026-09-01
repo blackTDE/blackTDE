@@ -74,7 +74,7 @@ test('injects base tag into head when head exists', () => {
   const dummyConvertFileSrc = (p: string) => `asset://localhost${p}`;
 
   const result = processHtmlWithBaseUrl(html, filePath, dummyConvertFileSrc);
-  assert.match(result, /<head>\s*<base href="asset:\/\/localhost\/Users\/ray\/project\/">/);
+  assert.match(result, /<head>\s*<meta charset="UTF-8">\s*<base href="asset:\/\/localhost\/Users\/ray\/project\/">/);
   assert.match(result, /<img src="\.\/pic\.png">/);
 });
 
@@ -84,7 +84,7 @@ test('prepends base tag when head tag is absent', () => {
   const dummyConvertFileSrc = (p: string) => `http://asset.localhost${p}`;
 
   const result = processHtmlWithBaseUrl(html, filePath, dummyConvertFileSrc);
-  assert.equal(result.startsWith('<base href="http://asset.localhost/Users/ray/project/docs/">'), true);
+  assert.equal(result.startsWith('<meta charset="UTF-8">\n  <base href="http://asset.localhost/Users/ray/project/docs/">'), true);
 });
 
 test('resolves relative, absolute, and remote Markdown image URLs', () => {
