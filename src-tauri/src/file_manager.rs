@@ -80,48 +80,87 @@ pub fn list_directory(path: String) -> Result<Vec<FileEntry>, String> {
     Ok(entries)
 }
 
+fn is_cjk_char(c: char) -> bool {
+    matches!(c,
+        '\u{4E00}'..='\u{9FFF}' | // CJK Unified Ideographs
+        '\u{3400}'..='\u{4DBF}' | // CJK Unified Ideographs Extension A
+        '\u{20000}'..='\u{2A6DF}' | // CJK Extension B
+        '\u{F900}'..='\u{FAFF}' | // CJK Compatibility Ideographs
+        '\u{3000}'..='\u{303F}' | // CJK Symbols and Punctuation (《》【】、，。 etc)
+        '\u{FF00}'..='\u{FFEF}'   // Halfwidth and Fullwidth Forms (！：；？ etc)
+    )
+}
+
 fn decode_text_buffer(buffer: &[u8]) -> (String, bool) {
-    // Check for UTF-16 BOMs
-    if buffer.starts_with(&[0xFE, 0xFF]) || buffer.starts_with(&[0xFF, 0xFE]) {
-        if let Some((enc, bom_len)) = encoding_rs::Encoding::for_bom(buffer) {
-            let (cow, _had_errors) = enc.decode_without_bom_handling(&buffer[bom_len..]);
-            return (cow.into_owned(), false);
-        }
+    if buffer.is_empty() {
+        return (String::new(), false);
     }
 
-    // Detect if binary: check for NULL bytes in the first 8000 bytes
-    let sample_len = buffer.len().min(8000);
-    let is_binary = buffer[..sample_len].contains(&0);
-    if is_binary {
-        return (String::new(), true);
-    }
-
-    // Check for UTF-8 BOM
+    // 1. Check for explicit BOMs first (UTF-8, UTF-16LE, UTF-16BE)
     if let Some((enc, bom_len)) = encoding_rs::Encoding::for_bom(buffer) {
         let (cow, _had_errors) = enc.decode_without_bom_handling(&buffer[bom_len..]);
         return (cow.into_owned(), false);
     }
 
-    // Try standard UTF-8 validation
-    match std::str::from_utf8(buffer) {
-        Ok(s) => (s.to_string(), false),
-        Err(_) => {
-            // If UTF-8 validation fails, attempt GB18030 (standard Chinese encoding covering GBK, GB2312, and GB18030)
-            let (gbk_cow, gbk_had_errors) = encoding_rs::GB18030.decode_without_bom_handling(buffer);
-            if !gbk_had_errors {
-                (gbk_cow.into_owned(), false)
-            } else {
-                // Try Big5 (Traditional Chinese)
-                let (big5_cow, big5_had_errors) = encoding_rs::BIG5.decode_without_bom_handling(buffer);
-                if !big5_had_errors {
-                    (big5_cow.into_owned(), false)
-                } else {
-                    // Fall back to lossy UTF-8
-                    (String::from_utf8_lossy(buffer).to_string(), false)
-                }
-            }
+    // 2. Fast-path: If it is 100% valid UTF-8, return it directly
+    if let Ok(s) = std::str::from_utf8(buffer) {
+        return (s.to_string(), false);
+    }
+
+    // Check if buffer is valid UTF-8 up to the last 1-4 bytes (truncated boundary)
+    if let Err(e) = std::str::from_utf8(buffer) {
+        if e.valid_up_to() > 0 && buffer.len() - e.valid_up_to() <= 4 && e.error_len().is_none() {
+            return (String::from_utf8_lossy(buffer).to_string(), false);
         }
     }
+
+    // 3. Detect UTF-16 without BOM
+    let sample_len = buffer.len().min(4096);
+    let sample = &buffer[..sample_len];
+    let even_nulls = sample.iter().step_by(2).filter(|&&b| b == 0).count();
+    let odd_nulls = sample.iter().skip(1).step_by(2).filter(|&&b| b == 0).count();
+    let total_nulls = sample.iter().filter(|&&b| b == 0).count();
+
+    if sample_len >= 8 && odd_nulls > sample_len / 6 && odd_nulls > even_nulls * 3 {
+        let (cow, _had_errors) = encoding_rs::UTF_16LE.decode_without_bom_handling(buffer);
+        return (cow.into_owned(), false);
+    }
+    if sample_len >= 8 && even_nulls > sample_len / 6 && even_nulls > odd_nulls * 3 {
+        let (cow, _had_errors) = encoding_rs::UTF_16BE.decode_without_bom_handling(buffer);
+        return (cow.into_owned(), false);
+    }
+
+    // 4. Binary check: Significant null bytes in non-UTF16 text indicates binary content
+    if total_nulls > 0 && total_nulls > sample_len / 50 {
+        return (String::new(), true);
+    }
+
+    // 5. Try GB18030 (National standard Chinese encoding covering GBK and GB2312)
+    let (gbk_cow, _) = encoding_rs::GB18030.decode_without_bom_handling(buffer);
+    let gbk_replacements = gbk_cow.chars().filter(|&c| c == '\u{FFFD}').count();
+    let gbk_cjk = gbk_cow.chars().filter(|&c| is_cjk_char(c)).count();
+
+    // If GB18030 decodes Chinese characters with very low replacement rate, it is clearly GBK/GB18030 Chinese
+    if gbk_cjk > 0 && gbk_replacements <= (buffer.len() / 500).max(4) {
+        return (gbk_cow.into_owned(), false);
+    }
+
+    // 6. Try Big5 (Traditional Chinese)
+    let (big5_cow, _) = encoding_rs::BIG5.decode_without_bom_handling(buffer);
+    let big5_replacements = big5_cow.chars().filter(|&c| c == '\u{FFFD}').count();
+    let big5_cjk = big5_cow.chars().filter(|&c| is_cjk_char(c)).count();
+
+    if big5_cjk > 0 && big5_replacements <= (buffer.len() / 500).max(4) {
+        return (big5_cow.into_owned(), false);
+    }
+
+    // 7. If GB18030 had 0 replacements even without CJK characters (e.g. pure ASCII subset in GBK)
+    if gbk_replacements == 0 {
+        return (gbk_cow.into_owned(), false);
+    }
+
+    // 8. Fall back to lossy UTF-8
+    (String::from_utf8_lossy(buffer).to_string(), false)
 }
 
 const DEFAULT_MAX_FILE_BYTES: u64 = 4 * 1024 * 1024; // 4 MB chunk limit for large file previews
@@ -577,6 +616,37 @@ mod tests {
     };
     use std::fs;
     use std::sync::atomic::Ordering;
+
+    #[test]
+    fn decodes_gb18030_chinese_text_accurately() {
+        let original = "《凡人修仙传》（校对版全本+番外） 作者：忘语\n====================================================\n第一章 山边小村\n二愣子躺在干草堆上";
+        let (gbk_bytes, _, _) = encoding_rs::GB18030.encode(original);
+        let (decoded, is_binary) = super::decode_text_buffer(&gbk_bytes);
+        assert!(!is_binary);
+        assert_eq!(decoded, original);
+    }
+
+    #[test]
+    fn decodes_truncated_gb18030_text_without_falling_back_to_garbled_utf8() {
+        let original = "《凡人修仙传》 第一章 山边小村";
+        let (gbk_bytes, _, _) = encoding_rs::GB18030.encode(original);
+        // Truncate the last byte in middle of 2-byte Chinese character
+        let truncated_bytes = &gbk_bytes[..gbk_bytes.len() - 1];
+        let (decoded, is_binary) = super::decode_text_buffer(truncated_bytes);
+        assert!(!is_binary);
+        assert!(decoded.contains("《凡人修仙传》 第一章 山边"));
+    }
+
+    #[test]
+    fn decodes_utf16_and_utf8_chinese_text_correctly() {
+        let utf8_orig = "UTF-8 中文测试内容 123";
+        let (decoded_utf8, _) = super::decode_text_buffer(utf8_orig.as_bytes());
+        assert_eq!(decoded_utf8, utf8_orig);
+
+        let (utf16_bytes, _, _) = encoding_rs::UTF_16LE.encode("UTF-16LE 中文测试");
+        let (decoded_utf16, _) = super::decode_text_buffer(&utf16_bytes);
+        assert_eq!(decoded_utf16, "UTF-16LE 中文测试");
+    }
 
     #[test]
     fn rejects_path_separator_in_new_name() {
