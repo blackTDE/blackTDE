@@ -25,24 +25,29 @@ export const handleTerminalKeyEvent = (
   const isCtrl = event.ctrlKey;
   const key = event.key.toLowerCase();
 
-  // Copy: Cmd+C (macOS) or Ctrl+Shift+C (Linux/Windows)
+  // Copy: Cmd+C (macOS) or Ctrl+Shift+C (Linux/Windows) or Ctrl+C with active selection
   if ((isCmd && key === 'c') || (isCtrl && event.shiftKey && key === 'c')) {
     if (context.hasSelection()) {
       const selection = context.getSelection();
       if (selection) {
+        event.preventDefault?.();
+        event.stopPropagation?.();
         context.writeClipboard(selection).catch(console.error);
       }
       return false; // Intercepted and handled
     }
     // On macOS with Cmd+C and no selection, intercept to prevent transmitting unexpected character
     if (isCmd && !isCtrl) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
       return false;
     }
   }
 
-  // Paste: For Ctrl+Shift+V on Linux/Windows where browsers do not fire a native paste event,
-  // manually read clipboard and paste into xterm.
-  if (isCtrl && event.shiftKey && key === 'v') {
+  // Paste: Cmd+V (macOS), Ctrl+V (Windows/Linux), or Ctrl+Shift+V
+  if ((isCmd && key === 'v') || (isCtrl && key === 'v')) {
+    event.preventDefault?.();
+    event.stopPropagation?.();
     context
       .readClipboard()
       .then((text) => {
@@ -51,23 +56,21 @@ export const handleTerminalKeyEvent = (
         }
       })
       .catch(console.error);
-    return false; // Intercepted and manually handled
-  }
-
-  // For Cmd+V (macOS) and standard Ctrl+V (Windows/Linux), return true to let the native browser DOM 'paste' event
-  // fire naturally on the xterm helper textarea. This avoids duplicate pasting while preserving bracketed paste mode.
-  if ((isCmd && key === 'v') || (isCtrl && !event.shiftKey && key === 'v')) {
-    return true;
+    return false; // Intercepted and handled
   }
 
   // Select All: Cmd+A (macOS)
   if (isCmd && key === 'a' && !event.shiftKey && !event.altKey) {
+    event.preventDefault?.();
+    event.stopPropagation?.();
     context.selectAll();
     return false;
   }
 
   // Clear Terminal: Cmd+K (macOS)
   if (isCmd && key === 'k' && !event.shiftKey && !event.altKey) {
+    event.preventDefault?.();
+    event.stopPropagation?.();
     context.clear();
     return false;
   }
