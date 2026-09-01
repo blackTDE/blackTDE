@@ -40,8 +40,9 @@ export const handleTerminalKeyEvent = (
     }
   }
 
-  // Paste: Cmd+V (macOS) or Ctrl+Shift+V (Linux/Windows)
-  if ((isCmd && key === 'v') || (isCtrl && event.shiftKey && key === 'v')) {
+  // Paste: For Ctrl+Shift+V on Linux/Windows where browsers do not fire a native paste event,
+  // manually read clipboard and paste into xterm.
+  if (isCtrl && event.shiftKey && key === 'v') {
     context
       .readClipboard()
       .then((text) => {
@@ -50,7 +51,13 @@ export const handleTerminalKeyEvent = (
         }
       })
       .catch(console.error);
-    return false; // Intercepted and handled
+    return false; // Intercepted and manually handled
+  }
+
+  // For Cmd+V (macOS) and standard Ctrl+V (Windows/Linux), return true to let the native browser DOM 'paste' event
+  // fire naturally on the xterm helper textarea. This avoids duplicate pasting while preserving bracketed paste mode.
+  if ((isCmd && key === 'v') || (isCtrl && !event.shiftKey && key === 'v')) {
+    return true;
   }
 
   // Select All: Cmd+A (macOS)

@@ -55,14 +55,14 @@ test('handles Cmd+C to copy when terminal has selection', async () => {
   assert.equal(mock.getClipboard(), 'selected text');
 });
 
-test('handles Cmd+V to paste from clipboard', async () => {
+test('handles Ctrl+Shift+V to manually paste from clipboard', async () => {
   const mock = createMockContext();
   const event = {
     type: 'keydown',
     key: 'v',
-    metaKey: true,
-    ctrlKey: false,
-    shiftKey: false,
+    metaKey: false,
+    ctrlKey: true,
+    shiftKey: true,
     altKey: false,
   } as unknown as KeyboardEvent;
 
@@ -71,6 +71,22 @@ test('handles Cmd+V to paste from clipboard', async () => {
   // Wait microtask for async clipboard resolution
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(mock.getPasted(), 'clipboard content');
+});
+
+test('passes Cmd+V and Ctrl+V through to allow native browser paste without duplicate manual pasting', () => {
+  const mock = createMockContext();
+  const macCmdVEvent = {
+    type: 'keydown',
+    key: 'v',
+    metaKey: true,
+    ctrlKey: false,
+    shiftKey: false,
+    altKey: false,
+  } as unknown as KeyboardEvent;
+
+  const result = handleTerminalKeyEvent(macCmdVEvent, mock.context);
+  assert.equal(result, true);
+  assert.equal(mock.getPasted(), ''); // not manually pasted to avoid duplicate paste
 });
 
 test('handles Cmd+A to select all and Cmd+K to clear', () => {
