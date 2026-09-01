@@ -233,3 +233,14 @@ export function base64ToBlobUrl(b64: string, mimeType: string): string {
   const blob = new Blob([bytes], { type: mimeType });
   return URL.createObjectURL(blob);
 }
+
+/**
+ * Formats byte size into human readable string (e.g. 1.5 KB, 20.0 MB).
+ */
+export function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}

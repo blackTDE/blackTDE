@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import MonacoEditor, { type OnMount } from '@monaco-editor/react';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
-import { Save, FileText, Edit3, Eye, FileCode, Volume2, Video } from 'lucide-react';
+import { Save, FileText, Edit3, Eye, FileCode, Volume2, Video, XCircle, RefreshCw, AlertTriangle, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { MermaidBlock } from './MermaidBlock';
@@ -19,8 +19,16 @@ import {
   processHtmlWithBaseUrl,
   getAbsolutePath,
   base64ToBlobUrl,
-  imageDataUrl
+  imageDataUrl,
+  formatBytes,
 } from '../utils/htmlPreviewUtils';
+
+export interface FileReadResult {
+  content: string;
+  total_bytes: number;
+  truncated: boolean;
+  is_binary: boolean;
+}
 
 const MarkdownImage: React.FC<{ src?: string; alt?: string; activeFilePath: string }> = ({ src, alt, activeFilePath }) => {
   const [imgSrc, setImgSrc] = useState<string>('');
@@ -120,7 +128,11 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ filePath: propFilePath
   const [textContent, setTextContent] = useState<string>('');
   const [base64Content, setBase64Content] = useState<string>('');
   const [mediaBlobUrl, setMediaBlobUrl] = useState<string>('');
+  const [fileSize, setFileSize] = useState<number>(0);
+  const [isTruncated, setIsTruncated] = useState<boolean>(false);
+  const [isBinaryDetected, setIsBinaryDetected] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingFull, setIsLoadingFull] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [confirmCreate, setConfirmCreate] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -154,51 +166,62 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ filePath: propFilePath
     };
   }, [base64Content, ext]);
 
-  useEffect(() => {
+  const loadData = async (maxBytes?: number) => {
     if (!activeFilePath) return;
 
-    // Initialize editing state on file load
-    setIsEditMode(activeFileLine ? true : !isPreviewable);
+    if (maxBytes === undefined) {
+      setIsEditMode(activeFileLine ? true : !isPreviewable);
+      setTextContent('');
+      setEditorVal('');
+      setBase64Content('');
+      setFileSize(0);
+      setIsTruncated(false);
+      setIsBinaryDetected(false);
+    }
+
     setLoadError(null);
     setConfirmCreate(false);
     setSaveError(null);
     setIsLoading(true);
-    setTextContent('');
-    setBase64Content('');
 
-    const loadData = async () => {
-      try {
-        if (isImageFile(ext) || isVideoFile(ext) || isAudioFile(ext)) {
-          // Read binary file in Base64 for WKWebView media decoding compatibility
+    try {
+      if (isImageFile(ext) || isVideoFile(ext) || isAudioFile(ext)) {
+        // Read binary file in Base64 for WKWebView media decoding compatibility
+        const b64 = await invoke<string>('read_file_base64', { path: activeFilePath });
+        setBase64Content(b64);
+      } else if (['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'].includes(ext)) {
+        // Keep base64 or metadata
+        try {
           const b64 = await invoke<string>('read_file_base64', { path: activeFilePath });
           setBase64Content(b64);
-        } else if (['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'].includes(ext)) {
-          // Keep base64 or metadata
-          try {
-            const b64 = await invoke<string>('read_file_base64', { path: activeFilePath });
-            setBase64Content(b64);
-          } catch {
-            // Ignore if base64 read fails for huge documents
-          }
-        } else {
-          // Regular text content
-          const text = await invoke<string>('read_file_content', { path: activeFilePath });
-          setTextContent(text);
-          setEditorVal(text);
-          if (isCurrentFileActive) {
-            setActiveFileContent(text);
-          }
+        } catch {
+          // Ignore if base64 read fails for huge documents
         }
-      } catch (err: any) {
-        console.error('Error loading file preview:', err);
-        setLoadError(err.toString());
-        // Fallback to raw text mode if preview load fails
-        setIsEditMode(true);
-      } finally {
-        setIsLoading(false);
+      } else {
+        // Regular text content with large-file chunking and metadata
+        const res = await invoke<FileReadResult>('read_file_content', {
+          path: activeFilePath,
+          maxBytes: maxBytes !== undefined ? maxBytes : null,
+        });
+        setTextContent(res.content);
+        setEditorVal(res.content);
+        setFileSize(res.total_bytes);
+        setIsTruncated(res.truncated);
+        setIsBinaryDetected(res.is_binary);
+        if (isCurrentFileActive) {
+          setActiveFileContent(res.content);
+        }
       }
-    };
+    } catch (err: any) {
+      console.error('Error loading file preview:', err);
+      const errMsg = typeof err === 'string' ? err : err?.message || err?.toString() || 'Failed to open file';
+      setLoadError(errMsg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     loadData();
   }, [activeFilePath, fileUpdateCounter]);
 
@@ -252,7 +275,20 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ filePath: propFilePath
     }
   };
 
+  const handleLoadFullFile = async () => {
+    setIsLoadingFull(true);
+    try {
+      await loadData(0);
+    } finally {
+      setIsLoadingFull(false);
+    }
+  };
+
   const saveFile = async (allowCreate = false) => {
+    if (isTruncated) {
+      setSaveError('Cannot save truncated preview. Please load the full file first to edit and save.');
+      return;
+    }
     try {
       if (!allowCreate && !(await invoke<boolean>('path_exists', { path: activeFilePath }))) {
         setConfirmCreate(true);
@@ -528,17 +564,26 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ filePath: propFilePath
       <div className="bg-surface-1 px-4 py-3 border-b border-surface-2 flex items-center justify-between">
         <div className="flex items-center space-x-2 truncate">
           <FileText size={14} className="text-brand-light shrink-0" />
-          <span className="text-xs font-mono truncate text-zinc-300 font-semibold">
+          <span className="text-xs font-mono truncate text-zinc-300 font-semibold" title={activeFilePath}>
             {activeFilePath.split('/').pop()}
           </span>
-          <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-surface-3 text-zinc-500 uppercase tracking-wider font-mono">
-            {isEditMode ? 'Edit Mode' : 'Preview Mode'}
+          {fileSize > 0 && (
+            <span className="text-[10px] text-zinc-500 font-mono">
+              ({formatBytes(fileSize)})
+            </span>
+          )}
+          <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider font-mono ${
+            isTruncated
+              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+              : 'bg-surface-3 text-zinc-500'
+          }`}>
+            {isTruncated ? 'Preview (Truncated)' : isEditMode ? 'Edit Mode' : 'Preview Mode'}
           </span>
         </div>
 
         {/* Action button triggers */}
         <div className="flex items-center space-x-2">
-          {isPreviewable && !isBinary && (
+          {isPreviewable && !isBinary && !isTruncated && !loadError && (
             <button
               onClick={() => setIsEditMode(!isEditMode)}
               className={`flex items-center space-x-1 text-xs font-medium px-2.5 py-1 rounded transition border cursor-pointer ${
@@ -552,7 +597,7 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ filePath: propFilePath
             </button>
           )}
 
-          {isEditMode && (
+          {isEditMode && !isTruncated && !loadError && (
             <button
               onClick={handleSave}
               disabled={isSaved}
@@ -579,9 +624,71 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ filePath: propFilePath
       )}
       {saveError && <div className="border-b border-error/20 bg-error/5 px-4 py-1 text-[10px] text-error">Save failed: {saveError}</div>}
 
+      {/* Large file preview notification banner */}
+      {isTruncated && !loadError && (
+        <div className="flex items-center justify-between px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 text-amber-200 text-xs font-mono select-none shrink-0">
+          <div className="flex items-center space-x-2">
+            <AlertTriangle size={14} className="text-amber-400 shrink-0" />
+            <span>
+              Large file ({formatBytes(fileSize)}). Showing preview of first 4 MB. Editing is disabled in preview mode.
+            </span>
+          </div>
+          {fileSize <= 50 * 1024 * 1024 && (
+            <button
+              onClick={handleLoadFullFile}
+              disabled={isLoadingFull}
+              className="ml-3 px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 rounded text-[11px] text-amber-100 transition cursor-pointer shrink-0 flex items-center space-x-1"
+            >
+              {isLoadingFull ? <Loader2 size={12} className="animate-spin" /> : null}
+              <span>{isLoadingFull ? 'Loading...' : `Load Full File (${formatBytes(fileSize)})`}</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Render Workspace Content Body */}
       <div className="flex-1 w-full min-h-0">
-        {isEditMode ? (
+        {loadError ? (
+          <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-surface">
+            <div className="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mb-3 shadow-inner">
+              <XCircle size={24} />
+            </div>
+            <h3 className="text-sm font-bold text-zinc-200 mb-1">Failed to Open File</h3>
+            <p className="text-xs text-rose-400/90 font-mono mb-3 max-w-lg break-all bg-surface-1 border border-surface-2 p-3 rounded text-left">
+              {loadError}
+            </p>
+            <p className="text-[11px] text-zinc-500 font-mono mb-4 break-all max-w-md">
+              Path: {activeFilePath}
+            </p>
+            <button
+              onClick={() => { void loadData(); }}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-surface-2 hover:bg-surface-3 border border-surface-3 rounded text-xs text-zinc-200 transition cursor-pointer"
+            >
+              <RefreshCw size={13} />
+              <span>Retry</span>
+            </button>
+          </div>
+        ) : isBinaryDetected ? (
+          <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-surface font-mono">
+            <div className="p-8 bg-surface-1 rounded-xl border border-surface-2 shadow-lg max-w-md">
+              <FileCode size={48} className="text-zinc-400 mx-auto mb-4" />
+              <h3 className="text-sm font-bold text-zinc-200 truncate mb-1">{activeFilePath.split('/').pop()}</h3>
+              <p className="text-[10px] text-zinc-500 mb-6 font-mono uppercase tracking-wider">Binary File ({formatBytes(fileSize)})</p>
+              <div className="bg-surface p-3 rounded border border-surface-3/50 text-[10px] text-left text-zinc-400 mb-6 space-y-1">
+                <p>Location: <span className="text-zinc-300 break-all">{activeFilePath}</span></p>
+                <p>Size: {formatBytes(fileSize)} ({fileSize.toLocaleString()} bytes)</p>
+                <p>Status: Binary or non-text data detected</p>
+              </div>
+              <button
+                onClick={() => setIsEditMode(true)}
+                className="inline-flex items-center space-x-1.5 bg-surface-3 hover:bg-surface-2 text-zinc-200 border border-surface-3 px-3 py-1.5 rounded text-xs transition cursor-pointer"
+              >
+                <FileCode size={13} />
+                <span>Open in Raw Code Viewer</span>
+              </button>
+            </div>
+          </div>
+        ) : isEditMode ? (
           <div className="w-full h-full">
             <MonacoEditor
               height="100%"
@@ -591,6 +698,8 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ filePath: propFilePath
               onChange={handleEditorChange}
               theme="vs-dark"
               options={{
+                readOnly: isTruncated,
+                domReadOnly: isTruncated,
                 fontSize: 12,
                 fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace',
                 minimap: { enabled: false },

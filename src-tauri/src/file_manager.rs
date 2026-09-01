@@ -1,8 +1,17 @@
 use std::fs;
+use std::io::Read;
 use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::UNIX_EPOCH;
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct FileReadResult {
+    pub content: String,
+    pub total_bytes: u64,
+    pub truncated: bool,
+    pub is_binary: bool,
+}
 
 #[derive(serde::Serialize)]
 pub struct FileEntry {
@@ -71,9 +80,49 @@ pub fn list_directory(path: String) -> Result<Vec<FileEntry>, String> {
     Ok(entries)
 }
 
+const DEFAULT_MAX_FILE_BYTES: u64 = 4 * 1024 * 1024; // 4 MB chunk limit for large file previews
+
 #[tauri::command]
-pub fn read_file_content(path: String) -> Result<String, String> {
-    fs::read_to_string(path).map_err(|e| e.to_string())
+pub fn read_file_content(path: String, max_bytes: Option<u64>) -> Result<FileReadResult, String> {
+    let p = Path::new(&path);
+    if !p.exists() {
+        return Err(format!("File does not exist: {}", path));
+    }
+    if !p.is_file() {
+        return Err(format!("Path is not a regular file: {}", path));
+    }
+
+    let metadata = fs::metadata(p).map_err(|e| format!("Failed to read file metadata: {}", e))?;
+    let total_bytes = metadata.len();
+    let limit = max_bytes.unwrap_or(DEFAULT_MAX_FILE_BYTES);
+
+    let mut file = fs::File::open(p).map_err(|e| format!("Failed to open file: {}", e))?;
+
+    let bytes_to_read = if limit > 0 && total_bytes > limit {
+        limit
+    } else {
+        total_bytes
+    };
+
+    let mut buffer = vec![0u8; bytes_to_read as usize];
+    file.read_exact(&mut buffer).map_err(|e| format!("Failed to read file content: {}", e))?;
+
+    // Detect binary content by checking for NULL bytes in the first 8000 bytes
+    let check_len = buffer.len().min(8000);
+    let is_binary = buffer[..check_len].contains(&0);
+
+    let content = if is_binary {
+        String::new()
+    } else {
+        String::from_utf8_lossy(&buffer).to_string()
+    };
+
+    Ok(FileReadResult {
+        content,
+        total_bytes,
+        truncated: total_bytes > bytes_to_read,
+        is_binary,
+    })
 }
 
 #[tauri::command]

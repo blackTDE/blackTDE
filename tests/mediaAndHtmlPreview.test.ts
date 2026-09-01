@@ -14,6 +14,7 @@ import {
   imageDataUrl,
   getCodeLanguage,
   isCodeFile,
+  formatBytes,
 } from '../src/utils/htmlPreviewUtils.ts';
 
 test('returns correct MIME types for media files', () => {
@@ -128,4 +129,13 @@ test('converts base64 to Blob URL string', () => {
   const dummyB64 = 'SGVsbG8gV29ybGQ='; // "Hello World"
   const blobUrl = base64ToBlobUrl(dummyB64, 'video/mp4');
   assert.equal(blobUrl.startsWith('blob:'), true);
+});
+
+test('formats bytes to human-readable strings', () => {
+  assert.equal(formatBytes(0), '0 B');
+  assert.equal(formatBytes(512), '512 B');
+  assert.equal(formatBytes(1024), '1 KB');
+  assert.equal(formatBytes(1536), '1.5 KB');
+  assert.equal(formatBytes(1048576), '1 MB');
+  assert.equal(formatBytes(52428800), '50 MB');
 });
