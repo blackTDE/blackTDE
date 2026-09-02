@@ -146,3 +146,31 @@ test('passes regular keys through to terminal', () => {
 
   assert.equal(handleTerminalKeyEvent(normalKeyEvent, mock.context), true);
 });
+
+test('passes IME composing and Chinese punctuation keys through to browser/xterm', () => {
+  const mock = createMockContext();
+  const imeComposingEvent = {
+    type: 'keydown',
+    key: 'Process',
+    keyCode: 229,
+    isComposing: true,
+    metaKey: false,
+    ctrlKey: false,
+    shiftKey: false,
+    altKey: false,
+  } as unknown as KeyboardEvent;
+
+  assert.equal(handleTerminalKeyEvent(imeComposingEvent, mock.context), true);
+
+  const chinesePunctuationEvent = {
+    type: 'keydown',
+    key: '，',
+    isComposing: false,
+    metaKey: false,
+    ctrlKey: false,
+    shiftKey: false,
+    altKey: false,
+  } as unknown as KeyboardEvent;
+
+  assert.equal(handleTerminalKeyEvent(chinesePunctuationEvent, mock.context), true);
+});

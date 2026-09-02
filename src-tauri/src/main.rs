@@ -1,4 +1,5 @@
 mod agy_session;
+mod clipboard;
 mod db;
 mod event_bus;
 mod file_manager;
@@ -1581,6 +1582,8 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            clipboard::read_clipboard_text,
+            clipboard::write_clipboard_text,
             spawn_session,
             update_session_name,
             write_to_session,

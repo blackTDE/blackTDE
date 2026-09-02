@@ -250,6 +250,23 @@ pub fn delete_path(path: String) -> Result<(), String> {
     }
 }
 
+#[cfg(unix)]
+fn is_same_file(p1: &Path, p2: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    if let (Ok(m1), Ok(m2)) = (fs::metadata(p1), fs::metadata(p2)) {
+        return m1.dev() == m2.dev() && m1.ino() == m2.ino();
+    }
+    false
+}
+
+#[cfg(not(unix))]
+fn is_same_file(p1: &Path, p2: &Path) -> bool {
+    if let (Ok(c1), Ok(c2)) = (p1.canonicalize(), p2.canonicalize()) {
+        return c1 == c2;
+    }
+    false
+}
+
 #[tauri::command]
 pub fn rename_path(path: String, new_name: String) -> Result<String, String> {
     let name = valid_child_name(&new_name)?;
@@ -260,11 +277,20 @@ pub fn rename_path(path: String, new_name: String) -> Result<String, String> {
         .filter(|parent| *parent != source)
         .ok_or("Invalid source path")?;
     let target = parent.join(name);
-    if target.exists() {
+
+    let is_case_change = is_same_file(source, &target);
+    if target.exists() && !is_case_change {
         return Err("A file or directory with that name already exists".into());
     }
 
-    fs::rename(source, &target).map_err(|e| e.to_string())?;
+    if is_case_change {
+        let temp_target = parent.join(format!("{}.tde_tmp_rename_{}", name, uuid::Uuid::new_v4()));
+        fs::rename(source, &temp_target).map_err(|e| e.to_string())?;
+        fs::rename(&temp_target, &target).map_err(|e| e.to_string())?;
+    } else {
+        fs::rename(source, &target).map_err(|e| e.to_string())?;
+    }
+
     Ok(target.to_string_lossy().to_string())
 }
 
@@ -646,6 +672,23 @@ mod tests {
         let (utf16_bytes, _, _) = encoding_rs::UTF_16LE.encode("UTF-16LE 中文测试");
         let (decoded_utf16, _) = super::decode_text_buffer(&utf16_bytes);
         assert_eq!(decoded_utf16, "UTF-16LE 中文测试");
+    }
+
+    #[test]
+    fn renames_file_with_case_only_change_successfully() {
+        let temp_dir = std::env::temp_dir().join(format!("black-tde-rename-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir).unwrap();
+        let upper_file = temp_dir.join("MY_DOC.TXT");
+        fs::write(&upper_file, "content").unwrap();
+
+        // Rename from uppercase to lowercase
+        let result = rename_path(upper_file.to_string_lossy().to_string(), "my_doc.txt".into());
+        assert!(result.is_ok(), "Expected rename to succeed but got: {:?}", result.err());
+        let new_path = std::path::PathBuf::from(result.unwrap());
+        assert_eq!(new_path.file_name().unwrap(), "my_doc.txt");
+        assert!(new_path.exists());
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 
     #[test]

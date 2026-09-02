@@ -4,6 +4,7 @@ import {
   getParentDirectory,
   resolveCreationDirectory,
   getRelativeDisplayPath,
+  getRelativePath,
 } from '../src/utils/fileTreeUtils.ts';
 
 test('getParentDirectory extracts parent directory correctly', () => {
@@ -44,4 +45,13 @@ test('getRelativeDisplayPath formats relative path for UI badges', () => {
   assert.equal(getRelativeDisplayPath(root, root), '/ (root)');
   assert.equal(getRelativeDisplayPath(root, '/workspace/black_tde/src/components'), 'src/components');
   assert.equal(getRelativeDisplayPath(root, '/workspace/black_tde/src'), 'src');
+});
+
+test('getRelativePath computes clean relative paths for clipboard copying', () => {
+  const root = '/workspace/black_tde';
+
+  assert.equal(getRelativePath(root, root), '.');
+  assert.equal(getRelativePath(root, '/workspace/black_tde/src/components/FileTree.tsx'), 'src/components/FileTree.tsx');
+  assert.equal(getRelativePath(root, '/workspace/black_tde/src/main.rs'), 'src/main.rs');
+  assert.equal(getRelativePath(root, '/other/external/file.txt'), '/other/external/file.txt');
 });

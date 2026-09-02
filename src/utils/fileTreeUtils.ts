@@ -56,3 +56,19 @@ export const getRelativeDisplayPath = (rootPath: string, targetPath: string): st
 
   return cleanTarget;
 };
+
+export const getRelativePath = (rootPath: string, targetPath: string): string => {
+  const cleanRoot = rootPath.replace(/[/\\]+$/, '');
+  const cleanTarget = targetPath.replace(/[/\\]+$/, '');
+
+  if (!cleanTarget || cleanTarget === cleanRoot) {
+    return '.';
+  }
+
+  if (cleanTarget.startsWith(cleanRoot)) {
+    const rel = cleanTarget.slice(cleanRoot.length).replace(/^[/\\]+/, '');
+    return rel || '.';
+  }
+
+  return cleanTarget;
+};

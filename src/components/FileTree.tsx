@@ -13,6 +13,7 @@ import {
   RefreshCw,
   ExternalLink,
   FilePlus,
+  Copy,
   X,
   Check,
 } from 'lucide-react';
@@ -21,6 +22,7 @@ import {
   getParentDirectory,
   resolveCreationDirectory,
   getRelativeDisplayPath,
+  getRelativePath,
 } from '../utils/fileTreeUtils';
 
 export interface FileTreeEntry {
@@ -539,6 +541,15 @@ export const FileTree: React.FC<FileTreeProps> = ({ rootPath }) => {
     // Keep editor open so user can recreate/save if needed
   };
 
+  const handleCopyText = async (text: string) => {
+    try {
+      await invoke('write_clipboard_text', { text });
+    } catch {
+      await navigator.clipboard.writeText(text);
+    }
+    setContextMenu(null);
+  };
+
   const targetDisplay = getRelativeDisplayPath(
     rootPath,
     newTargetDir ||
@@ -734,6 +745,29 @@ export const FileTree: React.FC<FileTreeProps> = ({ rootPath }) => {
           >
             <FolderPlus size={12} className="text-zinc-400" />
             <span>New Folder...</span>
+          </button>
+
+          <button
+            onClick={() => {
+              const relPath = getRelativePath(rootPath, contextMenu.path);
+              void handleCopyText(relPath);
+            }}
+            className="w-full flex items-center gap-2 px-2 py-1 rounded hover:bg-surface-3 transition text-left cursor-pointer text-zinc-300"
+            title={getRelativePath(rootPath, contextMenu.path)}
+          >
+            <Copy size={12} className="text-zinc-400" />
+            <span>Copy Relative Path</span>
+          </button>
+
+          <button
+            onClick={() => {
+              void handleCopyText(contextMenu.path);
+            }}
+            className="w-full flex items-center gap-2 px-2 py-1 rounded hover:bg-surface-3 transition text-left cursor-pointer text-zinc-300"
+            title={contextMenu.path}
+          >
+            <Copy size={12} className="text-zinc-400" />
+            <span>Copy Absolute Path</span>
           </button>
 
           <div className="my-1 border-t border-surface-2" />

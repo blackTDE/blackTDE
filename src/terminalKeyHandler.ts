@@ -17,6 +17,11 @@ export const handleTerminalKeyEvent = (
   event: KeyboardEvent,
   context: TerminalKeyHandlerContext
 ): boolean => {
+  // If IME is currently composing or processing (e.g. Chinese/Japanese/Korean input), let browser and xterm handle it naturally
+  if (event.isComposing || event.keyCode === 229) {
+    return true;
+  }
+
   if (event.type !== 'keydown') {
     return true;
   }

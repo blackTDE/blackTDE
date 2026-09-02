@@ -73,7 +73,6 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
       fontSize: 13,
       fontFamily: "'MesloLGS NF', 'Meslo LGS NF', 'MesloLGS Nerd Font', 'JetBrainsMono Nerd Font', 'JetBrains Mono Nerd Font', 'FiraCode Nerd Font', 'Fira Code Nerd Font', 'Hack Nerd Font', 'Symbols Nerd Font Mono', 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace",
       allowProposedApi: true,
-      vtExtensions: { kittyKeyboard: true },
       mouseEventsRequireAlt: true,
       macOptionClickForcesSelection: true,
       rightClickSelectsWord: true,
@@ -111,10 +110,21 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
         selectAll: () => term.selectAll(),
         clear: () => term.clear(),
         writeClipboard: async (text: string) => {
-          await navigator.clipboard.writeText(text);
+          try {
+            await invoke('write_clipboard_text', { text });
+          } catch {
+            await navigator.clipboard.writeText(text);
+          }
         },
         readClipboard: async () => {
-          return await navigator.clipboard.readText();
+          try {
+            return await invoke<string>('read_clipboard_text');
+          } catch {
+            if (navigator?.clipboard?.readText) {
+              return await navigator.clipboard.readText();
+            }
+            return '';
+          }
         },
       });
     });
