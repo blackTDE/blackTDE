@@ -48,7 +48,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
   const fitAndResizeRef = useRef<((resize?: boolean) => Promise<void>) | null>(null);
   isVisibleRef.current = isVisible;
   const [sftpHeight, setSftpHeight] = useState(180);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   const session = useWorkspaceStore((state) => state.sessions[sessionId]);
   const sshHost = session?.ssh_host;
@@ -61,7 +61,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [isVisible]);
+  }, [isVisible, isCollapsed, sftpHeight]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -331,10 +331,12 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
       </div>
 
       {/* Resizer Handle */}
-      <div
-        onMouseDown={handleMouseDown}
-        className="h-1 bg-surface-3 hover:bg-brand cursor-row-resize transition duration-150 relative z-10 border-y border-surface-2/40 select-none"
-      />
+      {!isCollapsed && (
+        <div
+          onMouseDown={handleMouseDown}
+          className="h-1 bg-surface-3 hover:bg-brand cursor-row-resize transition duration-150 relative z-10 border-y border-surface-2/40 select-none"
+        />
+      )}
 
       {/* Lower Panel: SFTP Remote Explorer */}
       <SftpExplorer
@@ -401,8 +403,10 @@ const SftpExplorer: React.FC<SftpExplorerProps> = ({ host, height, isCollapsed, 
   };
 
   useEffect(() => {
-    loadDir(remoteCwd);
-  }, [remoteCwd, host]);
+    if (!isCollapsed) {
+      loadDir(remoteCwd);
+    }
+  }, [remoteCwd, host, isCollapsed]);
 
   const handleNavigate = (dirName: string) => {
     if (loading) return;
@@ -493,22 +497,40 @@ const SftpExplorer: React.FC<SftpExplorerProps> = ({ host, height, isCollapsed, 
       className="relative w-full bg-[#0d0d0d] flex flex-col min-h-0 border-t border-surface-3 transition-[height] duration-200"
     >
       {/* Header Row */}
-      <div className="flex items-center justify-between px-3 py-1 bg-surface-1 border-b border-surface-2 text-[10px] font-mono select-none h-[26px]">
+      <div
+        onClick={() => {
+          if (isCollapsed) {
+            setIsCollapsed(false);
+          }
+        }}
+        className={`flex items-center justify-between px-3 py-1 bg-surface-1 border-b border-surface-2 text-[10px] font-mono select-none h-[26px] ${isCollapsed ? 'cursor-pointer hover:bg-surface-2/60' : ''}`}
+      >
         <div className="flex items-center space-x-2 truncate">
-          <button
-            onClick={() => handleNavigate('..')}
-            disabled={loading || !canNavigateUp(remoteCwd)}
-            className="flex items-center space-x-1 px-1.5 py-0.5 rounded text-slate-400 hover:text-zinc-200 hover:bg-surface-2 transition disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 cursor-pointer disabled:cursor-not-allowed shrink-0"
-            title={canNavigateUp(remoteCwd) ? 'Return to parent directory (..)' : 'Already at top directory'}
-          >
-            <ArrowLeft size={11} />
-            <span className="font-sans font-medium text-[10px]">Back</span>
-          </button>
+          {!isCollapsed && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleNavigate('..');
+              }}
+              disabled={loading || !canNavigateUp(remoteCwd)}
+              className="flex items-center space-x-1 px-1.5 py-0.5 rounded text-slate-400 hover:text-zinc-200 hover:bg-surface-2 transition disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 cursor-pointer disabled:cursor-not-allowed shrink-0"
+              title={canNavigateUp(remoteCwd) ? 'Return to parent directory (..)' : 'Already at top directory'}
+            >
+              <ArrowLeft size={11} />
+              <span className="font-sans font-medium text-[10px]">Back</span>
+            </button>
+          )}
           <FolderOpen size={12} className="text-brand-light shrink-0" />
           <span className="text-[10px] font-bold text-zinc-300 shrink-0">SFTP ({host})</span>
-          <span className="text-zinc-500 font-semibold truncate" title={remoteCwd || 'Home'}>
-            {remoteCwd ? `/ ${remoteCwd}` : '/ (Home)'}
-          </span>
+          {!isCollapsed ? (
+            <span className="text-zinc-500 font-semibold truncate" title={remoteCwd || 'Home'}>
+              {remoteCwd ? `/ ${remoteCwd}` : '/ (Home)'}
+            </span>
+          ) : (
+            <span className="text-zinc-500 text-[10px] truncate">
+              (Click to connect and open SFTP)
+            </span>
+          )}
         </div>
         <div className="flex items-center space-x-2.5">
           {uploadingFile && (
@@ -517,14 +539,19 @@ const SftpExplorer: React.FC<SftpExplorerProps> = ({ host, height, isCollapsed, 
               <span>Uploading {uploadingFile}...</span>
             </div>
           )}
-          <button
-            onClick={() => setShowDownloads((visible) => !visible)}
-            className={`flex items-center gap-1 rounded px-1.5 py-0.5 transition ${showDownloads ? 'bg-brand/15 text-brand-light' : 'text-slate-400 hover:text-zinc-200'}`}
-            title={showDownloads ? 'Hide downloads' : 'Show downloads'}
-          >
-            <Download size={11} />
-            <span>{downloads.filter((item) => item.status === 'queued' || item.status === 'running').length || downloads.length}</span>
-          </button>
+          {!isCollapsed && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowDownloads((visible) => !visible);
+              }}
+              className={`flex items-center gap-1 rounded px-1.5 py-0.5 transition ${showDownloads ? 'bg-brand/15 text-brand-light' : 'text-slate-400 hover:text-zinc-200'}`}
+              title={showDownloads ? 'Hide downloads' : 'Show downloads'}
+            >
+              <Download size={11} />
+              <span>{downloads.filter((item) => item.status === 'queued' || item.status === 'running').length || downloads.length}</span>
+            </button>
+          )}
           {!isCollapsed && (
             <>
               <button
@@ -537,7 +564,10 @@ const SftpExplorer: React.FC<SftpExplorerProps> = ({ host, height, isCollapsed, 
                 <span>Upload</span>
               </button>
               <button
-                onClick={() => loadDir(remoteCwd)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  loadDir(remoteCwd);
+                }}
                 disabled={loading}
                 className="text-slate-400 hover:text-zinc-200 transition cursor-pointer disabled:opacity-50"
                 title="Refresh remote files list"
@@ -547,7 +577,10 @@ const SftpExplorer: React.FC<SftpExplorerProps> = ({ host, height, isCollapsed, 
             </>
           )}
           <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsCollapsed(!isCollapsed);
+            }}
             className="text-slate-500 hover:text-zinc-350 transition cursor-pointer"
             title={isCollapsed ? 'Expand SFTP panel' : 'Collapse SFTP panel'}
           >
