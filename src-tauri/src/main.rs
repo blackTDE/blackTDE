@@ -544,6 +544,9 @@ async fn create_workspace(
     path: String,
     pool: State<'_, SqlitePool>,
 ) -> Result<(), String> {
+    let target_path = path.clone();
+    let _ = git_runner::git_init(target_path);
+
     sqlx::query("INSERT INTO workspaces (id, name, path) VALUES ($1, $2, $3)")
         .bind(id)
         .bind(name)
@@ -1629,6 +1632,7 @@ fn main() {
             git_runner::git_unstage_file,
             git_runner::git_restore_file,
             git_runner::git_commit_changes,
+            git_runner::git_init,
             git_runner::get_git_branch,
             git_runner::get_git_branches,
             git_runner::git_checkout_branch,

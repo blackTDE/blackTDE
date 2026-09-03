@@ -411,9 +411,23 @@ pub fn get_git_worktree_file_content(cwd: String, file_path: String) -> String {
     std::fs::read_to_string(std::path::Path::new(&cwd).join(file_path)).unwrap_or_default()
 }
 
+#[tauri::command(async)]
+pub fn git_init(cwd: String) -> Result<String, String> {
+    let path = std::path::Path::new(&cwd);
+    if !path.exists() {
+        std::fs::create_dir_all(path).map_err(|e| e.to_string())?;
+    }
+    if path.join(".git").exists() {
+        return Ok("Already a git repository".to_string());
+    }
+    run_git(&cwd, &["init"])
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{git_restore_file, parse_git_status, parse_name_status, parse_remote_status};
+    use super::{
+        git_init, git_restore_file, parse_git_status, parse_name_status, parse_remote_status,
+    };
     use std::{fs, process::Command};
 
     #[test]
@@ -490,5 +504,21 @@ mod tests {
         );
         assert!(!repo.join("untracked.txt").exists());
         fs::remove_dir_all(repo).unwrap();
+    }
+
+    #[test]
+    fn initializes_git_repository_if_not_present() {
+        let dir = std::env::temp_dir().join(format!("tde-init-test-{}", uuid::Uuid::new_v4()));
+        assert!(!dir.join(".git").exists());
+
+        let res = git_init(dir.to_string_lossy().into_owned());
+        assert!(res.is_ok());
+        assert!(dir.join(".git").exists());
+
+        // Calling it again on an existing git repo returns Ok without error
+        let second = git_init(dir.to_string_lossy().into_owned());
+        assert!(second.is_ok());
+
+        let _ = fs::remove_dir_all(dir);
     }
 }
