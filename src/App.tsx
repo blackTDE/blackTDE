@@ -274,6 +274,7 @@ function App() {
   const handleSelectProject = (ws: any) => {
     setWorkspace(ws);
     setCwdInput(ws.path);
+    setGitFiles([]);
     
     // Reload git branch for the selected project
     invoke<string>('get_git_branch', { cwd: ws.path })
@@ -1479,11 +1480,14 @@ function App() {
                 <div className="h-full flex flex-col">
                   <h3 className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-2 font-mono">Workspace Files</h3>
                   <div className="flex-grow overflow-y-auto">
-                    <FileTree rootPath={activeWorkspace?.path || workspacePath} />
+                    <FileTree
+                      key={activeWorkspace?.path || workspacePath}
+                      rootPath={activeWorkspace?.path || workspacePath}
+                    />
                   </div>
                 </div>
               ) : activeRightPanel === 'git' ? (
-                <GitPanel />
+                <GitPanel key={activeWorkspace?.path || workspacePath} />
               ) : activeRightPanel === 'skills' ? (
                 <SkillsPanel />
               ) : activeRightPanel !== 'search' ? (
@@ -1493,7 +1497,7 @@ function App() {
                 </div>
               ) : null}
               <div className={activeRightPanel === 'search' ? 'h-full' : 'hidden'}>
-                <SearchPanel />
+                <SearchPanel key={activeWorkspace?.path || workspacePath} />
               </div>
             </div>
           </div>

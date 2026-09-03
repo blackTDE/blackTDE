@@ -60,6 +60,12 @@ export const GitPanel: React.FC = () => {
       setRemoteStatus(remote);
     } catch (err) {
       console.error('Failed to load Git status/history:', err);
+      setGitFiles([]);
+      setGitBranch('no-git');
+      setBranches([]);
+      setCommits([]);
+      setGitUser({ name: '', email: '' });
+      setRemoteStatus({ remote_name: '', remote_url: '', upstream: '', ahead: 0, behind: 0 });
     } finally {
       if (showLoading) setIsLoading(false);
     }
@@ -131,6 +137,14 @@ export const GitPanel: React.FC = () => {
   };
 
   useEffect(() => {
+    setGitFiles([]);
+    setBranches([]);
+    setCommits([]);
+    setExpandedCommit(null);
+    setExpandedMsgHashes({});
+    setCommitFiles({});
+    setCommitMessage('');
+    setOperationMessage(null);
     void loadGitStatus();
     const timer = window.setInterval(() => void loadGitStatus(false), 3000);
     return () => window.clearInterval(timer);
