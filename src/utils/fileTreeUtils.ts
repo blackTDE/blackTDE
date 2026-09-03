@@ -46,12 +46,12 @@ export const getRelativeDisplayPath = (rootPath: string, targetPath: string): st
   const cleanTarget = targetPath.replace(/[/\\]+$/, '');
 
   if (!cleanTarget || cleanTarget === cleanRoot) {
-    return '/ (root)';
+    return cleanRoot;
   }
 
   if (cleanTarget.startsWith(cleanRoot)) {
     const rel = cleanTarget.slice(cleanRoot.length).replace(/^[/\\]+/, '');
-    return rel || '/ (root)';
+    return rel || cleanRoot;
   }
 
   return cleanTarget;

@@ -42,7 +42,7 @@ test('resolveCreationDirectory resolves target directory for new file/folder', (
 test('getRelativeDisplayPath formats relative path for UI badges', () => {
   const root = '/workspace/black_tde';
 
-  assert.equal(getRelativeDisplayPath(root, root), '/ (root)');
+  assert.equal(getRelativeDisplayPath(root, root), root);
   assert.equal(getRelativeDisplayPath(root, '/workspace/black_tde/src/components'), 'src/components');
   assert.equal(getRelativeDisplayPath(root, '/workspace/black_tde/src'), 'src');
 });

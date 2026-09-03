@@ -418,6 +418,13 @@ export const FileTree: React.FC<FileTreeProps> = ({ rootPath }) => {
   };
 
   useEffect(() => {
+    setSelectedItem(null);
+    setExpandedMap({});
+    setNewType(null);
+    setTreeError(null);
+    setRenamingPath(null);
+    setDeletingPath(null);
+    setContextMenu(null);
     void refresh();
     const timer = window.setInterval(() => void refresh(), 5000);
     return () => window.clearInterval(timer);
@@ -550,11 +557,9 @@ export const FileTree: React.FC<FileTreeProps> = ({ rootPath }) => {
     setContextMenu(null);
   };
 
-  const targetDisplay = getRelativeDisplayPath(
-    rootPath,
+  const effectiveTargetDir =
     newTargetDir ||
-      resolveCreationDirectory(rootPath, selectedItem?.path || null, selectedItem?.isDir ?? false)
-  );
+    resolveCreationDirectory(rootPath, selectedItem?.path || null, selectedItem?.isDir ?? false);
 
   return (
     <div
@@ -604,9 +609,9 @@ export const FileTree: React.FC<FileTreeProps> = ({ rootPath }) => {
       {newType && (
         <div className="my-1 flex flex-col gap-1 rounded border border-surface-3 bg-surface-2/80 p-1.5 text-[10px] shadow-sm">
           <div className="flex items-center justify-between text-zinc-400 text-[9px] font-mono">
-            <span className="truncate">
+            <span className="truncate" title={effectiveTargetDir}>
               New {newType === 'file' ? 'file' : 'folder'} in:{' '}
-              <strong className="text-zinc-200">{targetDisplay}</strong>
+              <strong className="text-zinc-200">{effectiveTargetDir}</strong>
             </span>
             <button
               type="button"
