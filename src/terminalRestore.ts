@@ -14,6 +14,16 @@ export const terminalScrollOffset = (baseY: number, viewportY: number): number =
 export const restoredTerminalViewportLine = (baseY: number, offset: number): number =>
   Math.max(0, baseY - offset);
 
+export const isSpuriousTerminalQueryResponse = (data: string): boolean => {
+  if (!data) return false;
+  return (
+    /^\x1b\[\?[0-9;]*[a-zA-Z]/.test(data) ||
+    /^\x1b\[>[0-9;]*[a-zA-Z]/.test(data) ||
+    /^\x1bP>\|/.test(data) ||
+    data.includes('xterm.js(')
+  );
+};
+
 export const restoreTerminal = async (actions: TerminalRestoreActions): Promise<void> => {
   let isActive: boolean;
 

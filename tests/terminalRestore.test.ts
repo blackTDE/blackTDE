@@ -83,3 +83,28 @@ test('waits for resize completion before marking ready', async () => {
   await restoring;
   assert.deepEqual(events, ['lookup', 'fit', 'ready']);
 });
+
+test('identifies spurious terminal device attribute and version query responses', async () => {
+  const { isSpuriousTerminalQueryResponse } = await import('../src/terminalRestore.ts');
+
+  // Primary Device Attributes (DA1)
+  assert.equal(isSpuriousTerminalQueryResponse('\x1b[?1;2c'), true);
+  assert.equal(isSpuriousTerminalQueryResponse('\x1b[?62;1;2;4;6;7;8;9;15;18;21;22;28c'), true);
+
+  // Secondary Device Attributes (DA2)
+  assert.equal(isSpuriousTerminalQueryResponse('\x1b[>0;276;0c'), true);
+  assert.equal(isSpuriousTerminalQueryResponse('\x1b[>1;10;0c'), true);
+
+  // XTVERSION (Terminal name and version)
+  assert.equal(isSpuriousTerminalQueryResponse('\x1bP>|xterm.js(6.1.0-beta.288)\x1b\\'), true);
+  assert.equal(isSpuriousTerminalQueryResponse('xterm.js(6.1.0-beta.288)'), true);
+
+  // Regular input / arrows / control keys must NOT be filtered
+  assert.equal(isSpuriousTerminalQueryResponse('ls -la\n'), false);
+  assert.equal(isSpuriousTerminalQueryResponse('\x1b[A'), false); // Up arrow
+  assert.equal(isSpuriousTerminalQueryResponse('\x1b[B'), false); // Down arrow
+  assert.equal(isSpuriousTerminalQueryResponse('\x1b[C'), false); // Right arrow
+  assert.equal(isSpuriousTerminalQueryResponse('\x1b[D'), false); // Left arrow
+  assert.equal(isSpuriousTerminalQueryResponse('\x03'), false);   // Ctrl+C
+  assert.equal(isSpuriousTerminalQueryResponse('1;2c'), false);   // normal text without escape prefix
+});

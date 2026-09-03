@@ -7,6 +7,7 @@ import {
   restoredTerminalViewportLine,
   terminalScrollOffset,
   restoreTerminal,
+  isSpuriousTerminalQueryResponse,
 } from '../terminalRestore';
 import { isLocalShell, shellResumeMessage, type ShellResumeKind } from '../shellRestore';
 import {
@@ -138,6 +139,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
 
     let isReady = false;
     let isDisposed = false;
+    let isReplaying = false;
     const incomingQueue: Uint8Array[] = [];
     const localShell = isLocalShell(session?.agentType, session?.ssh_host);
 
@@ -205,7 +207,13 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
         replayHistory: async () => {
           const history = await invoke<number[]>('get_session_history', { id: sessionId });
           if (!isDisposed && history && history.length > 0) {
-            term.write(new Uint8Array(history));
+            isReplaying = true;
+            await new Promise<void>((resolve) => {
+              term.write(new Uint8Array(history), () => {
+                isReplaying = false;
+                resolve();
+              });
+            });
           }
         },
         resume: async (rows = term.rows, cols = term.cols) => {
@@ -255,6 +263,9 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
     });
 
     const writeInput = (data: string) => {
+      if (!isReady || isReplaying || isSpuriousTerminalQueryResponse(data)) {
+        return;
+      }
       const bytes = new TextEncoder().encode(data);
       invoke('write_to_session', { id: sessionId, data: Array.from(bytes) }).catch((err) => {
         console.error('Failed to write key to session:', err);
