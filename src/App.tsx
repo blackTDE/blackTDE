@@ -489,6 +489,10 @@ function App() {
       });
 
       setPaneSessionId(0, newSessionId);
+      setActiveSession(newSessionId);
+      if (!isSessionPinned) {
+        setActiveFileTab(null);
+      }
       setResumeSessionId('');
       setManualResumeSessionId('');
       loadPastSessions();
@@ -533,6 +537,9 @@ function App() {
     setActiveFatherTabId(ws.id); // Ensure the project's father tab is active!
     setActiveSession(sessionId);
     setPaneSessionId(0, sessionId);
+    if (!isSessionPinned) {
+      setActiveFileTab(null);
+    }
   };
 
   const handleShellSplit = async (direction: 'right' | 'down') => {

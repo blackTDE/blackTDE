@@ -336,10 +336,24 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
       sessions: { ...state.sessions, [session.id]: session },
     })),
 
-  setSessions: (sessions) =>
-    set({ sessions }),
-
-  setActiveSession: (id) => set({ activeSessionId: id }),
+  setActiveSession: (id) =>
+    set((state) => {
+      const wsId = state.activeWorkspace?.id || 'project_default';
+      const shouldHidePreview = id !== null && !state.isSessionPinned;
+      return {
+        activeSessionId: id,
+        ...(shouldHidePreview
+          ? {
+              activeFileTab: null,
+              activeFilePath: null,
+              activeFileTabByProject: {
+                ...state.activeFileTabByProject,
+                [wsId]: null,
+              },
+            }
+          : {}),
+      };
+    }),
 
   removeSession: (id) =>
     set((state) => {

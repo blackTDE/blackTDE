@@ -165,3 +165,33 @@ test('closes and reopens top project workspace tabs correctly', () => {
   store.closeWorkspaceTab('proj-2');
   assert.deepEqual(useWorkspaceStore.getState().openWorkspaceTabIds, []);
 });
+
+test('switches from file preview back to session when session is activated in unpinned mode, but retains file preview when pinned', () => {
+  resetPaneState();
+  const store = useWorkspaceStore.getState();
+
+  // 1. Unpinned mode (default: isSessionPinned = false)
+  useWorkspaceStore.setState({ isSessionPinned: false });
+  store.openFile('/project/src/preview.ts', 'preview.ts');
+  assert.equal(useWorkspaceStore.getState().activeFileTab, '/project/src/preview.ts');
+  assert.equal(useWorkspaceStore.getState().openFiles.length, 1);
+
+  // User clicks session tab -> setActiveSession
+  store.setActiveSession('sess-1');
+  // File preview should be cleared to reveal session panel
+  assert.equal(useWorkspaceStore.getState().activeFileTab, null);
+  // Opened files list should remain intact in tabs bar
+  assert.equal(useWorkspaceStore.getState().openFiles.length, 1);
+  assert.equal(useWorkspaceStore.getState().openFiles[0].path, '/project/src/preview.ts');
+
+  // 2. Pinned mode (isSessionPinned = true)
+  useWorkspaceStore.setState({ isSessionPinned: true });
+  store.setActiveFileTab('/project/src/preview.ts');
+  assert.equal(useWorkspaceStore.getState().activeFileTab, '/project/src/preview.ts');
+
+  // User clicks session tab in pinned mode
+  store.setActiveSession('sess-2');
+  // Both panels remain open simultaneously: activeFileTab is preserved
+  assert.equal(useWorkspaceStore.getState().activeFileTab, '/project/src/preview.ts');
+  assert.equal(useWorkspaceStore.getState().activeSessionId, 'sess-2');
+});
