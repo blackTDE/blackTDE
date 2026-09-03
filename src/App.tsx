@@ -59,6 +59,7 @@ function App() {
     setActiveRightPanel,
     gitBranch,
     setGitBranch,
+    setGitFiles,
     setPaneSessionId,
     workspaces,
     activeWorkspace,
