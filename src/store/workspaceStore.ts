@@ -336,6 +336,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
       sessions: { ...state.sessions, [session.id]: session },
     })),
 
+  setSessions: (sessions) =>
+    set({ sessions }),
+
   setActiveSession: (id) =>
     set((state) => {
       const wsId = state.activeWorkspace?.id || 'project_default';
