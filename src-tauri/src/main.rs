@@ -1169,8 +1169,15 @@ async fn get_remote_session_id(
     }
 
     if clean_cmd == "agy" && ssh_host.is_none() {
+        let home = std::env::var("HOME").ok().map(PathBuf::from);
         let path = agy_session::log_path(&app_handle, &id)?;
-        if let Some(resolved) = agy_session::read_conversation_id(&path) {
+        let mut resolved = agy_session::read_conversation_id(&path);
+        if let Some(ref h) = home {
+            if resolved.as_ref().map_or(true, |cid| !agy_session::is_valid_conversation(h, cid)) {
+                resolved = agy_session::resolve_latest_conversation_for_workspace(h, &cwd);
+            }
+        }
+        if let Some(resolved) = resolved {
             sqlx::query("UPDATE sessions SET remote_session_id = $1 WHERE id = $2")
                 .bind(&resolved)
                 .bind(&id)
@@ -1178,6 +1185,12 @@ async fn get_remote_session_id(
                 .await
                 .map_err(|e| e.to_string())?;
             return Ok(Some(resolved));
+        } else {
+            let _ = sqlx::query("UPDATE sessions SET remote_session_id = NULL WHERE id = $1")
+                .bind(&id)
+                .execute(&*pool)
+                .await;
+            return Ok(None);
         }
     }
 
@@ -1257,20 +1270,25 @@ async fn resume_terminated_session(
         }
     }
 
-    if remote_session_id
-        .as_deref()
-        .map_or(true, |id| id.trim().is_empty())
-    {
-        if let Some(resolved) = agy_log_path
-            .as_deref()
-            .and_then(agy_session::read_conversation_id)
-        {
-            remote_session_id = Some(resolved.clone());
-            let _ = sqlx::query("UPDATE sessions SET remote_session_id = $1 WHERE id = $2")
-                .bind(&resolved)
-                .bind(&id)
-                .execute(&*pool)
-                .await;
+    if clean_cmd == "agy" && ssh_host.is_none() {
+        if let Some(home) = std::env::var("HOME").ok().map(PathBuf::from) {
+            let is_valid = remote_session_id
+                .as_deref()
+                .map_or(false, |cid| agy_session::is_valid_conversation(&home, cid));
+            if !is_valid {
+                let resolved = agy_log_path
+                    .as_deref()
+                    .and_then(agy_session::read_conversation_id)
+                    .filter(|cid| agy_session::is_valid_conversation(&home, cid))
+                    .or_else(|| agy_session::resolve_latest_conversation_for_workspace(&home, &cwd));
+
+                remote_session_id = resolved;
+                let _ = sqlx::query("UPDATE sessions SET remote_session_id = $1 WHERE id = $2")
+                    .bind(&remote_session_id)
+                    .bind(&id)
+                    .execute(&*pool)
+                    .await;
+            }
         }
     }
 
@@ -1576,6 +1594,9 @@ fn main() {
                 let pool = db::initialize_db(&app_handle)
                     .await
                     .expect("Failed to initialize database");
+                if let Some(home) = std::env::var("HOME").ok().map(PathBuf::from) {
+                    agy_session::heal_agy_sessions(&pool, &home).await;
+                }
                 app_handle.manage(pool);
             });
 

@@ -103,7 +103,12 @@ pub fn start_stdout_reader(
                         }
 
                         if found_sid.is_none() {
-                            found_sid = crate::agy_session::extract_conversation_id(text);
+                            if let Some(candidate) = crate::agy_session::extract_conversation_id(text) {
+                                let home = std::env::var("HOME").ok().map(std::path::PathBuf::from);
+                                if home.as_ref().map_or(true, |h| crate::agy_session::is_valid_conversation(h, &candidate)) {
+                                    found_sid = Some(candidate);
+                                }
+                            }
                         }
 
                         if let Some(captured_sid) = found_sid {
