@@ -5,6 +5,7 @@ import { handleTerminalKeyEvent, type TerminalKeyHandlerContext } from '../src/t
 const createMockContext = () => {
   let clipboard = '';
   let pasted = '';
+  let writtenInput = '';
   let selected = false;
   let cleared = false;
   let currentSelection = 'selected text';
@@ -21,6 +22,9 @@ const createMockContext = () => {
     clear: () => {
       cleared = true;
     },
+    writeInput: (data: string) => {
+      writtenInput = data;
+    },
     writeClipboard: async (text: string) => {
       clipboard = text;
     },
@@ -31,6 +35,7 @@ const createMockContext = () => {
     context,
     getClipboard: () => clipboard,
     getPasted: () => pasted,
+    getWrittenInput: () => writtenInput,
     isSelected: () => selected,
     isCleared: () => cleared,
     setSelection: (text: string) => {
@@ -173,4 +178,90 @@ test('passes IME composing and Chinese punctuation keys through to browser/xterm
   } as unknown as KeyboardEvent;
 
   assert.equal(handleTerminalKeyEvent(chinesePunctuationEvent, mock.context), true);
+});
+
+test('handles Shift+Enter keydown to send newline without submitting prompt', () => {
+  const mock = createMockContext();
+  let defaultPrevented = false;
+  let propagationStopped = false;
+
+  const shiftEnterDown = {
+    type: 'keydown',
+    key: 'Enter',
+    shiftKey: true,
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+    preventDefault: () => {
+      defaultPrevented = true;
+    },
+    stopPropagation: () => {
+      propagationStopped = true;
+    },
+  } as unknown as KeyboardEvent;
+
+  const result = handleTerminalKeyEvent(shiftEnterDown, mock.context);
+  assert.equal(result, false);
+  assert.equal(defaultPrevented, true);
+  assert.equal(propagationStopped, true);
+  assert.equal(mock.getWrittenInput(), '\n');
+});
+
+test('intercepts Shift+Enter keyup event to prevent xterm from triggering Enter submit', () => {
+  const mock = createMockContext();
+  let defaultPrevented = false;
+  let propagationStopped = false;
+
+  const shiftEnterUp = {
+    type: 'keyup',
+    key: 'Enter',
+    shiftKey: true,
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+    preventDefault: () => {
+      defaultPrevented = true;
+    },
+    stopPropagation: () => {
+      propagationStopped = true;
+    },
+  } as unknown as KeyboardEvent;
+
+  const result = handleTerminalKeyEvent(shiftEnterUp, mock.context);
+  assert.equal(result, false);
+  assert.equal(defaultPrevented, true);
+  assert.equal(propagationStopped, true);
+  // Keyup should NOT send an extra newline
+  assert.equal(mock.getWrittenInput(), '');
+});
+
+test('allows regular Enter without Shift to pass through to xterm for prompt submit', () => {
+  const mock = createMockContext();
+  const enterEvent = {
+    type: 'keydown',
+    key: 'Enter',
+    shiftKey: false,
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+  } as unknown as KeyboardEvent;
+
+  assert.equal(handleTerminalKeyEvent(enterEvent, mock.context), true);
+  assert.equal(mock.getWrittenInput(), '');
+});
+
+test('allows Shift+Enter during IME composing to pass through to IME', () => {
+  const mock = createMockContext();
+  const imeShiftEnter = {
+    type: 'keydown',
+    key: 'Enter',
+    shiftKey: true,
+    isComposing: true,
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+  } as unknown as KeyboardEvent;
+
+  assert.equal(handleTerminalKeyEvent(imeShiftEnter, mock.context), true);
+  assert.equal(mock.getWrittenInput(), '');
 });

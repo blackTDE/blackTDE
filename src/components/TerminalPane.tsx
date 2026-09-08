@@ -102,7 +102,23 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
     containerRef.current.innerHTML = '';
     term.open(containerRef.current);
 
-    // Attach custom keyboard shortcut handler for Copy/Paste/SelectAll/Clear in terminal
+    let isReady = false;
+    let isDisposed = false;
+    let isReplaying = false;
+    const incomingQueue: Uint8Array[] = [];
+    const localShell = isLocalShell(session?.agentType, session?.ssh_host);
+
+    const writeInput = (data: string) => {
+      if (!isReady || isReplaying || isSpuriousTerminalQueryResponse(data)) {
+        return;
+      }
+      const bytes = new TextEncoder().encode(data);
+      invoke('write_to_session', { id: sessionId, data: Array.from(bytes) }).catch((err) => {
+        console.error('Failed to write key to session:', err);
+      });
+    };
+
+    // Attach custom keyboard shortcut handler for Copy/Paste/SelectAll/Clear/Shift+Enter in terminal
     term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
       return handleTerminalKeyEvent(event, {
         hasSelection: () => term.hasSelection(),
@@ -110,6 +126,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
         paste: (text: string) => term.paste(text),
         selectAll: () => term.selectAll(),
         clear: () => term.clear(),
+        writeInput: (data: string) => writeInput(data),
         writeClipboard: async (text: string) => {
           try {
             await invoke('write_clipboard_text', { text });
@@ -129,19 +146,6 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
         },
       });
     });
-    
-    // Initial measure fit
-    try {
-      fitAddon.fit();
-    } catch (e) {
-      console.error('Fit error on mount:', e);
-    }
-
-    let isReady = false;
-    let isDisposed = false;
-    let isReplaying = false;
-    const incomingQueue: Uint8Array[] = [];
-    const localShell = isLocalShell(session?.agentType, session?.ssh_host);
 
     const flushIncoming = () => {
       while (incomingQueue.length > 0) {
@@ -261,16 +265,6 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({ sessionId, isVisible
         }
       });
     });
-
-    const writeInput = (data: string) => {
-      if (!isReady || isReplaying || isSpuriousTerminalQueryResponse(data)) {
-        return;
-      }
-      const bytes = new TextEncoder().encode(data);
-      invoke('write_to_session', { id: sessionId, data: Array.from(bytes) }).catch((err) => {
-        console.error('Failed to write key to session:', err);
-      });
-    };
 
     // Handle user keyboard/mouse input
     const dataDisposer = term.onData(writeInput);

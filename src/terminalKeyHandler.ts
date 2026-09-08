@@ -11,6 +11,7 @@ export interface TerminalKeyHandlerContext {
   clear: () => void;
   writeClipboard: (text: string) => Promise<void>;
   readClipboard: () => Promise<string>;
+  writeInput?: (data: string) => void;
 }
 
 export const handleTerminalKeyEvent = (
@@ -20,6 +21,21 @@ export const handleTerminalKeyEvent = (
   // If IME is currently composing or processing (e.g. Chinese/Japanese/Korean input), let browser and xterm handle it naturally
   if (event.isComposing || event.keyCode === 229) {
     return true;
+  }
+
+  // Intercept Shift+Enter (both keydown and keyup) to insert newline instead of submitting prompt
+  const isEnter = event.key === 'Enter' || event.key === 'Return';
+  if (isEnter && event.shiftKey) {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    if (event.type === 'keydown') {
+      if (context.writeInput) {
+        context.writeInput('\n');
+      } else {
+        context.paste('\n');
+      }
+    }
+    return false;
   }
 
   if (event.type !== 'keydown') {
