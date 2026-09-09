@@ -52,7 +52,7 @@ interface WorkspaceState {
   activeFileLine: number | null;
   fileNavigationCounter: number;
   activeFileContent: string | null;
-  activeRightPanel: 'files' | 'git' | 'settings' | 'search' | 'skills' | 'none';
+  activeRightPanel: 'files' | 'git' | 'settings' | 'search' | 'skills' | 'browser' | 'none';
   gitFiles: GitFileStatus[];
   gitBranch: string;
 
@@ -105,7 +105,7 @@ interface WorkspaceState {
   
   setActiveFilePath: (path: string | null) => void;
   setActiveFileContent: (content: string | null) => void;
-  setActiveRightPanel: (panel: 'files' | 'git' | 'settings' | 'search' | 'skills' | 'none') => void;
+  setActiveRightPanel: (panel: 'files' | 'git' | 'settings' | 'search' | 'skills' | 'browser' | 'none') => void;
   setGitFiles: (files: GitFileStatus[]) => void;
   setGitBranch: (branch: string) => void;
 
