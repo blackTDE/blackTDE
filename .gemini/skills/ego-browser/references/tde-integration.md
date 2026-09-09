@@ -1,26 +1,37 @@
-# TDE Right Panel Integration Guide for ego-browser
+# TDE Browser Integration Guide for ego-browser
 
-This document explains how **Antigravity CLI** and **TDE (Terminal Development Environment)** collaborate to drive and display `ego-browser` inside TDE's right inspector panel.
+This document explains how **Antigravity CLI** and **TDE (Terminal Development Environment)** collaborate to drive and display `ego-browser`:
+
+1. **Right Inspector Panel (`Browser` Tab)**: Serves as the **Web Tabs Manager** (listing open pages per project, task spaces, URL launcher, and agent/user handoff controls).
+2. **Center Panel (`WebPreview`)**: Displays the **full-resolution, interactive web page content** alongside file previews and git diffs, split-screenable with the terminal grid, and strictly isolated per project workspace.
 
 ---
 
 ## Architecture Overview
 
 ```
-+-------------------------------------------------------------------------------+
-|                                 TDE Desktop App                               |
-|                                                                               |
-|  +--------------------------------+   +------------------------------------+  |
-|  |     Center Terminal Panes      |   |        Right Inspector Panel       |  |
-|  |                                |   |  [Files] [Git] [Search] [Browser]  |  |
-|  |  $ agy                         |   |                                    |  |
-|  |  > ego-browser nodejs <<'EOF'  |   |  Task Space: #1 (inspect-pr)       |  |
-|  |    const task = ...            |---|-> Live Page Viewport               |  |
-|  |    await openOrReuseTab(...)   |   |   - Interactive CDP Screencast     |  |
-|  |    await click('@12')          |   |   - Ax Semantic Tree with @refs    |  |
-|  |  EOF                           |   |   - Control Status: [Agent Active] |  |
-|  +--------------------------------+   +------------------------------------+  |
-+-------------------------------------------------------------------------------+
++---------------------------------------------------------------------------------------------------+
+|                                      TDE Desktop (Tauri v2)                                       |
+|                                                                                                   |
+|  +---------------------------------------+   +-----------------------+   +---------------------+  |
+|  |         Center Left: Terminal         |   | Center Right: Preview |   |   Right Inspector   |  |
+|  |                                       |   |                       |   |                     |  |
+|  |  Level 2 Tabs: [Shell] [sess-1]       |   | [app.ts] [🌐 Localhost]|   | [Files][Git][Browser|  |
+|  |                                       |   |                       |   |                     |  |
+|  |  $ ego-browser nodejs <<'EOF'         |   | +-------------------+ |   | +-----------------+ |  |
+|  |    const task = await ...             |   | | [Address Bar]     | |   | | Web Tabs (3)    | |  |
+|  |    await openOrReuseTab(...)          |---|-> | [Full Resolution| |   | | + Open URL...   | |  |
+|  |    await click('@12')                 |   | |  Live Web Page    | |   | | • Localhost:3000| |  |
+|  |  EOF                                  |   | |  Viewport]        | |   | | • GitHub Repo   | |  |
+|  |                                       |   | +-------------------+ |   | +-----------------+ |  |
+|  +-------------------+-------------------+   +-----------------------+   +----------+----------+  |
+|                      |                                                              ^             |
+|                      v                                                              |             |
+|           ego-browser CLI Process                                                   |             |
+|                      +-----------------------+--------------------------------------+             |
+|                                              v                                                    |
+|                               ego-lite Engine (Chromium + CDP)                                    |
++---------------------------------------------------------------------------------------------------+
 ```
 
 ---
