@@ -98,7 +98,20 @@ function App() {
   const [draggedSessionTabIndex, setDraggedSessionTabIndex] = useState<number | null>(null);
   const [isRightPanelHovered, setIsRightPanelHovered] = useState(false);
   const [activeFatherTabId, setActiveFatherTabId] = useState('');
+  const [settingsTab, setSettingsTab] = useState<string>('virtual-models');
   const [isLeftPanelHovered, setIsLeftPanelHovered] = useState(false);
+
+  useEffect(() => {
+    const handleOpenSettings = (e: Event) => {
+      const customEvent = e as CustomEvent<{ tab?: string }>;
+      if (customEvent.detail?.tab) {
+        setSettingsTab(customEvent.detail.tab);
+      }
+      setActiveFatherTabId('settings');
+    };
+    window.addEventListener('tde-open-settings', handleOpenSettings);
+    return () => window.removeEventListener('tde-open-settings', handleOpenSettings);
+  }, []);
 
   // Mouse drag resize handlers
   const handleLeftResizeStart = (e: React.MouseEvent) => {
@@ -1081,7 +1094,7 @@ function App() {
           {activeFatherTabId === 'settings' && (
             /* Render full page Settings Dashboard */
             <div className="flex-grow min-h-0 bg-[#0a0a0a] overflow-hidden">
-              <SettingsPanel />
+              <SettingsPanel initialTab={settingsTab} />
             </div>
           )}
 

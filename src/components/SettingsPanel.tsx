@@ -12,10 +12,33 @@ import {
   KeyRound, 
   Blocks, 
   RefreshCw,
-  Info
+  Info,
+  Globe,
+  Download,
+  CheckCircle2,
+  AlertCircle,
+  Terminal,
+  ExternalLink
 } from 'lucide-react';
 import { ProviderVault } from './ProviderVault';
 import { AgentIcon } from './AgentIcon';
+
+export interface EgoLiteStatus {
+  is_installed: boolean;
+  app_path: string | null;
+  cli_installed: boolean;
+  cli_path: string | null;
+  cli_version: string | null;
+  os_supported: boolean;
+  architecture: string;
+}
+
+export interface EgoLiteInstallResult {
+  success: boolean;
+  message: string;
+  app_path: string | null;
+  logs: string[];
+}
 
 interface ProxyProvider {
   name: string;
@@ -38,8 +61,18 @@ interface McpServerEntry {
   args: string;
 }
 
-export const SettingsPanel: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'vault' | 'virtual-models' | 'providers' | 'mcp' | 'versions'>('virtual-models');
+export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab }) => {
+  const [activeTab, setActiveTab] = useState<'vault' | 'virtual-models' | 'providers' | 'mcp' | 'versions' | 'browser'>(
+    (initialTab as any) || 'virtual-models'
+  );
+
+  // Browser (ego-lite) States
+  const [egoStatus, setEgoStatus] = useState<EgoLiteStatus | null>(null);
+  const [isCheckingEgo, setIsCheckingEgo] = useState(false);
+  const [isInstallingEgo, setIsInstallingEgo] = useState(false);
+  const [installLogs, setInstallLogs] = useState<string[]>([]);
+  const [installError, setInstallError] = useState<string | null>(null);
+  const [installSuccess, setInstallSuccess] = useState<string | null>(null);
 
   // Redesigned Providers States
   const [providers, setProviders] = useState<ProxyProvider[]>([]);
@@ -123,12 +156,55 @@ export const SettingsPanel: React.FC = () => {
     setIsVerifying(false);
   };
 
+  const checkEgoStatus = async () => {
+    setIsCheckingEgo(true);
+    try {
+      const status = await invoke<EgoLiteStatus>('check_ego_lite_status');
+      setEgoStatus(status);
+    } catch (e) {
+      console.error('Failed to check ego-lite status:', e);
+    } finally {
+      setIsCheckingEgo(false);
+    }
+  };
+
+  const handleInstallEgo = async () => {
+    setIsInstallingEgo(true);
+    setInstallError(null);
+    setInstallSuccess(null);
+    setInstallLogs(['⚡ Initializing one-key installation of ego-lite browser...']);
+    try {
+      const res = await invoke<EgoLiteInstallResult>('install_ego_lite_browser');
+      setInstallLogs(res.logs);
+      if (res.success) {
+        setInstallSuccess(res.message);
+        await checkEgoStatus();
+      } else {
+        setInstallError(res.message);
+      }
+    } catch (err: any) {
+      setInstallError(String(err));
+      setInstallLogs((prev) => [...prev, `❌ Installation error: ${err}`]);
+    } finally {
+      setIsInstallingEgo(false);
+    }
+  };
+
+  const handleOpenEgo = async () => {
+    try {
+      await invoke('open_in_ego_lite', { url: 'https://lite.ego.app' });
+    } catch (e) {
+      console.error('Failed to launch ego-lite:', e);
+    }
+  };
+
   const reloadAll = async () => {
     await Promise.all([
       loadProviders(),
       loadVirtualModels(),
       loadMcpServers(),
-      checkVersions()
+      checkVersions(),
+      checkEgoStatus()
     ]);
   };
 
@@ -297,6 +373,7 @@ export const SettingsPanel: React.FC = () => {
             { id: 'vault', name: 'Vault', icon: KeyRound },
             { id: 'mcp', name: 'MCP Servers', icon: Blocks },
             { id: 'versions', name: 'Versions', icon: Info },
+            { id: 'browser', name: 'Browser Engine', icon: Globe },
           ].map((t) => {
             const Icon = t.icon;
             return (
@@ -593,6 +670,152 @@ export const SettingsPanel: React.FC = () => {
               <RefreshCw size={12} className={isVerifying ? 'animate-spin' : ''} />
               <span>Verify Versions</span>
             </button>
+          </div>
+        )}
+
+        {/* ── TAB: Browser Engine (ego-lite) ── */}
+        {activeTab === 'browser' && (
+          <div className="space-y-5 max-w-2xl select-none font-sans">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-sm font-bold font-mono text-slate-200 flex items-center gap-2">
+                  <Globe className="text-brand-light w-4 h-4" />
+                  ego-lite Browser Engine
+                </h3>
+                <p className="text-xs text-slate-400 mt-1 max-w-xl leading-relaxed">
+                  Ultra-lightweight macOS browser designed for autonomous AI agents. Integrates with the TDE inspector and Antigravity CLI to provide DOM inspection, live JS evaluation, and automated web workflows.
+                </p>
+              </div>
+              <button
+                onClick={checkEgoStatus}
+                disabled={isCheckingEgo}
+                className="flex items-center space-x-1 bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded text-xs font-mono transition"
+                title="Refresh browser status"
+              >
+                <RefreshCw size={12} className={isCheckingEgo ? 'animate-spin' : ''} />
+                <span>Refresh</span>
+              </button>
+            </div>
+
+            {/* Status Card */}
+            <div className="bg-[#171717]/60 border border-slate-800/80 rounded-xl p-4 space-y-3 font-mono text-xs">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800/50">
+                <span className="text-slate-400">Installation Status</span>
+                {egoStatus?.is_installed ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <CheckCircle2 size={12} />
+                    Installed & Ready
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    <AlertCircle size={12} />
+                    Not Installed
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-[11px]">
+                <div>
+                  <span className="text-slate-500 block text-[10px] uppercase">Detected App Path</span>
+                  <span className="text-slate-300 truncate block mt-0.5 font-mono" title={egoStatus?.app_path || 'None'}>
+                    {egoStatus?.app_path || '—'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[10px] uppercase">CLI Helper (ego-browser)</span>
+                  <span className="text-slate-300 truncate block mt-0.5 font-mono" title={egoStatus?.cli_path || 'None'}>
+                    {egoStatus?.cli_installed ? (egoStatus?.cli_path || 'Available') : 'Not linked'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[10px] uppercase">Architecture</span>
+                  <span className="text-slate-300 block mt-0.5 font-mono">
+                    {egoStatus?.architecture === 'aarch64' || egoStatus?.architecture === 'arm64'
+                      ? 'Apple Silicon (arm64)'
+                      : 'Intel (x86_64)'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[10px] uppercase">Platform Compatibility</span>
+                  <span className="text-slate-300 block mt-0.5 font-mono">
+                    {egoStatus?.os_supported ? 'macOS (Supported)' : 'Unsupported OS'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions Bar */}
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={handleInstallEgo}
+                disabled={isInstallingEgo}
+                className="flex items-center space-x-2 bg-brand hover:bg-brand/80 disabled:opacity-50 text-white px-4 py-2 rounded-lg font-bold text-xs transition shadow-sm"
+              >
+                <Download size={14} className={isInstallingEgo ? 'animate-bounce' : ''} />
+                <span>
+                  {isInstallingEgo
+                    ? 'Installing ego-lite (~127MB)...'
+                    : egoStatus?.is_installed
+                    ? 'Reinstall / Update Latest ego-lite'
+                    : '⚡ One-Key Install Latest ego-lite Browser'}
+                </span>
+              </button>
+
+              {egoStatus?.is_installed && (
+                <button
+                  onClick={handleOpenEgo}
+                  className="flex items-center space-x-1.5 bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-200 px-3.5 py-2 rounded-lg font-semibold text-xs transition"
+                >
+                  <ExternalLink size={13} />
+                  <span>Launch ego-lite</span>
+                </button>
+              )}
+            </div>
+
+            {/* Messages */}
+            {installSuccess && (
+              <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-xs font-mono flex items-center gap-2">
+                <CheckCircle2 size={14} className="shrink-0" />
+                <span>{installSuccess}</span>
+              </div>
+            )}
+            {installError && (
+              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs font-mono flex items-center gap-2">
+                <AlertCircle size={14} className="shrink-0" />
+                <span>{installError}</span>
+              </div>
+            )}
+
+            {/* Live Install Logs Terminal */}
+            {installLogs.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
+                  <span className="flex items-center gap-1.5">
+                    <Terminal size={12} />
+                    Installation Console
+                  </span>
+                  {isInstallingEgo && <span className="text-brand-light animate-pulse">Running step...</span>}
+                </div>
+                <div className="bg-black/80 border border-slate-800/80 rounded-lg p-3 max-h-48 overflow-y-auto font-mono text-[11px] text-slate-300 space-y-1 select-text">
+                  {installLogs.map((log, idx) => (
+                    <div key={idx} className="leading-relaxed">
+                      {log}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Integration Note */}
+            <div className="bg-slate-900/40 border border-slate-800/60 rounded-xl p-4 text-xs text-slate-400 space-y-2">
+              <h4 className="font-semibold text-slate-300 text-xs flex items-center gap-1.5">
+                <Info size={13} className="text-brand-light" />
+                Antigravity CLI & TDE Automation
+              </h4>
+              <p className="text-[11px] leading-relaxed">
+                Once installed, Antigravity CLI can use the <code className="text-slate-200 bg-slate-800 px-1 py-0.5 rounded font-mono">ego-browser</code> skill to evaluate JavaScript, capture screenshots, and automate web workflows. Web tabs opened in TDE are synchronized directly with your current workspace.
+              </p>
+            </div>
           </div>
         )}
 

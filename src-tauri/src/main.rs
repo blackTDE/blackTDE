@@ -1688,7 +1688,9 @@ fn main() {
             skills_manager::save_skill_file,
             skills_manager::install_from_vault,
             web_preview::fetch_web_preview,
-            web_preview::open_in_ego_lite
+            web_preview::open_in_ego_lite,
+            web_preview::check_ego_lite_status,
+            web_preview::install_ego_lite_browser
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

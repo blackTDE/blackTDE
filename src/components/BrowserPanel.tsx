@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import {
   Globe,
@@ -8,7 +9,9 @@ import {
   Bot,
   UserCheck,
   Terminal,
-  Sparkles
+  Sparkles,
+  Download,
+  AlertCircle
 } from 'lucide-react';
 
 export const BrowserPanel: React.FC = () => {
@@ -25,6 +28,21 @@ export const BrowserPanel: React.FC = () => {
   } = useWorkspaceStore();
 
   const [newUrlInput, setNewUrlInput] = useState<string>('');
+  const [egoInstalled, setEgoInstalled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    invoke<any>('check_ego_lite_status')
+      .then((status) => {
+        setEgoInstalled(Boolean(status?.is_installed));
+      })
+      .catch(() => {
+        setEgoInstalled(false);
+      });
+  }, []);
+
+  const handleOpenSettingsBrowser = () => {
+    window.dispatchEvent(new CustomEvent('tde-open-settings', { detail: { tab: 'browser' } }));
+  };
 
   // Extract all web tabs for the active workspace
   const currentProjectWebFiles = openFiles.filter((f) => f.path.startsWith('web:'));
@@ -61,6 +79,24 @@ export const BrowserPanel: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Subtle banner if ego-lite is not yet installed on host */}
+      {egoInstalled === false && (
+        <div className="px-3 py-2 bg-amber-500/10 border-b border-amber-500/20 text-amber-300 text-[11px] flex items-center justify-between font-mono">
+          <div className="flex items-center gap-1.5 truncate">
+            <AlertCircle size={12} className="shrink-0 text-amber-400" />
+            <span className="truncate">ego-lite not installed</span>
+          </div>
+          <button
+            onClick={handleOpenSettingsBrowser}
+            className="text-[10px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 px-2 py-0.5 rounded transition font-bold shrink-0 ml-1.5 flex items-center gap-1"
+            title="Open TDE Settings to install ego-lite"
+          >
+            <Download size={10} />
+            <span>Install</span>
+          </button>
+        </div>
+      )}
 
       {/* New Web Tab Input Form */}
       <div className="p-2.5 border-b border-surface-2 bg-surface-1 space-y-2">
