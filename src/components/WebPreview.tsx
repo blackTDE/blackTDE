@@ -1,19 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWorkspaceStore, WebTabItem } from '../store/workspaceStore';
+import { invoke } from '@tauri-apps/api/core';
 import {
   Globe,
-  ArrowLeft,
-  ArrowRight,
   RotateCw,
-  ExternalLink,
   ShieldCheck,
   UserCheck,
   Bot,
   Layers,
   Terminal,
   Copy,
-  Check
+  Check,
+  AlertCircle,
+  Code2,
+  Compass
 } from 'lucide-react';
+
+interface WebPreviewResult {
+  html: string;
+  original_url: string;
+  title?: string;
+  status_code: number;
+  is_proxy_rendered: boolean;
+}
 
 interface WebPreviewProps {
   tabId: string;
@@ -29,6 +38,47 @@ export const WebPreview: React.FC<WebPreviewProps> = ({ tabId, isVisible }) => {
   const [showAxTree, setShowAxTree] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [proxyHtml, setProxyHtml] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // 'proxy' bypasses X-Frame-Options for sites like GitHub/Google; 'direct' uses normal iframe src
+  const isLocalhost = Boolean(tab?.url && (tab.url.includes('localhost') || tab.url.includes('127.0.0.1')));
+  const [renderMode, setRenderMode] = useState<'proxy' | 'direct'>(isLocalhost ? 'direct' : 'proxy');
+
+  const loadPageContent = async (targetUrl: string, mode: 'proxy' | 'direct') => {
+    setIsLoading(true);
+    setFetchError(null);
+
+    if (mode === 'direct') {
+      setProxyHtml(null);
+      setIsLoading(false);
+      setIframeKey(Date.now());
+      return;
+    }
+
+    try {
+      const res = await invoke<WebPreviewResult>('fetch_web_preview', { url: targetUrl });
+      setProxyHtml(res.html);
+      if (res.title && tab && (!tab.title || tab.title === 'New Tab' || tab.title.startsWith('http'))) {
+        updateWebTab(tabId, { title: res.title });
+      }
+    } catch (err) {
+      setFetchError(String(err));
+      // Fallback to direct iframe if proxy fails
+      setProxyHtml(null);
+    } finally {
+      setIsLoading(false);
+      setIframeKey(Date.now());
+    }
+  };
+
+  useEffect(() => {
+    if (!tab?.url) return;
+    setInputUrl(tab.url);
+    const defaultMode = (tab.url.includes('localhost') || tab.url.includes('127.0.0.1')) ? 'direct' : 'proxy';
+    setRenderMode(defaultMode);
+    void loadPageContent(tab.url, defaultMode);
+  }, [tab?.url]);
 
   if (!tab) {
     return (
@@ -45,21 +95,29 @@ export const WebPreview: React.FC<WebPreviewProps> = ({ tabId, isVisible }) => {
     if (!target.startsWith('http://') && !target.startsWith('https://')) {
       target = `https://${target}`;
     }
+    const nextMode = (target.includes('localhost') || target.includes('127.0.0.1')) ? 'direct' : 'proxy';
+    setRenderMode(nextMode);
     updateWebTab(tabId, { url: target, title: target.replace(/^https?:\/\//, '') });
     setInputUrl(target);
-    setIframeKey(Date.now());
+    void loadPageContent(target, nextMode);
   };
 
   const handleReload = () => {
-    setIsLoading(true);
-    setIframeKey(Date.now());
-    setTimeout(() => setIsLoading(false), 600);
+    void loadPageContent(tab.url, renderMode);
   };
 
   const handleCopyUrl = () => {
     navigator.clipboard.writeText(tab.url);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  const handleOpenInEgoLite = async () => {
+    try {
+      await invoke('open_in_ego_lite', { url: tab.url });
+    } catch {
+      window.open(tab.url, '_blank');
+    }
   };
 
   const toggleOwnership = () => {
@@ -71,10 +129,10 @@ export const WebPreview: React.FC<WebPreviewProps> = ({ tabId, isVisible }) => {
   [banner]
     [navigation]
       [link "Home", ref=1, loc="a:text('Home')"]
-      [link "Documentation", ref=2, loc="a:text('Docs')"]
+      [link "Docs", ref=2, loc="a:text('Docs')"]
   [main]
     [heading "${tab.title}", level=1, ref=3]
-    [searchbox "Search page content", ref=4, loc="input[type='search']"]
+    [searchbox "Search", ref=4, loc="input[type='search']"]
     [button "Submit", ref=5, loc="button.submit"]`;
 
   return (
@@ -83,20 +141,6 @@ export const WebPreview: React.FC<WebPreviewProps> = ({ tabId, isVisible }) => {
       <div className="shrink-0 h-10 px-3 border-b border-surface-2 bg-surface-1/90 flex items-center justify-between gap-2 select-none">
         {/* Navigation buttons */}
         <div className="flex items-center space-x-1 text-zinc-400">
-          <button
-            type="button"
-            className="p-1 hover:bg-surface-2 rounded text-zinc-400 hover:text-zinc-200 transition"
-            title="Back"
-          >
-            <ArrowLeft size={13} />
-          </button>
-          <button
-            type="button"
-            className="p-1 hover:bg-surface-2 rounded text-zinc-400 hover:text-zinc-200 transition"
-            title="Forward"
-          >
-            <ArrowRight size={13} />
-          </button>
           <button
             type="button"
             onClick={handleReload}
@@ -117,8 +161,8 @@ export const WebPreview: React.FC<WebPreviewProps> = ({ tabId, isVisible }) => {
               onChange={(e) => setInputUrl(e.target.value)}
               onKeyDown={(e) => e.stopPropagation()}
               onKeyUp={(e) => e.stopPropagation()}
-              className="w-full bg-surface-2/80 hover:bg-surface-2 border border-surface-3 focus:border-brand rounded-md pl-8 pr-16 py-1 text-xs text-zinc-100 font-mono transition outline-none"
-              placeholder="Enter URL or localhost port (e.g. http://localhost:3000)"
+              className="w-full bg-surface-2/80 hover:bg-surface-2 border border-surface-3 focus:border-brand rounded-md pl-8 pr-20 py-1 text-xs text-zinc-100 font-mono transition outline-none"
+              placeholder="Enter URL or localhost port (e.g. https://github.com)"
             />
             <div className="absolute right-1.5 flex items-center space-x-1">
               <button
@@ -131,36 +175,59 @@ export const WebPreview: React.FC<WebPreviewProps> = ({ tabId, isVisible }) => {
               </button>
               <button
                 type="button"
-                onClick={() => window.open(tab.url, '_blank')}
-                className="p-1 hover:bg-surface-3 rounded text-zinc-400 hover:text-zinc-200 transition"
-                title="Open in external browser / ego lite"
+                onClick={handleOpenInEgoLite}
+                className="p-1 hover:bg-surface-3 rounded text-zinc-400 hover:text-zinc-200 transition flex items-center gap-0.5 text-[10px]"
+                title="Open in ego lite app"
               >
-                <ExternalLink size={11} />
+                <Compass size={11} className="text-brand-light" />
               </button>
             </div>
           </div>
         </form>
 
-        {/* Right Controls: Ownership & AX Tree */}
-        <div className="flex items-center space-x-2 shrink-0">
+        {/* Right Controls: Mode Toggle, AX Tree & Ownership */}
+        <div className="flex items-center space-x-1.5 shrink-0 text-[11px]">
+          {/* Render Mode Toggle Button */}
+          <button
+            type="button"
+            onClick={() => {
+              const nextMode = renderMode === 'proxy' ? 'direct' : 'proxy';
+              setRenderMode(nextMode);
+              void loadPageContent(tab.url, nextMode);
+            }}
+            className={`px-2 py-1 rounded text-[10px] font-mono flex items-center gap-1 border transition ${
+              renderMode === 'proxy'
+                ? 'bg-purple-950/40 border-purple-800/60 text-purple-300 font-medium'
+                : 'bg-surface-2 border-surface-3 text-zinc-400 hover:text-zinc-200'
+            }`}
+            title={
+              renderMode === 'proxy'
+                ? 'Proxy HTML Mode (strips X-Frame-Options to allow sites like GitHub/Google). Click to switch to Direct Iframe.'
+                : 'Direct Iframe Mode. Click to switch to Proxy HTML Mode.'
+            }
+          >
+            <Code2 size={11} />
+            <span>{renderMode === 'proxy' ? 'Proxy HTML' : 'Direct'}</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setShowAxTree(!showAxTree)}
-            className={`px-2 py-1 rounded text-[11px] font-mono flex items-center gap-1.5 border transition ${
+            className={`px-2 py-1 rounded text-[10px] font-mono flex items-center gap-1 border transition ${
               showAxTree
                 ? 'bg-brand/20 border-brand/50 text-brand-light font-bold'
                 : 'bg-surface-2 border-surface-3 text-zinc-400 hover:text-zinc-200'
             }`}
             title="Toggle Accessibility Semantic Tree Inspector"
           >
-            <Layers size={12} />
+            <Layers size={11} />
             <span>AX Tree</span>
           </button>
 
           <button
             type="button"
             onClick={toggleOwnership}
-            className={`px-2.5 py-1 rounded text-[11px] font-sans font-medium flex items-center gap-1.5 border transition shadow-sm ${
+            className={`px-2.5 py-1 rounded text-[10px] font-sans font-medium flex items-center gap-1 border transition shadow-sm ${
               tab.ownership === 'agent'
                 ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300 hover:bg-emerald-900/50'
                 : 'bg-amber-950/40 border-amber-800/60 text-amber-300 hover:bg-amber-900/50'
@@ -169,13 +236,13 @@ export const WebPreview: React.FC<WebPreviewProps> = ({ tabId, isVisible }) => {
           >
             {tab.ownership === 'agent' ? (
               <>
-                <Bot size={12} />
-                <span>Agent Driving</span>
+                <Bot size={11} />
+                <span>Agent</span>
               </>
             ) : (
               <>
-                <UserCheck size={12} />
-                <span>User Control</span>
+                <UserCheck size={11} />
+                <span>User</span>
               </>
             )}
           </button>
@@ -184,16 +251,50 @@ export const WebPreview: React.FC<WebPreviewProps> = ({ tabId, isVisible }) => {
 
       {/* Main Content Area */}
       <div className="flex-1 flex min-h-0 overflow-hidden relative">
-        {/* Web Iframe Viewport */}
+        {/* Web Viewport */}
         <div className="flex-1 h-full min-w-0 bg-white relative">
-          <iframe
-            key={iframeKey}
-            src={tab.url}
-            title={tab.title}
-            className="w-full h-full border-none"
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
-            onLoad={() => setIsLoading(false)}
-          />
+          {isLoading && (
+            <div className="absolute inset-0 z-10 bg-[#0f0f0f]/60 backdrop-blur-xs flex items-center justify-center text-zinc-300 text-xs font-mono gap-2">
+              <RotateCw size={14} className="animate-spin text-brand-light" />
+              <span>Rendering {tab.url}...</span>
+            </div>
+          )}
+
+          {renderMode === 'proxy' && proxyHtml ? (
+            <iframe
+              key={`proxy_${iframeKey}`}
+              srcDoc={proxyHtml}
+              title={tab.title}
+              className="w-full h-full border-none bg-white"
+              sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+            />
+          ) : (
+            <iframe
+              key={`direct_${iframeKey}`}
+              src={tab.url}
+              title={tab.title}
+              className="w-full h-full border-none bg-white"
+              sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+              onLoad={() => setIsLoading(false)}
+            />
+          )}
+
+          {fetchError && (
+            <div className="absolute bottom-4 left-4 right-4 z-20 p-3 bg-amber-950/90 border border-amber-800 rounded-lg shadow-xl text-xs text-amber-200 flex items-center justify-between backdrop-blur-sm">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={15} className="text-amber-400 shrink-0" />
+                <span>Direct iframe may be blocked by this website's security policy ({fetchError}).</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleOpenInEgoLite}
+                className="px-2.5 py-1 bg-brand text-white rounded text-[11px] font-medium flex items-center gap-1 shrink-0 ml-2"
+              >
+                <Compass size={12} />
+                <span>Open in ego-lite</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Optional Semantic AX Tree Inspector Drawer */}

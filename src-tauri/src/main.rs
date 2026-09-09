@@ -10,6 +10,7 @@ mod settings;
 mod shell_session;
 mod skills_manager;
 mod ssh_sftp;
+mod web_preview;
 
 use sqlx::{Row, SqlitePool};
 use std::fs;
@@ -1685,7 +1686,9 @@ fn main() {
             skills_manager::clone_skill,
             skills_manager::read_skill_file,
             skills_manager::save_skill_file,
-            skills_manager::install_from_vault
+            skills_manager::install_from_vault,
+            web_preview::fetch_web_preview,
+            web_preview::open_in_ego_lite
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
