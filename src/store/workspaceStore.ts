@@ -129,6 +129,22 @@ interface WorkspaceState {
   reorderOpenFiles: (fromIndex: number, toIndex: number) => void;
   setActiveFileTab: (tab: string | null) => void;
   triggerFileUpdate: () => void;
+
+  // Web Tabs Manager
+  webTabs: Record<string, WebTabItem>;
+  openWebTab: (url: string, title?: string, taskSpaceId?: string) => void;
+  updateWebTab: (id: string, updates: Partial<WebTabItem>) => void;
+  closeWebTab: (id: string) => void;
+  setWebTabOwnership: (id: string, ownership: 'agent' | 'user') => void;
+}
+
+export interface WebTabItem {
+  id: string;
+  url: string;
+  title: string;
+  taskSpaceId?: string;
+  ownership: 'agent' | 'user';
+  createdAt: number;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
@@ -153,6 +169,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
 
   openFiles: [],
   activeFileTab: null,
+  webTabs: {},
 
   openFilesByProject: {},
   activeFileTabByProject: {},
@@ -574,6 +591,83 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
         activeFileTabByProject: newActiveFileTabByProj
       };
     }),
+
+  openWebTab: (url, title, taskSpaceId) =>
+    set((state) => {
+      let finalUrl = url.trim();
+      if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+        finalUrl = `https://${finalUrl}`;
+      }
+      const id = 'tab_' + Math.random().toString(36).substring(2, 9);
+      const tabTitle = title || finalUrl.replace(/^https?:\/\//, '').split('/')[0] || 'New Tab';
+      const newTab: WebTabItem = {
+        id,
+        url: finalUrl,
+        title: tabTitle,
+        taskSpaceId: taskSpaceId || 'default',
+        ownership: 'agent',
+        createdAt: Date.now(),
+      };
+
+      const path = `web:${id}`;
+      const wsId = state.activeWorkspace?.id || 'project_default';
+      const currentWsOpenFiles = state.openFilesByProject[wsId] || [];
+      const newOpenFiles = [...currentWsOpenFiles, { path, name: tabTitle }];
+
+      return {
+        webTabs: { ...state.webTabs, [id]: newTab },
+        openFiles: newOpenFiles,
+        activeFileTab: path,
+        activeFilePath: path,
+        activeFileLine: null,
+        openFilesByProject: {
+          ...state.openFilesByProject,
+          [wsId]: newOpenFiles,
+        },
+        activeFileTabByProject: {
+          ...state.activeFileTabByProject,
+          [wsId]: path,
+        },
+      };
+    }),
+
+  updateWebTab: (id, updates) =>
+    set((state) => {
+      const existing = state.webTabs[id];
+      if (!existing) return state;
+      const updated = { ...existing, ...updates };
+      const path = `web:${id}`;
+      const wsId = state.activeWorkspace?.id || 'project_default';
+      const currentWsOpenFiles = state.openFilesByProject[wsId] || [];
+      const updatedOpenFiles = currentWsOpenFiles.map((f) =>
+        f.path === path ? { ...f, name: updated.title } : f
+      );
+      return {
+        webTabs: { ...state.webTabs, [id]: updated },
+        openFiles: updatedOpenFiles,
+        openFilesByProject: {
+          ...state.openFilesByProject,
+          [wsId]: updatedOpenFiles,
+        },
+      };
+    }),
+
+  closeWebTab: (id) => {
+    const path = `web:${id}`;
+    useWorkspaceStore.getState().closeFile(path);
+  },
+
+  setWebTabOwnership: (id, ownership) =>
+    set((state) => {
+      const existing = state.webTabs[id];
+      if (!existing) return state;
+      return {
+        webTabs: {
+          ...state.webTabs,
+          [id]: { ...existing, ownership },
+        },
+      };
+    }),
 }), {
   name: 'black-tde-workspace',
   storage: createJSONStorage(() => typeof window === 'undefined'
@@ -595,5 +689,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set) => ({
     isRightPanelPinned: state.isRightPanelPinned,
     openWorkspaceTabIds: state.openWorkspaceTabIds,
     sessionOrderIdsByProject: state.sessionOrderIdsByProject,
+    webTabs: state.webTabs,
   }),
 }));

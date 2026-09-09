@@ -195,3 +195,48 @@ test('switches from file preview back to session when session is activated in un
   assert.equal(useWorkspaceStore.getState().activeFileTab, '/project/src/preview.ts');
   assert.equal(useWorkspaceStore.getState().activeSessionId, 'sess-2');
 });
+
+test('manages web tabs per project isolation and connects with center preview tabs', () => {
+  resetPaneState();
+  const store = useWorkspaceStore.getState();
+
+  // Project 1 (active workspace: proj-1)
+  store.setWorkspace({ id: 'proj-1', name: 'Proj 1', path: '/proj1' });
+  store.openWebTab('http://localhost:3000', 'Localhost 3000', 'task-1');
+
+  const p1Files = useWorkspaceStore.getState().openFiles;
+  assert.equal(p1Files.length, 1);
+  assert.ok(p1Files[0].path.startsWith('web:'));
+  assert.equal(p1Files[0].name, 'Localhost 3000');
+  assert.equal(useWorkspaceStore.getState().activeFileTab, p1Files[0].path);
+
+  const tabId1 = p1Files[0].path.replace('web:', '');
+  const webTab1 = useWorkspaceStore.getState().webTabs[tabId1];
+  assert.equal(webTab1.url, 'http://localhost:3000');
+  assert.equal(webTab1.ownership, 'agent');
+
+  // Switch to Project 2 (proj-2)
+  store.setWorkspace({ id: 'proj-2', name: 'Proj 2', path: '/proj2' });
+  // Project 2 should have 0 open tabs initially
+  assert.equal(useWorkspaceStore.getState().openFiles.length, 0);
+  assert.equal(useWorkspaceStore.getState().activeFileTab, null);
+
+  // Open web tab in Project 2
+  store.openWebTab('https://github.com/citrolabs/ego-lite', 'ego-lite', 'task-2');
+  const p2Files = useWorkspaceStore.getState().openFiles;
+  assert.equal(p2Files.length, 1);
+  assert.ok(p2Files[0].path.startsWith('web:'));
+  assert.equal(p2Files[0].name, 'ego-lite');
+
+  // Switch back to Project 1 (proj-1)
+  store.setWorkspace({ id: 'proj-1', name: 'Proj 1', path: '/proj1' });
+  // Project 1 should restore its own web tab
+  assert.equal(useWorkspaceStore.getState().openFiles.length, 1);
+  assert.equal(useWorkspaceStore.getState().openFiles[0].name, 'Localhost 3000');
+
+  // Close web tab in Project 1
+  store.closeWebTab(tabId1);
+  assert.equal(useWorkspaceStore.getState().openFiles.length, 0);
+  assert.equal(useWorkspaceStore.getState().activeFileTab, null);
+});
+

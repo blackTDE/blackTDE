@@ -11,6 +11,7 @@ import { GitDiffCompare } from './components/GitDiffCompare';
 import { SearchPanel } from './components/SearchPanel';
 import { SkillsPanel } from './components/SkillsPanel';
 import { BrowserPanel } from './components/BrowserPanel';
+import { WebPreview } from './components/WebPreview';
 import { AgentIcon } from './components/AgentIcon';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -1224,6 +1225,7 @@ function App() {
                     <div className="flex items-center overflow-x-auto scrollbar-none min-w-0 flex-1">
                       {openFiles.map((f, index) => {
                         const isGitDiff = f.path.startsWith('git-diff:');
+                        const isWebTab = f.path.startsWith('web:');
                         const displayName = isGitDiff ? `Diff: ${f.name}` : f.name;
                         const isActive = activeFileTab === f.path;
                         return (
@@ -1257,10 +1259,11 @@ function App() {
                           >
                             <button
                               onClick={() => setActiveFileTab(f.path)}
-                              className="px-3 py-2 text-xs font-mono font-medium truncate max-w-[160px]"
+                              className="flex items-center space-x-1.5 px-3 py-2 text-xs font-mono font-medium truncate max-w-[170px]"
                               title={displayName}
                             >
-                              {displayName}
+                              {isWebTab && <Globe size={11} className="text-brand-light shrink-0" />}
+                              <span className="truncate">{displayName}</span>
                             </button>
                             <button
                               onClick={(e) => {
@@ -1338,6 +1341,8 @@ function App() {
                         >
                           {f.path.startsWith('git-diff:') ? (
                             <GitDiffCompare tabPath={f.path} isVisible={isVisible} />
+                          ) : f.path.startsWith('web:') ? (
+                            <WebPreview tabId={f.path.replace('web:', '')} isVisible={isVisible} />
                           ) : (
                             <FilePreview filePath={f.path} isVisible={isVisible} />
                           )}
@@ -1348,6 +1353,8 @@ function App() {
                       <div className="w-full h-full">
                         {activeFileTab.startsWith('git-diff:') ? (
                           <GitDiffCompare tabPath={activeFileTab} isVisible={true} />
+                        ) : activeFileTab.startsWith('web:') ? (
+                          <WebPreview tabId={activeFileTab.replace('web:', '')} isVisible={true} />
                         ) : (
                           <FilePreview filePath={activeFileTab} isVisible={true} />
                         )}

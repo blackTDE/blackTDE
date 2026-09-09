@@ -2,74 +2,53 @@ import React, { useState } from 'react';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import {
   Globe,
-  ArrowLeft,
-  ArrowRight,
-  RotateCw,
+  Plus,
+  X,
   ExternalLink,
-  ShieldCheck,
-  UserCheck,
   Bot,
-  Layers,
-  Sparkles,
+  UserCheck,
   Terminal,
-  X
+  Sparkles
 } from 'lucide-react';
 
-interface TaskSpaceSummary {
-  id: string;
-  name: string;
-  url: string;
-  title: string;
-  ownership: 'agent' | 'user';
-  lastActive: number;
-}
-
 export const BrowserPanel: React.FC = () => {
-  const { setActiveRightPanel } = useWorkspaceStore();
-  const [urlInput, setUrlInput] = useState<string>('https://google.com');
-  const [currentUrl, setCurrentUrl] = useState<string>('https://google.com');
-  const [ownership, setOwnership] = useState<'agent' | 'user'>('agent');
-  const [activeTaskSpace] = useState<TaskSpaceSummary | null>({
-    id: '1',
-    name: 'ego-agent-session',
-    url: 'https://google.com',
-    title: 'Google',
-    ownership: 'agent',
-    lastActive: Date.now()
-  });
-  const [showInspector, setShowInspector] = useState<boolean>(false);
-  const dummySnapshotTree = `[Root WebArea, loc="page"]\n  [banner]\n    [navigation]\n      [link "About", ref=1, loc="a:text('About')"]\n      [link "Store", ref=2, loc="a:text('Store')"]\n  [main]\n    [searchbox "Search", ref=3, loc="textarea[name='q']"]\n    [button "Google Search", ref=4, loc="input[name='btnK']"]\n    [button "I'm Feeling Lucky", ref=5, loc="input[name='btnI']"]`;
+  const {
+    openFiles,
+    activeFileTab,
+    setActiveFileTab,
+    closeFile,
+    openWebTab,
+    webTabs,
+    setWebTabOwnership,
+    setActiveRightPanel,
+    activeWorkspace
+  } = useWorkspaceStore();
 
-  const handleNavigate = (e: React.FormEvent) => {
+  const [newUrlInput, setNewUrlInput] = useState<string>('');
+
+  // Extract all web tabs for the active workspace
+  const currentProjectWebFiles = openFiles.filter((f) => f.path.startsWith('web:'));
+
+  const handleOpenNewTab = (e: React.FormEvent) => {
     e.preventDefault();
-    let target = urlInput.trim();
-    if (!target.startsWith('http://') && !target.startsWith('https://')) {
-      target = `https://${target}`;
-    }
-    setCurrentUrl(target);
-    setUrlInput(target);
+    if (!newUrlInput.trim()) return;
+    openWebTab(newUrlInput.trim());
+    setNewUrlInput('');
   };
 
-  const toggleOwnership = () => {
-    setOwnership((prev) => (prev === 'agent' ? 'user' : 'agent'));
+  const handlePresetClick = (presetUrl: string) => {
+    openWebTab(presetUrl);
   };
 
   return (
     <div className="flex flex-col h-full bg-surface-1 border-l border-surface-2 text-zinc-300 font-sans text-xs">
-      {/* Top Header */}
+      {/* Header toolbar */}
       <div className="p-3 border-b border-surface-2 flex items-center justify-between bg-surface-2/30">
         <div className="flex items-center space-x-2">
           <Globe className="w-4 h-4 text-brand-light" />
-          <span className="font-semibold text-zinc-100 text-sm">ego-lite Browser</span>
-          <span
-            className={`text-[9px] px-1.5 py-0.5 rounded-full font-mono font-medium border flex items-center gap-1 ${
-              ownership === 'agent'
-                ? 'bg-emerald-950/40 text-emerald-300 border-emerald-800/40'
-                : 'bg-amber-950/40 text-amber-300 border-amber-800/40'
-            }`}
-          >
-            {ownership === 'agent' ? <Bot className="w-2.5 h-2.5" /> : <UserCheck className="w-2.5 h-2.5" />}
-            <span>{ownership === 'agent' ? 'Agent Driving' : 'User Control'}</span>
+          <span className="font-semibold text-zinc-100 text-sm">Web Tabs</span>
+          <span className="text-[10px] bg-brand/20 text-brand-light px-1.5 py-0.5 rounded-full font-mono">
+            {currentProjectWebFiles.length}
           </span>
         </div>
         <div className="flex items-center space-x-1">
@@ -83,163 +62,173 @@ export const BrowserPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Navigation URL Toolbar */}
-      <div className="p-2 border-b border-surface-2 bg-surface-1/80 flex items-center space-x-1.5">
-        <div className="flex items-center space-x-1 text-zinc-400">
-          <button
-            type="button"
-            className="p-1 hover:bg-surface-2 rounded hover:text-zinc-200 transition disabled:opacity-30"
-            title="Back"
-          >
-            <ArrowLeft className="w-3 h-3" />
-          </button>
-          <button
-            type="button"
-            className="p-1 hover:bg-surface-2 rounded hover:text-zinc-200 transition disabled:opacity-30"
-            title="Forward"
-          >
-            <ArrowRight className="w-3 h-3" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setCurrentUrl(currentUrl)}
-            className="p-1 hover:bg-surface-2 rounded hover:text-zinc-200 transition"
-            title="Reload"
-          >
-            <RotateCw className="w-3 h-3" />
-          </button>
-        </div>
-
-        <form onSubmit={handleNavigate} className="flex-1 flex items-center">
-          <div className="relative w-full flex items-center">
-            <ShieldCheck className="w-3 h-3 text-emerald-400 absolute left-2 pointer-events-none" />
+      {/* New Web Tab Input Form */}
+      <div className="p-2.5 border-b border-surface-2 bg-surface-1 space-y-2">
+        <form onSubmit={handleOpenNewTab} className="flex items-center gap-1.5">
+          <div className="relative flex-1">
             <input
               type="text"
-              value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="Enter URL (e.g. localhost:3000)..."
+              value={newUrlInput}
+              onChange={(e) => setNewUrlInput(e.target.value)}
               onKeyDown={(e) => e.stopPropagation()}
               onKeyUp={(e) => e.stopPropagation()}
-              className="w-full bg-surface-2 border border-surface-3 rounded pl-7 pr-6 py-1 text-[11px] text-zinc-200 focus:outline-none focus:border-brand font-mono truncate"
-              placeholder="https://example.com"
+              className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-brand font-mono"
             />
           </div>
+          <button
+            type="submit"
+            className="px-2.5 py-1.5 bg-brand hover:bg-brand-dark text-white rounded text-xs font-medium transition flex items-center gap-1 shrink-0"
+            title="Open in center preview panel"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Open</span>
+          </button>
         </form>
 
-        <button
-          type="button"
-          onClick={() => window.open(currentUrl, '_blank')}
-          className="p-1 hover:bg-surface-2 rounded text-zinc-400 hover:text-zinc-200 transition"
-          title="Open in ego lite Desktop"
-        >
-          <ExternalLink className="w-3 h-3" />
-        </button>
-      </div>
-
-      {/* Control Banner & Handoff Action */}
-      <div className="px-3 py-1.5 border-b border-surface-2 bg-surface-2/20 flex items-center justify-between text-[11px]">
-        <div className="flex items-center space-x-1.5 truncate">
-          <span className="text-zinc-500 font-mono">TaskSpace:</span>
-          <span className="text-brand-light font-mono font-medium truncate">
-            {activeTaskSpace?.name || 'default'}
-          </span>
-        </div>
-
-        <div className="flex items-center space-x-1.5">
-          <button
-            onClick={() => setShowInspector(!showInspector)}
-            className={`px-2 py-0.5 rounded border text-[10px] font-mono flex items-center gap-1 transition ${
-              showInspector
-                ? 'bg-brand/20 border-brand/50 text-brand-light'
-                : 'bg-surface-2 border-surface-3 text-zinc-400 hover:text-zinc-200'
-            }`}
-            title="Toggle AX Semantic Tree Inspector"
-          >
-            <Layers className="w-2.5 h-2.5" />
-            <span>AX Tree</span>
-          </button>
-
-          <button
-            onClick={toggleOwnership}
-            className={`px-2 py-0.5 rounded border text-[10px] font-sans font-medium flex items-center gap-1 transition ${
-              ownership === 'agent'
-                ? 'bg-amber-950/30 border-amber-800/40 text-amber-300 hover:bg-amber-900/40'
-                : 'bg-emerald-950/30 border-emerald-800/40 text-emerald-300 hover:bg-emerald-900/40'
-            }`}
-            title={ownership === 'agent' ? 'Take manual control (Pause Agent)' : 'Hand control back to Agent'}
-          >
-            {ownership === 'agent' ? (
-              <>
-                <UserCheck className="w-2.5 h-2.5" />
-                <span>Take Control</span>
-              </>
-            ) : (
-              <>
-                <Bot className="w-2.5 h-2.5" />
-                <span>Hand to Agent</span>
-              </>
-            )}
-          </button>
+        {/* Quick Presets */}
+        <div className="flex items-center gap-1 overflow-x-auto pb-0.5 text-[10px] font-mono scrollbar-none">
+          <span className="text-zinc-500 font-sans text-[10px]">Presets:</span>
+          {[
+            { label: '3000', url: 'http://localhost:3000' },
+            { label: '5173', url: 'http://localhost:5173' },
+            { label: '8080', url: 'http://localhost:8080' },
+            { label: 'GitHub', url: 'https://github.com' },
+            { label: 'Google', url: 'https://google.com' },
+          ].map((preset) => (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() => handlePresetClick(preset.url)}
+              className="px-1.5 py-0.5 rounded bg-surface-2/70 hover:bg-surface-2 text-zinc-400 hover:text-zinc-200 border border-surface-3/50 transition whitespace-nowrap"
+            >
+              {preset.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Main Viewport Content Area */}
-      <div className="flex-1 flex flex-col min-h-0 bg-surface/50 relative overflow-hidden">
-        {showInspector ? (
-          <div className="flex-1 overflow-y-auto p-3 font-mono text-[11px] leading-relaxed bg-surface-1 text-zinc-300 space-y-2">
-            <div className="flex items-center justify-between pb-1.5 border-b border-surface-2 text-zinc-400">
-              <span className="text-[10px] uppercase tracking-wider font-bold">Semantic AX Tree (@refs)</span>
-              <span className="text-[9px] bg-surface-2 px-1 rounded text-zinc-400">snapshotText()</span>
-            </div>
-            <pre className="whitespace-pre-wrap font-mono text-brand-light/90 selection:bg-brand/30">
-              {dummySnapshotTree}
-            </pre>
-          </div>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
-            <div className="w-12 h-12 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center text-brand-light shadow-lg">
-              <Globe className="w-6 h-6" />
-            </div>
-
-            <div className="space-y-1.5 max-w-xs">
-              <h4 className="font-semibold text-zinc-200 text-sm">ego-lite Browser Embedded</h4>
-              <p className="text-zinc-400 text-xs leading-relaxed">
-                Antigravity CLI drives this browser session via Task Spaces. Login state is inherited without stealing your tabs.
+      {/* Tabs List for Current Project */}
+      <div className="flex-1 overflow-y-auto p-2.5 space-y-2">
+        {currentProjectWebFiles.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-48 space-y-3 text-zinc-500 text-center px-4">
+            <Globe className="w-8 h-8 opacity-30 text-brand-light" />
+            <div className="space-y-1">
+              <p className="font-medium text-zinc-400 text-xs">No web tabs open</p>
+              <p className="text-[11px] leading-relaxed">
+                Web pages opened in this workspace will appear here. The web page content renders directly in the center preview panel.
               </p>
             </div>
-
-            <div className="p-3 bg-surface-2/60 border border-surface-3 rounded-lg text-left w-full max-w-xs font-mono text-[10px] space-y-1 text-zinc-400">
-              <div className="text-zinc-500 font-sans font-medium text-[11px] pb-1 border-b border-surface-3/50 flex items-center gap-1.5">
-                <Terminal className="w-3 h-3 text-brand-light" />
-                <span>CLI Usage in Terminal:</span>
-              </div>
-              <p className="text-zinc-300 pt-1">ego-browser nodejs &lt;&lt;'EOF'</p>
-              <p className="text-zinc-400 pl-2">const task = await useOrCreateTaskSpace('inspect');</p>
-              <p className="text-zinc-400 pl-2">await openOrReuseTab('{currentUrl}');</p>
-              <p className="text-zinc-400 pl-2">cliLog(await snapshotText());</p>
-              <p className="text-zinc-300">EOF</p>
-            </div>
-
-            <div className="flex items-center gap-2 pt-2">
-              <button
-                onClick={() => setOwnership('agent')}
-                className="px-3 py-1.5 bg-brand hover:bg-brand-dark text-white rounded text-xs font-medium transition shadow-sm flex items-center gap-1.5"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Ready for Agent</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => openWebTab('https://github.com/citrolabs/ego-lite', 'ego-lite GitHub')}
+              className="px-2.5 py-1 bg-surface-2 hover:bg-surface-3 text-zinc-300 border border-surface-3 rounded text-xs transition flex items-center gap-1.5"
+            >
+              <Sparkles size={12} className="text-brand-light" />
+              <span>Open ego-lite Docs</span>
+            </button>
           </div>
+        ) : (
+          currentProjectWebFiles.map((f) => {
+            const tabId = f.path.replace('web:', '');
+            const tabMeta = webTabs[tabId];
+            const isActive = activeFileTab === f.path;
+            const title = tabMeta?.title || f.name;
+            const url = tabMeta?.url || 'https://google.com';
+            const ownership = tabMeta?.ownership || 'agent';
+
+            return (
+              <div
+                key={f.path}
+                onClick={() => setActiveFileTab(f.path)}
+                className={`p-2.5 rounded-lg border transition cursor-pointer group flex flex-col gap-1.5 ${
+                  isActive
+                    ? 'bg-surface-2/80 border-brand/50 shadow-sm'
+                    : 'bg-surface-2/30 border-surface-3/60 hover:bg-surface-2/50'
+                }`}
+              >
+                {/* Title and Close */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center space-x-1.5 truncate">
+                    <Globe size={13} className={isActive ? 'text-brand-light' : 'text-zinc-400'} />
+                    <span className="font-semibold text-zinc-100 truncate text-xs" title={title}>
+                      {title}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeFile(f.path);
+                      }}
+                      className="p-1 hover:bg-rose-950/40 text-zinc-500 hover:text-rose-400 rounded transition"
+                      title="Close web tab"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* URL preview */}
+                <div className="text-[10px] font-mono text-zinc-500 truncate" title={url}>
+                  {url}
+                </div>
+
+                {/* Bottom status & action badges */}
+                <div className="flex items-center justify-between pt-1 border-t border-surface-3/30 text-[10px] font-sans">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const next = ownership === 'agent' ? 'user' : 'agent';
+                      setWebTabOwnership(tabId, next);
+                    }}
+                    className={`px-1.5 py-0.5 rounded font-mono text-[9px] border flex items-center gap-1 transition ${
+                      ownership === 'agent'
+                        ? 'bg-emerald-950/40 text-emerald-300 border-emerald-800/40 hover:bg-emerald-900/50'
+                        : 'bg-amber-950/40 text-amber-300 border-amber-800/40 hover:bg-amber-900/50'
+                    }`}
+                    title="Click to toggle Agent / User control"
+                  >
+                    {ownership === 'agent' ? <Bot size={10} /> : <UserCheck size={10} />}
+                    <span>{ownership === 'agent' ? 'Agent' : 'User'}</span>
+                  </button>
+
+                  <div className="flex items-center space-x-1 text-zinc-400">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(url, '_blank');
+                      }}
+                      className="p-1 hover:bg-surface-3 rounded text-zinc-400 hover:text-zinc-200 transition"
+                      title="Open in external browser"
+                    >
+                      <ExternalLink size={11} />
+                    </button>
+                    {isActive && (
+                      <span className="text-[9px] text-brand-light font-medium bg-brand/10 px-1 rounded">
+                        Active in Center
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
 
-      {/* Bottom Footer Info */}
-      <div className="p-2 border-t border-surface-2 bg-surface-1/90 flex items-center justify-between text-[10px] text-zinc-500 font-mono">
-        <div className="truncate max-w-[200px]" title={currentUrl}>
-          {currentUrl}
+      {/* Footer Info */}
+      <div className="p-2.5 border-t border-surface-2 bg-surface-1/90 space-y-1 text-[10px] text-zinc-500 font-mono">
+        <div className="flex items-center justify-between">
+          <span>Project: {activeWorkspace?.name || 'Default'}</span>
+          <span>{currentProjectWebFiles.length} tabs</span>
         </div>
-        <div className="flex items-center space-x-2">
-          <span>1280x800</span>
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" title="CDP Connected" />
+        <div className="text-[9px] text-zinc-600 flex items-center gap-1">
+          <Terminal size={10} />
+          <span>Driven by ego-browser via Antigravity CLI</span>
         </div>
       </div>
     </div>
