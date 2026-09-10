@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum BotPlatform {

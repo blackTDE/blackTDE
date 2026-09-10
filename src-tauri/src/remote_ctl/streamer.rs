@@ -15,6 +15,7 @@ struct StreamBuffer {
 }
 
 pub struct OutputDebouncer {
+    #[allow(dead_code)]
     buffers: Arc<Mutex<HashMap<String, StreamBuffer>>>,
     tx: UnboundedSender<(String, String)>,
 }

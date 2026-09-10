@@ -14,6 +14,7 @@ pub struct TelegramUpdate {
     pub message: Option<TelegramMessage>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct TelegramMessage {
     pub message_id: i64,
@@ -23,6 +24,7 @@ pub struct TelegramMessage {
     pub date: i64,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct TelegramUser {
     pub id: i64,
@@ -31,6 +33,7 @@ pub struct TelegramUser {
     pub username: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct TelegramChat {
     pub id: i64,

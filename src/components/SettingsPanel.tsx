@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { 
   Plus, 
   Trash2, 
@@ -18,10 +19,19 @@ import {
   CheckCircle2,
   AlertCircle,
   Terminal,
-  ExternalLink
+  ExternalLink,
+  Radio,
+  Send,
+  ShieldCheck,
+  Key,
+  Smartphone,
+  AlertTriangle,
+  HelpCircle,
+  Zap
 } from 'lucide-react';
 import { ProviderVault } from './ProviderVault';
 import { AgentIcon } from './AgentIcon';
+import { useWorkspaceStore } from '../store/workspaceStore';
 
 export interface EgoLiteStatus {
   is_installed: boolean;
@@ -38,6 +48,43 @@ export interface EgoLiteInstallResult {
   message: string;
   app_path: string | null;
   logs: string[];
+}
+
+export interface RemoteBotConfig {
+  platform: string;
+  credentials: string;
+  enabled: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface RemotePairing {
+  id: string;
+  platform: string;
+  chat_id: string;
+  user_name?: string;
+  pair_code: string;
+  status: string;
+  bound_workspace_id?: string;
+  bound_session_id?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface BotRuntimeStatus {
+  platform: string;
+  running: boolean;
+  error?: string;
+  last_poll_time?: string;
+}
+
+export interface RemoteMessageLog {
+  id: number;
+  platform: string;
+  chat_id: string;
+  direction: string;
+  content: string;
+  created_at: string;
 }
 
 interface ProxyProvider {
@@ -62,9 +109,34 @@ interface McpServerEntry {
 }
 
 export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab }) => {
-  const [activeTab, setActiveTab] = useState<'vault' | 'virtual-models' | 'providers' | 'mcp' | 'versions' | 'browser'>(
+  const [activeTab, setActiveTab] = useState<'vault' | 'virtual-models' | 'providers' | 'mcp' | 'versions' | 'browser' | 'remote'>(
     (initialTab as any) || 'virtual-models'
   );
+
+  const { workspaces, sessions } = useWorkspaceStore();
+
+  // Remote Control States
+  const [tgToken, setTgToken] = useState('');
+  const [showTgToken, setShowTgToken] = useState(false);
+  const [tgEnabled, setTgEnabled] = useState(false);
+  const [isSavingTg, setIsSavingTg] = useState(false);
+
+  const [larkAppId, setLarkAppId] = useState('');
+  const [larkAppSecret, setLarkAppSecret] = useState('');
+  const [showLarkSecret, setShowLarkSecret] = useState(false);
+  const [larkEnabled, setLarkEnabled] = useState(false);
+  const [isSavingLark, setIsSavingLark] = useState(false);
+
+  const [botStatuses, setBotStatuses] = useState<Record<string, BotRuntimeStatus>>({});
+  const [pairings, setPairings] = useState<RemotePairing[]>([]);
+  const [pairCodeInput, setPairCodeInput] = useState('');
+  const [authorizingPair, setAuthorizingPair] = useState(false);
+  const [pairMessage, setPairMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const [messageLogs, setMessageLogs] = useState<RemoteMessageLog[]>([]);
+  const [simText, setSimText] = useState('');
+  const [simPlatform, setSimPlatform] = useState('telegram');
+  const [isSimulating, setIsSimulating] = useState(false);
 
   // Browser (ego-lite) States
   const [egoStatus, setEgoStatus] = useState<EgoLiteStatus | null>(null);
@@ -198,18 +270,194 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
     }
   };
 
+  // ── Remote Control Actions ──────────────────────────────────────────────────
+
+  const loadRemoteControlData = async () => {
+    try {
+      // 1. Bot Configs
+      const configs = await invoke<RemoteBotConfig[]>('get_remote_bot_configs');
+      for (const cfg of configs) {
+        if (cfg.platform === 'telegram') {
+          setTgEnabled(cfg.enabled);
+          try {
+            const parsed = JSON.parse(cfg.credentials);
+            if (parsed.bot_token) setTgToken(parsed.bot_token);
+          } catch (_) {}
+        } else if (cfg.platform === 'lark') {
+          setLarkEnabled(cfg.enabled);
+          try {
+            const parsed = JSON.parse(cfg.credentials);
+            if (parsed.app_id) setLarkAppId(parsed.app_id);
+            if (parsed.app_secret) setLarkAppSecret(parsed.app_secret);
+          } catch (_) {}
+        }
+      }
+
+      // 2. Bot Statuses
+      const statuses = await invoke<BotRuntimeStatus[]>('get_remote_bot_status');
+      const statusMap: Record<string, BotRuntimeStatus> = {};
+      for (const s of statuses) {
+        statusMap[s.platform] = s;
+      }
+      setBotStatuses(statusMap);
+
+      // 3. Pairings
+      const pairList = await invoke<RemotePairing[]>('get_remote_pairings');
+      setPairings(pairList);
+
+      // 4. Message Logs
+      const logs = await invoke<RemoteMessageLog[]>('get_remote_message_logs', { limit: 50 });
+      setMessageLogs(logs);
+    } catch (e) {
+      console.error('Failed to load remote control data:', e);
+    }
+  };
+
+  const handleSaveTelegram = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (tgEnabled && !tgToken.trim()) {
+      alert('Bot Token is required to enable Telegram remote control');
+      return;
+    }
+    setIsSavingTg(true);
+    try {
+      await invoke('save_remote_bot_config', {
+        platform: 'telegram',
+        credentials: JSON.stringify({ bot_token: tgToken.trim() }),
+        enabled: tgEnabled,
+      });
+      await loadRemoteControlData();
+      alert('Telegram bot configuration saved!');
+    } catch (err) {
+      alert('Failed to save Telegram config: ' + err);
+    } finally {
+      setIsSavingTg(false);
+    }
+  };
+
+  const handleSaveLark = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (larkEnabled && (!larkAppId.trim() || !larkAppSecret.trim())) {
+      alert('App ID and App Secret are required to enable Lark remote control');
+      return;
+    }
+    setIsSavingLark(true);
+    try {
+      await invoke('save_remote_bot_config', {
+        platform: 'lark',
+        credentials: JSON.stringify({
+          app_id: larkAppId.trim(),
+          app_secret: larkAppSecret.trim(),
+        }),
+        enabled: larkEnabled,
+      });
+      await loadRemoteControlData();
+      alert('Lark bot configuration saved!');
+    } catch (err) {
+      alert('Failed to save Lark config: ' + err);
+    } finally {
+      setIsSavingLark(false);
+    }
+  };
+
+  const handleAuthorizePair = async (codeToUse?: string) => {
+    const code = codeToUse || pairCodeInput.trim();
+    if (!code) {
+      alert('Please enter a 6-digit pair authorization code');
+      return;
+    }
+    setAuthorizingPair(true);
+    setPairMessage(null);
+    try {
+      const res = await invoke<RemotePairing>('authorize_pair_code', { pairCode: code });
+      setPairMessage({
+        type: 'success',
+        text: `Pairing authorized for ${res.platform} chat (${res.chat_id})!`,
+      });
+      setPairCodeInput('');
+      await loadRemoteControlData();
+    } catch (err) {
+      setPairMessage({
+        type: 'error',
+        text: String(err),
+      });
+    } finally {
+      setAuthorizingPair(false);
+    }
+  };
+
+  const handleRevokePair = async (pairingId: string) => {
+    if (!confirm('Revoke authorization for this chat?')) return;
+    try {
+      await invoke('revoke_pairing', { pairingId });
+      await loadRemoteControlData();
+    } catch (err) {
+      alert('Failed to revoke pairing: ' + err);
+    }
+  };
+
+  const handleBindSession = async (
+    pairingId: string,
+    workspaceId?: string,
+    sessionId?: string
+  ) => {
+    try {
+      await invoke('bind_pairing_session', {
+        pairingId,
+        workspaceId: workspaceId || null,
+        sessionId: sessionId || null,
+      });
+      await loadRemoteControlData();
+    } catch (err) {
+      alert('Failed to update session binding: ' + err);
+    }
+  };
+
+  const handleSimulate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!simText.trim()) return;
+    setIsSimulating(true);
+    try {
+      await invoke('simulate_remote_message', {
+        platform: simPlatform,
+        chatId: 'test-simulated-chat',
+        text: simText.trim(),
+      });
+      setSimText('');
+      await loadRemoteControlData();
+    } catch (err) {
+      alert('Simulation error: ' + err);
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
   const reloadAll = async () => {
     await Promise.all([
       loadProviders(),
       loadVirtualModels(),
       loadMcpServers(),
       checkVersions(),
-      checkEgoStatus()
+      checkEgoStatus(),
+      loadRemoteControlData()
     ]);
   };
 
   useEffect(() => {
     reloadAll();
+
+    // Listen to real-time pairing notifications
+    const unlistenPairReq = listen('remote-pair-request', () => {
+      loadRemoteControlData();
+    });
+    const unlistenPairUpd = listen('remote-pair-updated', () => {
+      loadRemoteControlData();
+    });
+
+    return () => {
+      unlistenPairReq.then((f) => f());
+      unlistenPairUpd.then((f) => f());
+    };
   }, []);
 
   // ── Provider CRUD Actions ─────────────────────────────────────────────────────
@@ -374,6 +622,7 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
             { id: 'mcp', name: 'MCP Servers', icon: Blocks },
             { id: 'versions', name: 'Versions', icon: Info },
             { id: 'browser', name: 'Browser Engine', icon: Globe },
+            { id: 'remote', name: 'Remote Control', icon: Radio },
           ].map((t) => {
             const Icon = t.icon;
             return (
@@ -815,6 +1064,501 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
               <p className="text-[11px] leading-relaxed">
                 Once installed, Antigravity CLI can use the <code className="text-slate-200 bg-slate-800 px-1 py-0.5 rounded font-mono">ego-browser</code> skill to evaluate JavaScript, capture screenshots, and automate web workflows. Web tabs opened in TDE are synchronized directly with your current workspace.
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* ── TAB: Remote Control (Lark / Telegram) ── */}
+        {activeTab === 'remote' && (
+          <div className="space-y-6 max-w-4xl select-none font-sans">
+            {/* Header */}
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-sm font-bold font-mono text-slate-200 flex items-center gap-2">
+                  <Radio className="text-brand-light w-4 h-4" />
+                  Remote Control Terminal Hub (Lark / Telegram)
+                </h3>
+                <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                  Connect your Lark (Feishu) or Telegram bot to TDE. Securely authorize mobile/desktop chat sessions with a 6-digit pair code, switch target agent sessions via slash commands, and stream real-time terminal output directly to your chat box.
+                </p>
+              </div>
+              <button
+                onClick={loadRemoteControlData}
+                className="flex items-center space-x-1 bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded text-xs font-mono transition"
+                title="Refresh remote status"
+              >
+                <RefreshCw size={12} />
+                <span>Refresh</span>
+              </button>
+            </div>
+
+            {/* Top Grid: Telegram & Lark Bot Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Telegram Bot Card */}
+              <div className="bg-[#171717]/60 border border-slate-800/80 rounded-xl p-4 flex flex-col justify-between space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-sky-500/10 text-sky-400 flex items-center justify-center font-bold text-xs">
+                        TG
+                      </div>
+                      <span className="font-semibold text-xs text-slate-200">Telegram Bot</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {botStatuses['telegram']?.running ? (
+                        <span className="flex items-center gap-1.5 text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                          Polling Active
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-mono text-slate-500 bg-slate-800/40 px-2 py-0.5 rounded-full">
+                          Stopped
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {botStatuses['telegram']?.error && (
+                    <div className="p-2 rounded bg-rose-500/10 border border-rose-500/20 text-rose-300 text-[10px] font-mono flex items-center gap-1.5">
+                      <AlertTriangle size={12} className="shrink-0" />
+                      <span className="truncate">{botStatuses['telegram']?.error}</span>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSaveTelegram} className="space-y-3 text-xs">
+                    <div>
+                      <label className="block text-slate-400 mb-1 font-mono text-[9px] uppercase">
+                        Bot Token (from @BotFather)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showTgToken ? 'text' : 'password'}
+                          value={tgToken}
+                          onChange={(e) => setTgToken(e.target.value)}
+                          placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ..."
+                          className="w-full bg-[#262626] border border-slate-700/60 rounded px-2.5 py-1.5 pr-8 text-slate-200 focus:outline-none font-mono text-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowTgToken(!showTgToken)}
+                          className="absolute right-2 top-2 text-slate-500 hover:text-slate-350"
+                        >
+                          {showTgToken ? <EyeOff size={13} /> : <Eye size={13} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <label className="flex items-center gap-2 cursor-pointer text-slate-300 text-xs select-none">
+                        <input
+                          type="checkbox"
+                          checked={tgEnabled}
+                          onChange={(e) => setTgEnabled(e.target.checked)}
+                          className="rounded bg-slate-900 border-slate-700 text-brand focus:ring-transparent w-3.5 h-3.5"
+                        />
+                        <span>Enable Long Polling</span>
+                      </label>
+
+                      <button
+                        type="submit"
+                        disabled={isSavingTg}
+                        className="px-3 py-1.5 rounded bg-brand hover:bg-brand/80 text-white font-semibold text-xs transition disabled:opacity-50"
+                      >
+                        {isSavingTg ? 'Saving...' : 'Save & Connect'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                <p className="text-[10px] text-slate-500 font-mono border-t border-slate-800/40 pt-2">
+                  💡 Tip: Message your bot on Telegram. On first message, it will reply with a pair code!
+                </p>
+              </div>
+
+              {/* Lark (Feishu) Bot Card */}
+              <div className="bg-[#171717]/60 border border-slate-800/80 rounded-xl p-4 flex flex-col justify-between space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-xs">
+                        LK
+                      </div>
+                      <span className="font-semibold text-xs text-slate-200">Lark / Feishu Bot</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {botStatuses['lark']?.running ? (
+                        <span className="flex items-center gap-1.5 text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                          Connected
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-mono text-slate-500 bg-slate-800/40 px-2 py-0.5 rounded-full">
+                          Stopped
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {botStatuses['lark']?.error && (
+                    <div className="p-2 rounded bg-rose-500/10 border border-rose-500/20 text-rose-300 text-[10px] font-mono flex items-center gap-1.5">
+                      <AlertTriangle size={12} className="shrink-0" />
+                      <span className="truncate">{botStatuses['lark']?.error}</span>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSaveLark} className="space-y-2.5 text-xs">
+                    <div>
+                      <label className="block text-slate-400 mb-1 font-mono text-[9px] uppercase">
+                        App ID (cli_xxx)
+                      </label>
+                      <input
+                        type="text"
+                        value={larkAppId}
+                        onChange={(e) => setLarkAppId(e.target.value)}
+                        placeholder="cli_a1b2c3d4e5f6..."
+                        className="w-full bg-[#262626] border border-slate-700/60 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-mono text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-400 mb-1 font-mono text-[9px] uppercase">
+                        App Secret
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showLarkSecret ? 'text' : 'password'}
+                          value={larkAppSecret}
+                          onChange={(e) => setLarkAppSecret(e.target.value)}
+                          placeholder="App Secret from Lark Open Platform..."
+                          className="w-full bg-[#262626] border border-slate-700/60 rounded px-2.5 py-1.5 pr-8 text-slate-200 focus:outline-none font-mono text-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowLarkSecret(!showLarkSecret)}
+                          className="absolute right-2 top-2 text-slate-500 hover:text-slate-350"
+                        >
+                          {showLarkSecret ? <EyeOff size={13} /> : <Eye size={13} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <label className="flex items-center gap-2 cursor-pointer text-slate-300 text-xs select-none">
+                        <input
+                          type="checkbox"
+                          checked={larkEnabled}
+                          onChange={(e) => setLarkEnabled(e.target.checked)}
+                          className="rounded bg-slate-900 border-slate-700 text-brand focus:ring-transparent w-3.5 h-3.5"
+                        />
+                        <span>Enable Lark Service</span>
+                      </label>
+
+                      <button
+                        type="submit"
+                        disabled={isSavingLark}
+                        className="px-3 py-1.5 rounded bg-brand hover:bg-brand/80 text-white font-semibold text-xs transition disabled:opacity-50"
+                      >
+                        {isSavingLark ? 'Saving...' : 'Save & Connect'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                <p className="text-[10px] text-slate-500 font-mono border-t border-slate-800/40 pt-2">
+                  💡 Tip: Ensure bot permissions include <code className="text-slate-400">im:message</code> and <code className="text-slate-400">im:message:send_as_bot</code>.
+                </p>
+              </div>
+            </div>
+
+            {/* Pair Code Authorization Section */}
+            <div className="bg-[#171717]/60 border border-slate-800/80 rounded-xl p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800/60 pb-3">
+                <div className="flex items-center gap-2">
+                  <Key className="w-4 h-4 text-brand-light" />
+                  <h4 className="font-semibold text-xs text-slate-200 uppercase font-mono tracking-wide">
+                    Pair Code Authorization
+                  </h4>
+                </div>
+                <span className="text-[10px] text-slate-500 font-mono">
+                  Enter code from bot response to link chat
+                </span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center gap-3">
+                <div className="relative flex-1 w-full">
+                  <input
+                    type="text"
+                    value={pairCodeInput}
+                    onChange={(e) => setPairCodeInput(e.target.value)}
+                    placeholder="Enter 6-digit pair code (e.g. 749201)..."
+                    maxLength={10}
+                    className="w-full bg-[#262626] border border-slate-700/80 rounded-lg px-3 py-2 text-slate-100 font-mono text-sm tracking-widest uppercase focus:outline-none focus:border-brand"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleAuthorizePair()}
+                  disabled={authorizingPair || !pairCodeInput.trim()}
+                  className="w-full sm:w-auto px-5 py-2 bg-brand hover:bg-brand/80 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition flex items-center justify-center gap-1.5 shadow"
+                >
+                  <ShieldCheck size={14} />
+                  <span>{authorizingPair ? 'Authorizing...' : 'Authorize & Link Chat'}</span>
+                </button>
+              </div>
+
+              {pairMessage && (
+                <div
+                  className={`p-3 rounded-lg text-xs font-mono flex items-center gap-2 ${
+                    pairMessage.type === 'success'
+                      ? 'bg-emerald-500/10 border border-emerald-500/25 text-emerald-300'
+                      : 'bg-rose-500/10 border border-rose-500/25 text-rose-300'
+                  }`}
+                >
+                  {pairMessage.type === 'success' ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                  <span>{pairMessage.text}</span>
+                </div>
+              )}
+
+              {/* Pending Requests Alert (if any) */}
+              {pairings.filter((p) => p.status === 'pending').length > 0 && (
+                <div className="space-y-2 pt-2">
+                  <span className="text-[10px] font-mono uppercase text-amber-400 flex items-center gap-1.5 font-bold">
+                    <AlertTriangle size={12} />
+                    Incoming Pending Authorization Requests:
+                  </span>
+                  <div className="divide-y divide-slate-800/60 border border-amber-500/20 rounded-lg bg-amber-500/5">
+                    {pairings
+                      .filter((p) => p.status === 'pending')
+                      .map((p) => (
+                        <div key={p.id} className="p-3 flex items-center justify-between text-xs">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase font-bold bg-amber-500/20 text-amber-300">
+                                {p.platform}
+                              </span>
+                              <span className="text-slate-200 font-medium">
+                                {p.user_name ? `@${p.user_name}` : `Chat ID: ${p.chat_id}`}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                              Code: <span className="text-amber-300 font-bold tracking-wider">{p.pair_code}</span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleAuthorizePair(p.pair_code)}
+                            className="px-3 py-1 bg-brand hover:bg-brand/80 text-white rounded text-xs font-semibold font-mono"
+                          >
+                            One-Click Authorize
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Paired Chats & Session Binding Management */}
+            <div className="bg-[#171717]/60 border border-slate-800/80 rounded-xl p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800/60 pb-3">
+                <div className="flex items-center gap-2">
+                  <Smartphone className="w-4 h-4 text-brand-light" />
+                  <h4 className="font-semibold text-xs text-slate-200 uppercase font-mono tracking-wide">
+                    Authorized Paired Chats & Session Routing
+                  </h4>
+                </div>
+                <span className="text-[10px] text-slate-500 font-mono">
+                  {pairings.filter((p) => p.status === 'paired').length} active connections
+                </span>
+              </div>
+
+              {pairings.filter((p) => p.status === 'paired').length === 0 ? (
+                <div className="py-6 text-center text-slate-500 text-xs font-mono">
+                  No authorized chats yet. Configure a bot above and send your first message to begin pairing!
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {pairings
+                    .filter((p) => p.status === 'paired')
+                    .map((pairing) => {
+                      // Find sessions for selected workspace or active sessions
+                      const sessionList = Object.values(sessions);
+                      return (
+                        <div
+                          key={pairing.id}
+                          className="bg-[#212121]/60 border border-slate-800 rounded-lg p-3.5 space-y-3 text-xs"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase font-bold bg-sky-500/20 text-sky-300">
+                                {pairing.platform}
+                              </span>
+                              <span className="font-semibold text-slate-200">
+                                {pairing.user_name ? `@${pairing.user_name}` : `Chat ${pairing.chat_id}`}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-mono">
+                                (ID: {pairing.chat_id})
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => handleRevokePair(pairing.id)}
+                              className="text-[10px] text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 px-2 py-1 rounded transition font-mono"
+                            >
+                              Revoke
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-xs">
+                            <div>
+                              <label className="block text-[9px] text-slate-400 uppercase mb-1">
+                                Bound Project (Workspace)
+                              </label>
+                              <select
+                                value={pairing.bound_workspace_id || ''}
+                                onChange={(e) =>
+                                  handleBindSession(pairing.id, e.target.value, pairing.bound_session_id)
+                                }
+                                className="w-full bg-[#171717] border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 text-xs focus:outline-none"
+                              >
+                                <option value="">— Select Workspace —</option>
+                                {workspaces.map((ws) => (
+                                  <option key={ws.id} value={ws.id}>
+                                    {ws.name} ({ws.path})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-[9px] text-slate-400 uppercase mb-1">
+                                Connected Agent Session
+                              </label>
+                              <select
+                                value={pairing.bound_session_id || ''}
+                                onChange={(e) =>
+                                  handleBindSession(pairing.id, pairing.bound_workspace_id, e.target.value)
+                                }
+                                className="w-full bg-[#171717] border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 text-xs focus:outline-none"
+                              >
+                                <option value="">— No Session Connected —</option>
+                                {sessionList.map((s) => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.name || s.agentType} (ID: {s.id.slice(0, 8)}...)
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono pt-1 border-t border-slate-800/40">
+                            <span>
+                              Current Target:{' '}
+                              <span className="text-brand-light font-bold">
+                                {pairing.bound_session_id ? pairing.bound_session_id : 'None'}
+                              </span>
+                            </span>
+                            <span className="text-slate-500">
+                              Switch anytime in chat via: <code className="text-slate-300">/switch project session &lt;id&gt;</code>
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+
+            {/* Quick Slash Commands Reference Card */}
+            <div className="bg-slate-900/40 border border-slate-800/60 rounded-xl p-4 text-xs text-slate-300 space-y-3 font-mono">
+              <h4 className="font-semibold text-xs flex items-center gap-1.5 text-slate-200">
+                <HelpCircle size={13} className="text-brand-light" />
+                Remote Chat Slash Commands
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+                <div className="p-2.5 bg-black/40 rounded border border-slate-800/80">
+                  <span className="text-brand-light font-bold">/project list</span>
+                  <p className="text-slate-400 text-[10px] mt-0.5">List all TDE project workspaces with path & IDs</p>
+                </div>
+                <div className="p-2.5 bg-black/40 rounded border border-slate-800/80">
+                  <span className="text-brand-light font-bold">/project list session</span>
+                  <p className="text-slate-400 text-[10px] mt-0.5">List active sessions in the project with statuses</p>
+                </div>
+                <div className="p-2.5 bg-black/40 rounded border border-slate-800/80">
+                  <span className="text-brand-light font-bold">/switch project session &lt;id&gt;</span>
+                  <p className="text-slate-400 text-[10px] mt-0.5">Switch active remote control target to specified session</p>
+                </div>
+                <div className="p-2.5 bg-black/40 rounded border border-slate-800/80">
+                  <span className="text-brand-light font-bold">Any regular text message</span>
+                  <p className="text-slate-400 text-[10px] mt-0.5">Sent directly to the bound terminal session stdin, output streams back</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Interactive Live Simulator & Message Logs */}
+            <div className="bg-[#171717]/60 border border-slate-800/80 rounded-xl p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800/60 pb-3">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-brand-light" />
+                  <h4 className="font-semibold text-xs text-slate-200 uppercase font-mono tracking-wide">
+                    Interactive Chat Simulator & Live Audit
+                  </h4>
+                </div>
+                <span className="text-[10px] text-slate-500 font-mono">Test commands directly in TDE</span>
+              </div>
+
+              {/* Simulation input form */}
+              <form onSubmit={handleSimulate} className="flex flex-col sm:flex-row items-center gap-2">
+                <select
+                  value={simPlatform}
+                  onChange={(e) => setSimPlatform(e.target.value)}
+                  className="bg-[#262626] border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 font-mono"
+                >
+                  <option value="telegram">Telegram</option>
+                  <option value="lark">Lark</option>
+                </select>
+                <input
+                  type="text"
+                  value={simText}
+                  onChange={(e) => setSimText(e.target.value)}
+                  placeholder="Simulate sending a message (e.g. /help, /project list, ls -la)..."
+                  className="flex-1 w-full bg-[#262626] border border-slate-700/80 rounded px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-brand"
+                />
+                <button
+                  type="submit"
+                  disabled={isSimulating || !simText.trim()}
+                  className="w-full sm:w-auto px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-semibold font-mono flex items-center justify-center gap-1.5 border border-slate-700"
+                >
+                  <Send size={12} />
+                  <span>Send</span>
+                </button>
+              </form>
+
+              {/* Live Audit Log stream */}
+              <div className="space-y-1.5 pt-2">
+                <span className="text-[10px] font-mono text-slate-400 uppercase">Recent Message Logs</span>
+                <div className="bg-black/70 border border-slate-800/80 rounded-lg p-3 max-h-48 overflow-y-auto font-mono text-[10px] space-y-2 select-text">
+                  {messageLogs.length === 0 ? (
+                    <div className="text-slate-600 text-center py-4">No message logs recorded yet.</div>
+                  ) : (
+                    messageLogs.map((log) => (
+                      <div key={log.id} className="flex items-start gap-2 leading-relaxed">
+                        <span
+                          className={`px-1 rounded text-[8px] font-bold uppercase shrink-0 ${
+                            log.direction === 'incoming'
+                              ? 'bg-emerald-500/20 text-emerald-400'
+                              : 'bg-sky-500/20 text-sky-400'
+                          }`}
+                        >
+                          {log.direction}
+                        </span>
+                        <span className="text-slate-500 shrink-0">[{log.platform}]</span>
+                        <span className="text-slate-300 break-words flex-1">{log.content}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
