@@ -32,6 +32,7 @@ import {
 import { ProviderVault } from './ProviderVault';
 import { AgentIcon } from './AgentIcon';
 import { useWorkspaceStore } from '../store/workspaceStore';
+import { normalizePairCode } from '../remoteUtils';
 
 export interface EgoLiteStatus {
   is_installed: boolean;
@@ -361,7 +362,7 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
   };
 
   const handleAuthorizePair = async (codeToUse?: string) => {
-    const code = codeToUse || pairCodeInput.trim();
+    const code = normalizePairCode(codeToUse || pairCodeInput);
     if (!code) {
       alert('Please enter a 6-digit pair authorization code');
       return;
@@ -1291,9 +1292,9 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
                   <input
                     type="text"
                     value={pairCodeInput}
-                    onChange={(e) => setPairCodeInput(e.target.value)}
+                    onChange={(e) => setPairCodeInput(normalizePairCode(e.target.value))}
                     placeholder="Enter 6-digit pair code (e.g. 749201)..."
-                    maxLength={10}
+                    maxLength={6}
                     className="w-full bg-[#262626] border border-slate-700/80 rounded-lg px-3 py-2 text-slate-100 font-mono text-sm tracking-widest uppercase focus:outline-none focus:border-brand"
                   />
                 </div>
