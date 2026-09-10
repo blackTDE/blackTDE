@@ -11,6 +11,7 @@ mod shell_session;
 mod skills_manager;
 mod ssh_sftp;
 mod web_preview;
+mod remote_ctl;
 
 use sqlx::{Row, SqlitePool};
 use std::fs;
@@ -1591,7 +1592,13 @@ fn main() {
 
             // Initialize process manager state
             let process_manager = process::ProcessManager::default();
+            let proc_mgr_clone = process_manager.clone();
             app.manage(process_manager);
+
+            // Initialize remote control manager state
+            let remote_manager = remote_ctl::RemoteControlManager::default();
+            let remote_mgr_clone = remote_manager.clone();
+            app.manage(remote_manager);
 
             // Initialize database synchronously on startup using Tauri's async runtime executor
             tauri::async_runtime::block_on(async move {
@@ -1601,6 +1608,7 @@ fn main() {
                 if let Some(home) = std::env::var("HOME").ok().map(PathBuf::from) {
                     agy_session::heal_agy_sessions(&pool, &home).await;
                 }
+                remote_ctl::init_remote_control(pool.clone(), proc_mgr_clone, remote_mgr_clone, app_handle.clone()).await;
                 app_handle.manage(pool);
             });
 
@@ -1690,7 +1698,16 @@ fn main() {
             web_preview::fetch_web_preview,
             web_preview::open_in_ego_lite,
             web_preview::check_ego_lite_status,
-            web_preview::install_ego_lite_browser
+            web_preview::install_ego_lite_browser,
+            remote_ctl::get_remote_bot_configs,
+            remote_ctl::save_remote_bot_config,
+            remote_ctl::get_remote_bot_status,
+            remote_ctl::get_remote_pairings,
+            remote_ctl::authorize_pair_code,
+            remote_ctl::revoke_pairing,
+            remote_ctl::bind_pairing_session,
+            remote_ctl::get_remote_message_logs,
+            remote_ctl::simulate_remote_message
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -12,7 +12,7 @@ pub struct ActiveProcess {
     pub kill_tx: Option<oneshot::Sender<()>>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ProcessManager {
     pub active_sessions: Arc<Mutex<HashMap<String, ActiveProcess>>>,
     pub resume_locks: ResumeLocks,

@@ -141,6 +141,9 @@ pub fn start_stdout_reader(
                     let s_id = session_id_clone.clone();
                     let chunk = data_chunk.clone();
 
+                    // 3. Forward to remote control streamer (Lark / Telegram)
+                    crate::remote_ctl::forward_session_output(&session_id_clone, &data_chunk);
+
                     // Start an async task on tokio runner to insert data
                     tauri::async_runtime::spawn(async move {
                         let _ = sqlx::query(
