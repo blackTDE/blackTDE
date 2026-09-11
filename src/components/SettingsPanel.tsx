@@ -340,12 +340,22 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
     setIsTestingLark(true);
     setLarkTestResult(null);
     try {
-      const msg = await invoke<string>('test_lark_credentials', {
+      const authMsg = await invoke<string>('test_lark_credentials', {
         appId: larkAppId.trim(),
         appSecret: larkAppSecret.trim(),
         baseUrl: larkBaseUrl.trim() || undefined,
       });
-      setLarkTestResult({ ok: true, msg });
+      let wsMsg = '';
+      try {
+        wsMsg = await invoke<string>('test_lark_ws_endpoint', {
+          appId: larkAppId.trim(),
+          appSecret: larkAppSecret.trim(),
+          baseUrl: larkBaseUrl.trim() || undefined,
+        });
+      } catch (wsErr) {
+        wsMsg = `Persistent WS notice: ${wsErr}`;
+      }
+      setLarkTestResult({ ok: true, msg: `${authMsg}\n${wsMsg}` });
     } catch (err) {
       setLarkTestResult({ ok: false, msg: String(err) });
     } finally {
@@ -1347,40 +1357,55 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
                       </div>
                     </div>
 
-                    {/* Local Webhook Ingress URL */}
-                    <div className="p-2.5 bg-[#1f1f1f] border border-slate-800/80 rounded-lg space-y-1.5">
+                    {/* Persistent Connection vs Webhook Mode */}
+                    <div className="p-2.5 bg-[#1f1f1f] border border-slate-800/80 rounded-lg space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono text-slate-400 font-semibold uppercase">
-                          Local Webhook Event URL (Auto-verified)
+                        <span className="text-[10px] font-mono text-emerald-400 font-semibold uppercase flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          Mode 1: Persistent Connection (长连接模式 · 推荐)
                         </span>
-                        <span className="text-[9px] text-slate-500 font-mono">Port: {larkWebhookPort}</span>
+                        <span className="text-[9px] text-slate-400 font-mono bg-emerald-950/60 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-800/50">
+                          无需公网IP / Webhook
+                        </span>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <code className="flex-1 bg-[#141414] border border-slate-800 px-2 py-1 rounded text-[11px] font-mono text-brand-light truncate select-all">
-                          http://127.0.0.1:{larkWebhookPort}/api/lark/event
-                        </code>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(`http://127.0.0.1:${larkWebhookPort}/api/lark/event`);
-                            setCopiedWebhook(true);
-                            setTimeout(() => setCopiedWebhook(false), 2000);
-                          }}
-                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-mono flex items-center gap-1 transition shrink-0"
-                          title="Copy Webhook URL"
-                        >
-                          {copiedWebhook ? <CheckCircle2 size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                          <span>{copiedWebhook ? 'Copied' : 'Copy'}</span>
-                        </button>
-                      </div>
-                      <p className="text-[10px] text-slate-400 pt-0.5 leading-relaxed">
-                        In Developer Console: <strong>Events & Callbacks</strong> &gt; Set Request URL to above (or public/tunnel URL). TDE automatically validates challenge tokens and receives messages.
+                      <p className="text-[10px] text-slate-300 leading-relaxed">
+                        在飞书/Lark开放平台【事件与回调】页面，订阅方式选择<strong>【使用长连接接收事件】</strong>。TDE 启动后将自动与飞书消息网关建立加密 WebSocket 长连接，秒级接收并处理消息。
                       </p>
+
+                      <div className="border-t border-slate-800/60 pt-2 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-mono text-slate-400 font-semibold uppercase">
+                            Mode 2: Webhook 回调模式 (可选)
+                          </span>
+                          <span className="text-[9px] text-slate-500 font-mono">Port: {larkWebhookPort}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <code className="flex-1 bg-[#141414] border border-slate-800 px-2 py-1 rounded text-[11px] font-mono text-brand-light truncate select-all">
+                            http://127.0.0.1:{larkWebhookPort}/api/lark/event
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(`http://127.0.0.1:${larkWebhookPort}/api/lark/event`);
+                              setCopiedWebhook(true);
+                              setTimeout(() => setCopiedWebhook(false), 2000);
+                            }}
+                            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-mono flex items-center gap-1 transition shrink-0"
+                            title="Copy Webhook URL"
+                          >
+                            {copiedWebhook ? <CheckCircle2 size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                            <span>{copiedWebhook ? 'Copied' : 'Copy'}</span>
+                          </button>
+                        </div>
+                        <p className="text-[9px] text-slate-500">
+                          若选择发送至开发者服务器，配置公网或穿透地址指向上述端口。
+                        </p>
+                      </div>
                     </div>
 
                     {larkTestResult && (
                       <div
-                        className={`p-2 rounded text-[11px] font-mono flex items-start gap-1.5 ${
+                        className={`p-2 rounded text-[11px] font-mono flex items-start gap-1.5 whitespace-pre-line ${
                           larkTestResult.ok
                             ? 'bg-emerald-500/10 border border-emerald-500/25 text-emerald-300'
                             : 'bg-rose-500/10 border border-rose-500/25 text-rose-300'
@@ -1413,7 +1438,7 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
                           disabled={isTestingLark || !larkAppId.trim() || !larkAppSecret.trim()}
                           className="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs transition disabled:opacity-40"
                         >
-                          {isTestingLark ? 'Testing...' : 'Test Auth'}
+                          {isTestingLark ? 'Testing...' : 'Test Auth & WS'}
                         </button>
 
                         <button
@@ -1430,9 +1455,9 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
 
                 <div className="text-[10px] text-slate-400 font-mono border-t border-slate-800/40 pt-2 space-y-1">
                   <div className="font-semibold text-slate-300">Setup Checklist in Lark/Feishu Console:</div>
-                  <div>1. <strong>Events & Callbacks</strong>: Add event <code>im.message.receive_v1</code></div>
-                  <div>2. <strong>Permissions</strong>: Enable <code>im:message</code>, <code>im:message:send_as_bot</code></div>
-                  <div>3. <strong>App Features</strong>: Add <code>Bot (机器人)</code> and publish a version!</div>
+                  <div>1. <strong>Events & Callbacks (事件与回调)</strong>: 订阅模式选择【使用长连接接收事件】并添加事件 <code>im.message.receive_v1</code></div>
+                  <div>2. <strong>Permissions (权限管理)</strong>: 申请并开通 <code>im:message</code>, <code>im:message:send_as_bot</code></div>
+                  <div>3. <strong>App Features (添加应用能力)</strong>: 启用 <code>Bot (机器人)</code>，并发布一个版本！</div>
                 </div>
               </div>
             </div>

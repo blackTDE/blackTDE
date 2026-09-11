@@ -1710,6 +1710,7 @@ fn main() {
             remote_ctl::get_remote_message_logs,
             remote_ctl::simulate_remote_message,
             remote_ctl::test_lark_credentials,
+            remote_ctl::test_lark_ws_endpoint,
             remote_ctl::get_lark_webhook_info
         ])
         .run(tauri::generate_context!())

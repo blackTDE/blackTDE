@@ -5,6 +5,7 @@ pub mod streamer;
 pub mod telegram;
 pub mod types;
 pub mod webhook;
+pub mod ws_client;
 
 use crate::process::ProcessManager;
 use crate::remote_ctl::types::{
@@ -211,7 +212,31 @@ async fn start_bot_worker(
                 }
             });
 
-            // 3. Lark worker heartbeat
+            // 3. Start persistent WebSocket client for subscription mode (长连接接收事件)
+            let base_url_ws = creds.base_url.clone();
+            let app_id_ws = creds.app_id.clone();
+            let app_secret_ws = creds.app_secret.clone();
+            let cancel_flag_ws = cancel_flag.clone();
+            let pool_ws = pool_clone.clone();
+            let proc_mgr_ws = proc_mgr_clone.clone();
+            let remote_mgr_ws = remote_mgr_clone.clone();
+            let app_handle_ws = app_handle_clone.clone();
+
+            tokio::spawn(async move {
+                ws_client::run_lark_ws_client(
+                    base_url_ws,
+                    app_id_ws,
+                    app_secret_ws,
+                    cancel_flag_ws,
+                    pool_ws,
+                    proc_mgr_ws,
+                    remote_mgr_ws,
+                    app_handle_ws,
+                )
+                .await;
+            });
+
+            // 4. Lark worker heartbeat
             let cancel_flag_hb = cancel_flag.clone();
             let creds_hb = creds.clone();
             tokio::spawn(async move {
@@ -546,3 +571,28 @@ pub async fn get_lark_webhook_info(
         event_path: "/api/lark/event".to_string(),
     })
 }
+
+#[tauri::command]
+pub async fn test_lark_ws_endpoint(
+    app_id: String,
+    app_secret: String,
+    base_url: Option<String>,
+) -> Result<String, String> {
+    let base = base_url.unwrap_or_else(types::default_lark_base_url);
+    match ws_client::get_ws_endpoint_url(&base, &app_id, &app_secret).await {
+        Ok((wss_url, ping_interval)) => {
+            // Mask URL sensitive tokens for privacy
+            let masked = if let Some(idx) = wss_url.find('?') {
+                format!("{}?... (ping: {}s)", &wss_url[..idx], ping_interval)
+            } else {
+                format!("{} (ping: {}s)", wss_url, ping_interval)
+            };
+            Ok(format!(
+                "WebSocket Handshake Successful! Persistent endpoint connected to: {}",
+                masked
+            ))
+        }
+        Err(err) => Err(err),
+    }
+}
+

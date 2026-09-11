@@ -356,6 +356,7 @@ dependencies = [
  "arboard",
  "base64 0.21.7",
  "encoding_rs",
+ "futures-util",
  "portable-pty",
  "reqwest 0.12.28",
  "rfd",
@@ -366,6 +367,7 @@ dependencies = [
  "tauri-build",
  "tokio",
  "tokio-tungstenite",
+ "url",
  "uuid",
 ]
 
