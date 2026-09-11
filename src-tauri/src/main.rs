@@ -1642,6 +1642,7 @@ fn main() {
             git_runner::git_restore_file,
             git_runner::git_commit_changes,
             git_runner::git_init,
+            git_runner::git_clone,
             git_runner::get_git_branch,
             git_runner::get_git_branches,
             git_runner::git_checkout_branch,

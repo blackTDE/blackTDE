@@ -423,10 +423,56 @@ pub fn git_init(cwd: String) -> Result<String, String> {
     run_git(&cwd, &["init"])
 }
 
+#[tauri::command(async)]
+pub fn git_clone(url: String, target_dir: String) -> Result<String, String> {
+    let clean_url = url.trim();
+    if clean_url.is_empty() {
+        return Err("Repository URL cannot be empty.".to_string());
+    }
+
+    let target_path = std::path::Path::new(&target_dir);
+    if target_path.exists() {
+        if let Ok(mut read_dir) = std::fs::read_dir(target_path) {
+            if read_dir.next().is_some() {
+                return Err(format!(
+                    "Target directory '{}' already exists and is not empty.",
+                    target_dir
+                ));
+            }
+        }
+    } else if let Some(parent) = target_path.parent() {
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+        }
+    }
+
+    let output = Command::new("git")
+        .args(["clone", clean_url, &target_dir])
+        .output()
+        .map_err(|e| format!("Failed to execute git clone: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let err_msg = if !stderr.is_empty() { stderr } else { stdout };
+        return Err(if err_msg.is_empty() {
+            "git clone failed with unknown error.".to_string()
+        } else {
+            err_msg
+        });
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Ok(if !stdout.is_empty() { stdout } else { stderr })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        git_init, git_restore_file, parse_git_status, parse_name_status, parse_remote_status,
+        git_clone, git_init, git_restore_file, parse_git_status, parse_name_status,
+        parse_remote_status,
     };
     use std::{fs, process::Command};
 
@@ -520,5 +566,34 @@ mod tests {
         assert!(second.is_ok());
 
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn clones_git_repository_to_custom_directory_name() {
+        let temp_dir = std::env::temp_dir().join(format!("tde-test-origin-{}", uuid::Uuid::new_v4()));
+        let clone_dir = std::env::temp_dir().join(format!("tde-test-clone-renamed-{}", uuid::Uuid::new_v4()));
+
+        let _ = fs::create_dir_all(&temp_dir);
+        let _ = git_init(temp_dir.to_string_lossy().into_owned());
+        let _ = fs::write(temp_dir.join("README.md"), "# Test Cloned Repo");
+        let _ = Command::new("git")
+            .args(["add", "README.md"])
+            .current_dir(&temp_dir)
+            .output();
+        let _ = Command::new("git")
+            .args(["-c", "user.name=Test", "-c", "user.email=test@test.com", "commit", "-m", "initial"])
+            .current_dir(&temp_dir)
+            .output();
+
+        let clone_res = git_clone(
+            temp_dir.to_string_lossy().into_owned(),
+            clone_dir.to_string_lossy().into_owned(),
+        );
+        assert!(clone_res.is_ok(), "git_clone failed: {:?}", clone_res);
+        assert!(clone_dir.join("README.md").exists());
+        assert!(clone_dir.join(".git").exists());
+
+        let _ = fs::remove_dir_all(temp_dir);
+        let _ = fs::remove_dir_all(clone_dir);
     }
 }
