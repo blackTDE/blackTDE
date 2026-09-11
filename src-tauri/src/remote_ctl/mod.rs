@@ -4,6 +4,7 @@ pub mod router;
 pub mod streamer;
 pub mod telegram;
 pub mod types;
+pub mod webhook;
 
 use crate::process::ProcessManager;
 use crate::remote_ctl::types::{
@@ -166,8 +167,8 @@ async fn start_bot_worker(
             let creds: LarkCredentials = serde_json::from_str(&cred_str)
                 .map_err(|e| format!("Invalid Lark credentials JSON: {}", e))?;
 
-            // Verify access token works initially
-            match lark::get_tenant_access_token(&creds.app_id, &creds.app_secret).await {
+            // 1. Verify access token works initially against the specified base_url
+            match lark::get_tenant_access_token(&creds.base_url, &creds.app_id, &creds.app_secret).await {
                 Ok(_) => {
                     remote_mgr_clone.bot_errors.lock().unwrap().remove(&p_key);
                 }
@@ -181,12 +182,42 @@ async fn start_bot_worker(
                 }
             }
 
-            // Lark worker heartbeat
+            // 2. Start built-in Webhook HTTP listener to receive real-time messages from Lark / Feishu
+            let port = creds.webhook_port.unwrap_or(webhook::DEFAULT_LARK_WEBHOOK_PORT);
+            let pool_wh = pool_clone.clone();
+            let proc_mgr_wh = proc_mgr_clone.clone();
+            let remote_mgr_wh = remote_mgr_clone.clone();
+            let app_handle_wh = app_handle_clone.clone();
+            let cancel_flag_wh = cancel_flag.clone();
+            let p_key_wh = p_key.clone();
+
             tokio::spawn(async move {
-                while !cancel_flag.load(Ordering::Relaxed) {
-                    sleep(Duration::from_secs(30)).await;
-                    // Token refresh cycle check
-                    let _ = lark::get_tenant_access_token(&creds.app_id, &creds.app_secret).await;
+                if let Err(err) = webhook::run_lark_webhook_server(
+                    port,
+                    cancel_flag_wh,
+                    pool_wh,
+                    proc_mgr_wh,
+                    remote_mgr_wh.clone(),
+                    app_handle_wh,
+                )
+                .await
+                {
+                    eprintln!("[Lark Webhook Server] Failed: {}", err);
+                    remote_mgr_wh
+                        .bot_errors
+                        .lock()
+                        .unwrap()
+                        .insert(p_key_wh, err);
+                }
+            });
+
+            // 3. Lark worker heartbeat
+            let cancel_flag_hb = cancel_flag.clone();
+            let creds_hb = creds.clone();
+            tokio::spawn(async move {
+                while !cancel_flag_hb.load(Ordering::Relaxed) {
+                    sleep(Duration::from_secs(60)).await;
+                    let _ = lark::get_tenant_access_token(&creds_hb.base_url, &creds_hb.app_id, &creds_hb.app_secret).await;
                 }
             });
         }
@@ -467,4 +498,51 @@ pub async fn simulate_remote_message(
         &app_handle,
     )
     .await
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct LarkWebhookInfo {
+    pub port: u16,
+    pub local_url: String,
+    pub event_path: String,
+}
+
+#[tauri::command]
+pub async fn test_lark_credentials(
+    app_id: String,
+    app_secret: String,
+    base_url: Option<String>,
+) -> Result<String, String> {
+    let base = base_url.unwrap_or_else(types::default_lark_base_url);
+    match lark::get_tenant_access_token(&base, &app_id, &app_secret).await {
+        Ok(token) => Ok(format!(
+            "Successfully connected to {}! Tenant token acquired (prefix: {}...).",
+            lark::clean_base_url(&base),
+            &token[..token.len().min(8)]
+        )),
+        Err(err) => Err(err),
+    }
+}
+
+#[tauri::command]
+pub async fn get_lark_webhook_info(
+    pool: State<'_, SqlitePool>,
+) -> Result<LarkWebhookInfo, String> {
+    let cred_json: Option<String> = sqlx::query_scalar(
+        "SELECT credentials FROM remote_bot_configs WHERE platform = 'lark'"
+    )
+    .fetch_optional(&*pool)
+    .await
+    .unwrap_or(None);
+
+    let port = cred_json
+        .and_then(|cj| serde_json::from_str::<LarkCredentials>(&cj).ok())
+        .and_then(|c| c.webhook_port)
+        .unwrap_or(webhook::DEFAULT_LARK_WEBHOOK_PORT);
+
+    Ok(LarkWebhookInfo {
+        port,
+        local_url: format!("http://127.0.0.1:{}/api/lark/event", port),
+        event_path: "/api/lark/event".to_string(),
+    })
 }

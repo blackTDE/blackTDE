@@ -33,11 +33,35 @@ pub struct TelegramCredentials {
     pub bot_token: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LarkCredentials {
     pub app_id: String,
     pub app_secret: String,
+    #[serde(default = "default_lark_base_url")]
+    pub base_url: String,
     pub verification_token: Option<String>,
+    #[serde(default = "default_lark_webhook_port")]
+    pub webhook_port: Option<u16>,
+}
+
+pub fn default_lark_base_url() -> String {
+    "https://open.feishu.cn".to_string()
+}
+
+pub fn default_lark_webhook_port() -> Option<u16> {
+    Some(19828)
+}
+
+impl Default for LarkCredentials {
+    fn default() -> Self {
+        Self {
+            app_id: String::new(),
+            app_secret: String::new(),
+            base_url: default_lark_base_url(),
+            verification_token: None,
+            webhook_port: default_lark_webhook_port(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

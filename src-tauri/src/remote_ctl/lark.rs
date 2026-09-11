@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -23,21 +24,41 @@ struct CachedToken {
     expires_in_secs: u64,
 }
 
-static CACHED_TOKEN: Mutex<Option<CachedToken>> = Mutex::new(None);
+static CACHED_TOKENS: Mutex<Option<HashMap<String, CachedToken>>> = Mutex::new(None);
 
-pub async fn get_tenant_access_token(app_id: &str, app_secret: &str) -> Result<String, String> {
+pub fn clean_base_url(raw: &str) -> String {
+    let trimmed = raw.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        "https://open.feishu.cn".to_string()
+    } else if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+        format!("https://{}", trimmed)
+    } else {
+        trimmed.to_string()
+    }
+}
+
+pub async fn get_tenant_access_token(
+    base_url: &str,
+    app_id: &str,
+    app_secret: &str,
+) -> Result<String, String> {
     let clean_id = app_id.trim();
     let clean_secret = app_secret.trim();
+    let endpoint = clean_base_url(base_url);
 
     if clean_id.is_empty() || clean_secret.is_empty() {
-        return Err("Lark app_id or app_secret is empty".to_string());
+        return Err("Lark/Feishu app_id or app_secret is empty".to_string());
     }
 
+    let cache_key = format!("{}:{}", endpoint, clean_id);
+
     // Check memory cache
-    if let Ok(guard) = CACHED_TOKEN.lock() {
-        if let Some(ref cached) = *guard {
-            if cached.fetched_at.elapsed().as_secs() + 60 < cached.expires_in_secs {
-                return Ok(cached.token.clone());
+    if let Ok(guard) = CACHED_TOKENS.lock() {
+        if let Some(ref map) = *guard {
+            if let Some(cached) = map.get(&cache_key) {
+                if cached.fetched_at.elapsed().as_secs() + 60 < cached.expires_in_secs {
+                    return Ok(cached.token.clone());
+                }
             }
         }
     }
@@ -47,32 +68,40 @@ pub async fn get_tenant_access_token(app_id: &str, app_secret: &str) -> Result<S
         .build()
         .map_err(|e| format!("HTTP client init failed: {}", e))?;
 
-    let url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal";
+    let url = format!("{}/open-apis/auth/v3/tenant_access_token/internal", endpoint);
     let body = serde_json::json!({
         "app_id": clean_id,
         "app_secret": clean_secret
     });
 
     let res = client
-        .post(url)
+        .post(&url)
         .json(&body)
         .send()
         .await
-        .map_err(|e| format!("Lark auth request failed: {}", e))?;
+        .map_err(|e| format!("Lark/Feishu auth request failed ({}): {}", url, e))?;
 
     if !res.status().is_success() {
         let status = res.status();
         let err_text = res.text().await.unwrap_or_default();
-        return Err(format!("Lark auth HTTP {}: {}", status, err_text));
+        return Err(format!("Lark/Feishu auth HTTP {}: {}", status, err_text));
     }
 
     let data: TenantTokenResponse = res
         .json()
         .await
-        .map_err(|e| format!("Failed to parse Lark auth response: {}", e))?;
+        .map_err(|e| format!("Failed to parse Lark/Feishu auth response: {}", e))?;
 
     if data.code != 0 {
-        return Err(format!("Lark auth error code {}: {}", data.code, data.msg));
+        let mut hint = "";
+        if data.code == 10014 || data.code == 10003 || data.code == 99991663 || data.code == 1000040346 {
+            if endpoint.contains("feishu.cn") {
+                hint = " (Hint: If your bot is registered on international Lark, set Base URL to https://open.larksuite.com)";
+            } else if endpoint.contains("larksuite.com") {
+                hint = " (Hint: If your bot is registered on China Feishu, set Base URL to https://open.feishu.cn)";
+            }
+        }
+        return Err(format!("Lark/Feishu auth error code {}: {}{}", data.code, data.msg, hint));
     }
 
     let token = data
@@ -80,24 +109,30 @@ pub async fn get_tenant_access_token(app_id: &str, app_secret: &str) -> Result<S
         .ok_or_else(|| "Missing tenant_access_token in response".to_string())?;
     let expire = data.expire.unwrap_or(7200);
 
-    if let Ok(mut guard) = CACHED_TOKEN.lock() {
-        *guard = Some(CachedToken {
-            token: token.clone(),
-            fetched_at: Instant::now(),
-            expires_in_secs: expire,
-        });
+    if let Ok(mut guard) = CACHED_TOKENS.lock() {
+        let map = guard.get_or_insert_with(HashMap::new);
+        map.insert(
+            cache_key,
+            CachedToken {
+                token: token.clone(),
+                fetched_at: Instant::now(),
+                expires_in_secs: expire,
+            },
+        );
     }
 
     Ok(token)
 }
 
 pub async fn send_lark_message(
+    base_url: &str,
     app_id: &str,
     app_secret: &str,
     chat_id: &str,
     text: &str,
 ) -> Result<(), String> {
-    let token = get_tenant_access_token(app_id, app_secret).await?;
+    let token = get_tenant_access_token(base_url, app_id, app_secret).await?;
+    let endpoint = clean_base_url(base_url);
     let clean_chat_id = chat_id.trim();
 
     let client = reqwest::Client::builder()
@@ -105,16 +140,18 @@ pub async fn send_lark_message(
         .build()
         .map_err(|e| format!("HTTP client error: {}", e))?;
 
-    // Determine receive_id_type: if starts with 'oc_' or 'ou_' or standard chat_id
+    // Determine receive_id_type: 'open_id' for ou_, 'union_id' for on_, 'chat_id' for oc_ or general
     let id_type = if clean_chat_id.starts_with("ou_") {
         "open_id"
+    } else if clean_chat_id.starts_with("on_") {
+        "union_id"
     } else {
         "chat_id"
     };
 
     let url = format!(
-        "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type={}",
-        id_type
+        "{}/open-apis/im/v1/messages?receive_id_type={}",
+        endpoint, id_type
     );
 
     // Lark message content must be a JSON string of {"text": text}
@@ -133,22 +170,36 @@ pub async fn send_lark_message(
         .json(&body)
         .send()
         .await
-        .map_err(|e| format!("Lark send message request error: {}", e))?;
+        .map_err(|e| format!("Lark/Feishu send message request error: {}", e))?;
 
     if !res.status().is_success() {
         let status = res.status();
         let err_text = res.text().await.unwrap_or_default();
-        return Err(format!("Lark send message HTTP {}: {}", status, err_text));
+        return Err(format!("Lark/Feishu send message HTTP {}: {}", status, err_text));
     }
 
     let data: LarkSendMessageResponse = res
         .json()
         .await
-        .map_err(|e| format!("Failed to parse Lark send response: {}", e))?;
+        .map_err(|e| format!("Failed to parse Lark/Feishu send response: {}", e))?;
 
     if data.code != 0 {
-        return Err(format!("Lark send error {}: {}", data.code, data.msg));
+        return Err(format!("Lark/Feishu send error {}: {}", data.code, data.msg));
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_clean_base_url() {
+        assert_eq!(clean_base_url(""), "https://open.feishu.cn");
+        assert_eq!(clean_base_url("   "), "https://open.feishu.cn");
+        assert_eq!(clean_base_url("open.larksuite.com"), "https://open.larksuite.com");
+        assert_eq!(clean_base_url("https://open.larksuite.com/"), "https://open.larksuite.com");
+        assert_eq!(clean_base_url("http://custom-proxy.internal:8080/"), "http://custom-proxy.internal:8080");
+    }
 }

@@ -1708,7 +1708,9 @@ fn main() {
             remote_ctl::revoke_pairing,
             remote_ctl::bind_pairing_session,
             remote_ctl::get_remote_message_logs,
-            remote_ctl::simulate_remote_message
+            remote_ctl::simulate_remote_message,
+            remote_ctl::test_lark_credentials,
+            remote_ctl::get_lark_webhook_info
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -195,7 +195,7 @@ pub async fn send_to_remote_chat(
             let creds: LarkCredentials = serde_json::from_str(&cred_str)
                 .map_err(|e| format!("Invalid Lark config: {}", e))?;
 
-            send_lark_message(&creds.app_id, &creds.app_secret, chat_id, text).await
+            send_lark_message(&creds.base_url, &creds.app_id, &creds.app_secret, chat_id, text).await
         }
         _ => Err(format!("Unsupported platform: {}", platform)),
     }
