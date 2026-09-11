@@ -2,6 +2,7 @@ export type RemoteCommand =
   | { type: 'help' }
   | { type: 'project_list' }
   | { type: 'session_list'; projectId?: string }
+  | { type: 'switch_project'; target: string }
   | { type: 'switch_session'; sessionId: string }
   | { type: 'unknown'; command: string }
   | { type: 'agent_input'; text: string };
@@ -31,6 +32,15 @@ export function parseRemoteSlashCommand(text: string): RemoteCommand {
       }
       return { type: 'project_list' };
     }
+    if (sub === 'switch') {
+      const target = parts.slice(2).join(' ').trim();
+      return { type: 'switch_project', target };
+    }
+    if (parts.length >= 2) {
+      const target = parts.slice(1).join(' ').trim();
+      return { type: 'switch_project', target };
+    }
+    return { type: 'project_list' };
   }
 
   if (root === '/session' && parts[1]?.toLowerCase() === 'list') {
@@ -40,6 +50,14 @@ export function parseRemoteSlashCommand(text: string): RemoteCommand {
   if (root === '/switch') {
     if (parts[1]?.toLowerCase() === 'project' && parts[2]?.toLowerCase() === 'session') {
       const sessionId = parts.slice(3).join(' ').trim();
+      return { type: 'switch_session', sessionId };
+    }
+    if (parts[1]?.toLowerCase() === 'project') {
+      const target = parts.slice(2).join(' ').trim();
+      return { type: 'switch_project', target };
+    }
+    if (parts[1]?.toLowerCase() === 'session') {
+      const sessionId = parts.slice(2).join(' ').trim();
       return { type: 'switch_session', sessionId };
     }
     const sessionId = parts.slice(1).join(' ').trim();

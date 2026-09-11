@@ -112,7 +112,7 @@ async fn handle_slash_command(
     command: &str,
     pairing: &RemotePairing,
     pool: &SqlitePool,
-    _manager: &ProcessManager,
+    manager: &ProcessManager,
 ) -> Result<(), String> {
     let parts: Vec<&str> = command.split_whitespace().collect();
     let root_cmd = parts[0];
@@ -128,68 +128,114 @@ async fn handle_slash_command(
                 .await
                 .unwrap_or(None);
 
+                let is_running = {
+                    let active_map = manager.active_sessions.lock().unwrap();
+                    active_map.contains_key(sid)
+                };
+                let status_icon = if is_running { "🟢" } else { "⚪" };
+
                 if let Some((agent, ws)) = s_info {
-                    format!("● Bound: {} (Project: {}, Session: {})", agent, ws, sid)
+                    format!("● 已绑定: {} [{}] ({}) (ID: {})", status_icon, agent, ws, &sid[..sid.len().min(8)])
                 } else {
-                    format!("● Bound ID: {} (Session terminated or missing)", sid)
+                    format!("● 绑定ID: {} (会话不存在或已删除)", &sid[..sid.len().min(8)])
                 }
             } else {
-                "○ None (use /project list session then /switch to connect)".to_string()
+                "○ 暂未连接会话 (使用 /project list session 查看)".to_string()
             };
 
             let help_text = format!(
-                "🤖 TDE Remote Control Terminal Hub\n\n\
-                Current Status:\n{}\n\n\
-                Available Commands:\n\
-                • /help - Show this command reference\n\
-                • /project list - List all project workspaces\n\
-                • /project list session - List sessions in current project\n\
-                • /switch project session <id> - Connect to a specific session\n\
-                • /switch <id> - Quick switch to session ID\n\n\
-                Type any text directly to execute commands or chat with the connected AI agent!",
+                "🤖 TDE 远程控制快捷指令\n\n\
+                当前状态:\n{}\n\n\
+                常用命令:\n\
+                • /help - 查看本命令参考\n\
+                • /project list - 列出所有项目工作区 (带序号)\n\
+                • /switch project <序号/名称> - 快捷切换项目 (如 /switch project 1)\n\
+                • /project list session - 列出当前项目的活跃会话 (带序号)\n\
+                • /switch <序号/ID> - 快捷切换连接会话 (如 /switch 1)\n\n\
+                💬 直接输入任意文字即可向已连接的 AI Agent 发送消息并执行！",
                 session_info
             );
 
             let _ = send_to_remote_chat(&pairing.platform, &pairing.chat_id, &help_text, pool).await;
         }
         "/project" => {
-            if parts.len() >= 2 && parts[1] == "list" {
-                if parts.len() >= 3 && parts[2] == "session" {
-                    // /project list session
-                    list_sessions(pairing, pool).await?;
+            if parts.len() == 1 {
+                list_projects(pairing, pool).await?;
+            } else if parts[1] == "list" {
+                if parts.len() >= 3 && (parts[2] == "session" || parts[2] == "sessions") {
+                    list_sessions(pairing, pool, manager).await?;
                 } else {
-                    // /project list
                     list_projects(pairing, pool).await?;
                 }
+            } else if parts[1] == "switch" {
+                if parts.len() >= 3 {
+                    let target = parts[2..].join(" ");
+                    switch_project(&target, pairing, pool, manager).await?;
+                } else {
+                    let msg = "用法: `/project switch <序号/名称>` (例如: `/project switch 1`)";
+                    let _ = send_to_remote_chat(&pairing.platform, &pairing.chat_id, msg, pool).await;
+                }
             } else {
-                let msg = "Usage: `/project list` or `/project list session`";
-                let _ = send_to_remote_chat(&pairing.platform, &pairing.chat_id, msg, pool).await;
+                // Quick project switch: e.g. /project 1 or /project <name>
+                let target = parts[1..].join(" ");
+                switch_project(&target, pairing, pool, manager).await?;
             }
         }
-        "/session" => {
-            if parts.len() >= 2 && parts[1] == "list" {
-                list_sessions(pairing, pool).await?;
+        "/workspace" | "/workspaces" => {
+            if parts.len() >= 2 && parts[1] == "switch" {
+                let target = parts[2..].join(" ");
+                switch_project(&target, pairing, pool, manager).await?;
             } else {
-                let msg = "Usage: `/session list`";
-                let _ = send_to_remote_chat(&pairing.platform, &pairing.chat_id, msg, pool).await;
+                list_projects(pairing, pool).await?;
+            }
+        }
+        "/session" | "/sessions" => {
+            if parts.len() >= 2 && parts[1] == "switch" {
+                if parts.len() >= 3 {
+                    let target = parts[2..].join(" ");
+                    switch_session(&target, pairing, pool, manager).await?;
+                } else {
+                    let msg = "用法: `/session switch <序号/ID>` (例如: `/switch 1`)";
+                    let _ = send_to_remote_chat(&pairing.platform, &pairing.chat_id, msg, pool).await;
+                }
+            } else {
+                list_sessions(pairing, pool, manager).await?;
             }
         }
         "/switch" => {
-            // Supports: /switch project session <id> OR /switch <id>
-            let target_id = if parts.len() >= 4 && parts[1] == "project" && parts[2] == "session" {
-                parts[3]
-            } else if parts.len() >= 2 {
-                parts[1]
-            } else {
-                let msg = "Usage: `/switch project session <session_id>` or `/switch <session_id>`";
+            if parts.len() < 2 {
+                let msg = "用法:\n• `/switch project <序号/名称>` - 切换项目\n• `/switch <序号/ID>` - 切换当前项目会话";
                 let _ = send_to_remote_chat(&pairing.platform, &pairing.chat_id, msg, pool).await;
                 return Ok(());
-            };
+            }
 
-            switch_session(target_id, pairing, pool).await?;
+            if parts[1] == "project" {
+                if parts.len() >= 4 && parts[2] == "session" {
+                    // /switch project session <id>
+                    let target_id = parts[3..].join(" ");
+                    switch_session(&target_id, pairing, pool, manager).await?;
+                } else if parts.len() >= 3 {
+                    // /switch project <target>
+                    let target_ws = parts[2..].join(" ");
+                    switch_project(&target_ws, pairing, pool, manager).await?;
+                } else {
+                    list_projects(pairing, pool).await?;
+                }
+            } else if parts[1] == "session" {
+                if parts.len() >= 3 {
+                    let target_id = parts[2..].join(" ");
+                    switch_session(&target_id, pairing, pool, manager).await?;
+                } else {
+                    list_sessions(pairing, pool, manager).await?;
+                }
+            } else {
+                // /switch <target>
+                let target = parts[1..].join(" ");
+                switch_session(&target, pairing, pool, manager).await?;
+            }
         }
         _ => {
-            let msg = format!("Unknown command: `{}`. Type `/help` for available commands.", root_cmd);
+            let msg = format!("未知命令: `{}`。发送 `/help` 查看所有可用指令。", root_cmd);
             let _ = send_to_remote_chat(&pairing.platform, &pairing.chat_id, &msg, pool).await;
         }
     }
@@ -204,29 +250,146 @@ async fn list_projects(pairing: &RemotePairing, pool: &SqlitePool) -> Result<(),
         .map_err(|e| e.to_string())?;
 
     if rows.is_empty() {
-        let msg = "📁 No projects found in TDE workspaces.";
+        let msg = "📁 TDE 中未找到任何项目工作区。";
         let _ = send_to_remote_chat(&pairing.platform, &pairing.chat_id, msg, pool).await;
         return Ok(());
     }
 
-    let mut out = String::from("📁 TDE Project Workspaces:\n");
-    for row in rows {
+    let mut out = String::from("📁 TDE 项目工作区列表:\n");
+    for (idx, row) in rows.iter().enumerate() {
         let id: String = row.get("id");
         let name: String = row.get("name");
         let path: String = row.get("path");
 
         let is_current = pairing.bound_workspace_id.as_deref() == Some(&id);
-        let marker = if is_current { " ◀ [CURRENT]" } else { "" };
-        out.push_str(&format!("• [{}] {} ({}){}\n", id, name, path, marker));
+        let marker = if is_current { " ◀ [当前绑定]" } else { "" };
+        out.push_str(&format!("• [{}] {} ({}){}\n", idx + 1, name, path, marker));
     }
 
-    out.push_str("\nTo list sessions, use `/project list session`.");
+    out.push_str("\n💡 切换项目命令:\n• `/switch project <序号/名称>` (例如: `/switch project 1`)\n• `/project list session` - 查看活跃会话");
     let _ = send_to_remote_chat(&pairing.platform, &pairing.chat_id, &out, pool).await;
     Ok(())
 }
 
-async fn list_sessions(pairing: &RemotePairing, pool: &SqlitePool) -> Result<(), String> {
-    // If bound_workspace_id is set, filter by workspace; otherwise show all active
+async fn switch_project(
+    target: &str,
+    pairing: &RemotePairing,
+    pool: &SqlitePool,
+    manager: &ProcessManager,
+) -> Result<(), String> {
+    let clean_target = target.trim();
+    let rows = sqlx::query("SELECT id, name, path FROM workspaces ORDER BY created_at ASC")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if rows.is_empty() {
+        let msg = "📁 TDE 中未找到任何项目工作区。";
+        let _ = send_to_remote_chat(&pairing.platform, &pairing.chat_id, msg, pool).await;
+        return Ok(());
+    }
+
+    let selected = if let Ok(idx) = clean_target.parse::<usize>() {
+        if idx >= 1 && idx <= rows.len() {
+            Some(&rows[idx - 1])
+        } else {
+            None
+        }
+    } else {
+        let target_lower = clean_target.to_lowercase();
+        rows.iter().find(|r| {
+            let id: String = r.get("id");
+            let name: String = r.get("name");
+            id.eq_ignore_ascii_case(clean_target)
+                || name.to_lowercase() == target_lower
+                || name.to_lowercase().contains(&target_lower)
+        })
+    };
+
+    let ws_row = match selected {
+        Some(r) => r,
+        None => {
+            let msg = format!("❌ 未找到项目工作区: `{}`\n发送 `/project list` 查看项目序号与名称。", clean_target);
+            let _ = send_to_remote_chat(&pairing.platform, &pairing.chat_id, &msg, pool).await;
+            return Ok(());
+        }
+    };
+
+    let ws_id: String = ws_row.get("id");
+    let ws_name: String = ws_row.get("name");
+
+    // Check active sessions in this workspace
+    let active_sessions_in_ws = sqlx::query(
+        "SELECT id, COALESCE(name, agent_type) as display_name FROM sessions WHERE workspace_id = $1 AND status = 'active' ORDER BY created_at DESC"
+    )
+    .bind(&ws_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    // Prefer a session currently running in memory
+    let running_ids = get_running_session_ids(manager);
+    let chosen_session = active_sessions_in_ws.iter().find(|s| {
+        let sid: String = s.get("id");
+        running_ids.contains(&sid)
+    }).or_else(|| active_sessions_in_ws.first());
+
+    let (bound_sid, confirm_msg) = if let Some(s_row) = chosen_session {
+        let sid: String = s_row.get("id");
+        let s_name: String = s_row.get("display_name");
+        (
+            Some(sid.clone()),
+            format!(
+                "✅ 已切换到项目: 【{}】\n🔗 自动连接到活跃会话: 【{}】(ID: {})\n\n💡 现在输入任意文字即可直接与此会话交互！",
+                ws_name, s_name, &sid[..sid.len().min(8)]
+            )
+        )
+    } else {
+        (
+            None,
+            format!(
+                "✅ 已切换到项目: 【{}】\n⚠️ 该项目当前没有活跃运行的会话。\n在 TDE 中启动新会话后，发送 `/project list session` 查看并连接。",
+                ws_name
+            )
+        )
+    };
+
+    sqlx::query(
+        "UPDATE remote_pairings SET bound_workspace_id = $1, bound_session_id = $2, updated_at = CURRENT_TIMESTAMP WHERE platform = $3 AND chat_id = $4"
+    )
+    .bind(&ws_id)
+    .bind(&bound_sid)
+    .bind(&pairing.platform)
+    .bind(&pairing.chat_id)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let _ = send_to_remote_chat(&pairing.platform, &pairing.chat_id, &confirm_msg, pool).await;
+    Ok(())
+}
+
+fn get_running_session_ids(manager: &ProcessManager) -> std::collections::HashSet<String> {
+    if let Ok(guard) = manager.active_sessions.lock() {
+        guard.keys().cloned().collect()
+    } else {
+        std::collections::HashSet::new()
+    }
+}
+
+#[derive(Clone)]
+struct SessionItem {
+    id: String,
+    display_name: String,
+    workspace_id: Option<String>,
+    ws_name: Option<String>,
+}
+
+async fn list_sessions(
+    pairing: &RemotePairing,
+    pool: &SqlitePool,
+    manager: &ProcessManager,
+) -> Result<(), String> {
     let (query, ws_name) = if let Some(ref ws_id) = pairing.bound_workspace_id {
         let name: Option<String> = sqlx::query_scalar("SELECT name FROM workspaces WHERE id = $1")
             .bind(ws_id)
@@ -234,13 +397,13 @@ async fn list_sessions(pairing: &RemotePairing, pool: &SqlitePool) -> Result<(),
             .await
             .unwrap_or(None);
         (
-            format!("SELECT s.id, COALESCE(s.name, s.agent_type) as display_name, s.status, s.cwd FROM sessions s WHERE s.workspace_id = '{}' ORDER BY s.created_at DESC", ws_id),
-            name.unwrap_or_else(|| "Current Project".into())
+            format!("SELECT s.id, COALESCE(s.name, s.agent_type) as display_name, s.status, s.cwd FROM sessions s WHERE s.workspace_id = '{}' AND s.status = 'active' ORDER BY s.created_at DESC", ws_id),
+            name.unwrap_or_else(|| "当前项目".into())
         )
     } else {
         (
-            "SELECT s.id, COALESCE(s.name, s.agent_type) as display_name, s.status, s.cwd FROM sessions s ORDER BY s.created_at DESC LIMIT 15".to_string(),
-            "All Projects".to_string()
+            "SELECT s.id, COALESCE(s.name, s.agent_type) as display_name, s.status, s.cwd FROM sessions s WHERE s.status = 'active' ORDER BY s.created_at DESC LIMIT 15".to_string(),
+            "所有项目".to_string()
         )
     };
 
@@ -250,23 +413,30 @@ async fn list_sessions(pairing: &RemotePairing, pool: &SqlitePool) -> Result<(),
         .map_err(|e| e.to_string())?;
 
     if rows.is_empty() {
-        let msg = format!("⚡ No sessions found in {}.\nCreate a new session in TDE first.", ws_name);
+        let msg = format!("⚡ 项目【{}】暂无活跃会话。\n请先在 TDE 中启动 Agent 会话，或发送 `/switch project <序号>` 切换其他项目。", ws_name);
         let _ = send_to_remote_chat(&pairing.platform, &pairing.chat_id, &msg, pool).await;
         return Ok(());
     }
 
-    let mut out = format!("⚡ Sessions in {}:\n", ws_name);
-    for row in rows {
+    let running_ids = get_running_session_ids(manager);
+
+    let mut out = format!("⚡ 项目【{}】活跃会话列表:\n", ws_name);
+    for (idx, row) in rows.iter().enumerate() {
         let id: String = row.get("id");
         let display_name: String = row.get("display_name");
-        let status: String = row.get("status");
+        let is_running = running_ids.contains(&id);
+        let status_badge = if is_running { "🟢 运行中" } else { "⚪ 已就绪" };
 
         let is_bound = pairing.bound_session_id.as_deref() == Some(&id);
-        let marker = if is_bound { " ◀ [CONNECTED]" } else { "" };
-        out.push_str(&format!("• [{}] {} ({}){}\n", id, display_name, status, marker));
+        let marker = if is_bound { " ◀ [当前连接]" } else { "" };
+        out.push_str(&format!("• [{}] {} (ID: {}) [{}]\n", idx + 1, display_name, &id[..id.len().min(8)], status_badge));
+        if is_bound {
+            out.pop();
+            out.push_str(&format!("{}\n", marker));
+        }
     }
 
-    out.push_str("\nTo connect, send: `/switch project session <id>`");
+    out.push_str("\n💡 快速切换会话: 发送 `/switch 1` 或 `/switch <序号/ID>`");
     let _ = send_to_remote_chat(&pairing.platform, &pairing.chat_id, &out, pool).await;
     Ok(())
 }
@@ -275,35 +445,82 @@ async fn switch_session(
     target_id: &str,
     pairing: &RemotePairing,
     pool: &SqlitePool,
+    manager: &ProcessManager,
 ) -> Result<(), String> {
-    let session_row = sqlx::query(
-        "SELECT s.id, COALESCE(s.name, s.agent_type) as display_name, s.workspace_id, w.name as ws_name, s.status FROM sessions s LEFT JOIN workspaces w ON s.workspace_id = w.id WHERE s.id = $1"
-    )
-    .bind(target_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    let clean_target = target_id.trim();
 
-    let row = match session_row {
-        Some(r) => r,
+    // Query active sessions in bound workspace
+    let active_query = if let Some(ref ws_id) = pairing.bound_workspace_id {
+        format!("SELECT s.id, COALESCE(s.name, s.agent_type) as display_name, s.workspace_id, w.name as ws_name, s.status FROM sessions s LEFT JOIN workspaces w ON s.workspace_id = w.id WHERE s.workspace_id = '{}' AND s.status = 'active' ORDER BY s.created_at DESC", ws_id)
+    } else {
+        "SELECT s.id, COALESCE(s.name, s.agent_type) as display_name, s.workspace_id, w.name as ws_name, s.status FROM sessions s LEFT JOIN workspaces w ON s.workspace_id = w.id WHERE s.status = 'active' ORDER BY s.created_at DESC LIMIT 15".to_string()
+    };
+
+    let active_rows: Vec<SessionItem> = sqlx::query(&active_query)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| SessionItem {
+            id: r.get("id"),
+            display_name: r.get("display_name"),
+            workspace_id: r.get("workspace_id"),
+            ws_name: r.get("ws_name"),
+        })
+        .collect();
+
+    let matched_item = if let Ok(idx) = clean_target.parse::<usize>() {
+        if idx >= 1 && idx <= active_rows.len() {
+            Some(active_rows[idx - 1].clone())
+        } else {
+            None
+        }
+    } else {
+        let target_lower = clean_target.to_lowercase();
+        active_rows.iter().find(|r| {
+            r.id.starts_with(clean_target)
+                || r.id.eq_ignore_ascii_case(clean_target)
+                || r.display_name.to_lowercase() == target_lower
+        }).cloned()
+    };
+
+    let final_item = match matched_item {
+        Some(item) => Some(item),
         None => {
-            let msg = format!("❌ Session `{}` not found in TDE.\nUse `/project list session` to see valid IDs.", target_id);
+            sqlx::query(
+                "SELECT s.id, COALESCE(s.name, s.agent_type) as display_name, s.workspace_id, w.name as ws_name, s.status FROM sessions s LEFT JOIN workspaces w ON s.workspace_id = w.id WHERE (s.id = $1 OR s.id LIKE $2) AND s.status = 'active'"
+            )
+            .bind(clean_target)
+            .bind(format!("{}%", clean_target))
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None)
+            .map(|r| SessionItem {
+                id: r.get("id"),
+                display_name: r.get("display_name"),
+                workspace_id: r.get("workspace_id"),
+                ws_name: r.get("ws_name"),
+            })
+        }
+    };
+
+    let item = match final_item {
+        Some(it) => it,
+        None => {
+            let msg = format!("❌ 未找到匹配的活跃会话: `{}`\n发送 `/project list session` 查看当前可用会话序号与ID。", clean_target);
             let _ = send_to_remote_chat(&pairing.platform, &pairing.chat_id, &msg, pool).await;
             return Ok(());
         }
     };
 
-    let display_name: String = row.get("display_name");
-    let workspace_id: Option<String> = row.get("workspace_id");
-    let ws_name: Option<String> = row.get("ws_name");
-    let status: String = row.get("status");
+    let is_running = get_running_session_ids(manager).contains(&item.id);
+    let status_str = if is_running { "🟢 运行中" } else { "⚪ 已就绪" };
 
-    // Update pairing record
     sqlx::query(
         "UPDATE remote_pairings SET bound_session_id = $1, bound_workspace_id = COALESCE($2, bound_workspace_id), updated_at = CURRENT_TIMESTAMP WHERE platform = $3 AND chat_id = $4"
     )
-    .bind(target_id)
-    .bind(&workspace_id)
+    .bind(&item.id)
+    .bind(&item.workspace_id)
     .bind(&pairing.platform)
     .bind(&pairing.chat_id)
     .execute(pool)
@@ -311,11 +528,11 @@ async fn switch_session(
     .map_err(|e| e.to_string())?;
 
     let confirm_msg = format!(
-        "✅ Connected to TDE Agent Session!\n\n• Session: {}\n• Agent: {}\n• Project: {}\n• Status: {}\n\nYou can now send messages directly to this session.",
-        target_id,
-        display_name,
-        ws_name.unwrap_or_else(|| "Default".into()),
-        status
+        "✅ 已连接到会话: 【{}】\n• 会话ID: {}\n• 所属项目: {}\n• 状态: {}\n\n💡 现在直接发送任意文字即可与此会话交互！",
+        item.display_name,
+        &item.id[..item.id.len().min(8)],
+        item.ws_name.unwrap_or_else(|| "默认项目".into()),
+        status_str
     );
 
     let _ = send_to_remote_chat(&pairing.platform, &pairing.chat_id, &confirm_msg, pool).await;
@@ -331,18 +548,25 @@ async fn handle_session_input(
     let bound_session_id = match pairing.bound_session_id.as_deref() {
         Some(id) if !id.trim().is_empty() => id,
         _ => {
-            let msg = "⚠️ No session currently connected.\nUse `/project list session` then `/switch project session <id>` to connect to a terminal session.";
+            let msg = "⚠️ 当前未连接到任何会话。\n请使用 `/project list session` 查看可用会话，然后输入 `/switch <序号>` 连接。";
             let _ = send_to_remote_chat(&pairing.platform, &pairing.chat_id, msg, pool).await;
             return Ok(());
         }
     };
 
+    let clean_input = text.trim();
+    if clean_input.is_empty() {
+        return Ok(());
+    }
+
     // Forward to active session writer
+    // In raw terminal PTY mode (Antigravity CLI / Ink / readline), Carriage Return '\r' (ASCII 13)
+    // is the Enter key that submits the prompt. '\n' only inserts a newline without submitting!
     let session_active = {
         let active_sessions = manager.active_sessions.lock().map_err(|e| e.to_string())?;
         if let Some(proc) = active_sessions.get(bound_session_id) {
             let mut writer = proc.writer.lock().map_err(|e| e.to_string())?;
-            let payload = format!("{}\n", text);
+            let payload = format!("{}\r", clean_input);
             writer.write_all(payload.as_bytes()).map_err(|e| e.to_string())?;
             writer.flush().map_err(|e| e.to_string())?;
             true
@@ -353,8 +577,8 @@ async fn handle_session_input(
 
     if !session_active {
         let msg = format!(
-            "⚠️ Session `{}` is not currently running (process terminated).\nUse `/project list session` to see active sessions.",
-            bound_session_id
+            "⚠️ 会话 `{}` 当前未在运行中。\n请发送 `/project list session` 查看活跃会话，或在 TDE 中启动该会话。",
+            &bound_session_id[..bound_session_id.len().min(8)]
         );
         let _ = send_to_remote_chat(&pairing.platform, &pairing.chat_id, &msg, pool).await;
     }

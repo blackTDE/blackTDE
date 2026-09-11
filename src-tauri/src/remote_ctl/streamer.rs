@@ -65,14 +65,14 @@ pub fn init_output_streamer(pool: SqlitePool) {
 
                 tokio::spawn(async move {
                     loop {
-                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        tokio::time::sleep(Duration::from_millis(300)).await;
 
                         let text_to_flush = {
                             let mut guard = buffers_for_task.lock().unwrap();
                             if let Some(buf) = guard.get_mut(&sid) {
-                                // If 450ms have elapsed since last append, flush it
-                                if buf.last_append.elapsed() >= Duration::from_millis(450)
-                                    || buf.content.len() >= 2000
+                                // Flush when stream settles (1000ms idle) or buffer is large (1500+ chars)
+                                if buf.last_append.elapsed() >= Duration::from_millis(1000)
+                                    || buf.content.len() >= 1500
                                 {
                                     let content = std::mem::take(&mut buf.content);
                                     buf.flushing = false;
@@ -86,8 +86,9 @@ pub fn init_output_streamer(pool: SqlitePool) {
                             }
                         };
 
-                        if !text_to_flush.trim().is_empty() {
-                            flush_session_output_to_chats(&sid, &text_to_flush, &pool_for_task).await;
+                        let cleaned = clean_terminal_output(&text_to_flush);
+                        if !cleaned.trim().is_empty() {
+                            flush_session_output_to_chats(&sid, &cleaned, &pool_for_task).await;
                         }
                         break;
                     }
@@ -98,16 +99,14 @@ pub fn init_output_streamer(pool: SqlitePool) {
 }
 
 pub fn push_session_output(session_id: &str, raw_bytes: &[u8]) {
-    let raw_text = String::from_utf8_lossy(raw_bytes);
-    let clean_text = clean_terminal_output(&raw_text);
-
-    if clean_text.trim().is_empty() {
+    if raw_bytes.is_empty() {
         return;
     }
+    let raw_text = String::from_utf8_lossy(raw_bytes).to_string();
 
     if let Ok(guard) = STREAMER_INSTANCE.lock() {
         if let Some(ref debouncer) = *guard {
-            let _ = debouncer.tx.send((session_id.to_string(), clean_text));
+            let _ = debouncer.tx.send((session_id.to_string(), raw_text));
         }
     }
 }

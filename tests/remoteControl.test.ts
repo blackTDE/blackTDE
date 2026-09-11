@@ -31,6 +31,25 @@ test('parseRemoteSlashCommand parses /switch project session <id> and /switch <i
     parseRemoteSlashCommand('/switch sess-999'),
     { type: 'switch_session', sessionId: 'sess-999' }
   );
+  assert.deepEqual(
+    parseRemoteSlashCommand('/switch session 2'),
+    { type: 'switch_session', sessionId: '2' }
+  );
+});
+
+test('parseRemoteSlashCommand parses /switch project <target> and /project switch <target>', () => {
+  assert.deepEqual(
+    parseRemoteSlashCommand('/switch project 1'),
+    { type: 'switch_project', target: '1' }
+  );
+  assert.deepEqual(
+    parseRemoteSlashCommand('/project switch agy_home'),
+    { type: 'switch_project', target: 'agy_home' }
+  );
+  assert.deepEqual(
+    parseRemoteSlashCommand('/project 2'),
+    { type: 'switch_project', target: '2' }
+  );
 });
 
 test('parseRemoteSlashCommand treats plain text as agent input', () => {
