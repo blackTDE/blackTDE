@@ -35,8 +35,10 @@ import {
   Search,
   Pin,
   LayoutGrid,
-  Globe
+  Globe,
+  Loader2
 } from 'lucide-react';
+import { extractRepoNameFromUrl, getDefaultCloneParent, buildCloneTargetPath } from './utils/gitUrlUtils';
 
 const getFriendlySshHost = (sshHost?: string): string => {
   if (!sshHost) return 'ssh';
@@ -183,8 +185,14 @@ function App() {
 
   // New Project Form parameters
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
+  const [newProjectMode, setNewProjectMode] = useState<'local' | 'clone'>('local');
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectPath, setNewProjectPath] = useState('');
+  const [cloneUrl, setCloneUrl] = useState('');
+  const [cloneParentDir, setCloneParentDir] = useState('');
+  const [cloneDirName, setCloneDirName] = useState('');
+  const [isCloning, setIsCloning] = useState(false);
+  const [cloneError, setCloneError] = useState<string | null>(null);
 
   // Spawning process parameters
   const [cmdInput, setCmdInput] = useState('/bin/zsh');
@@ -318,7 +326,94 @@ function App() {
     }
   };
 
+  const handleSelectCloneParent = async () => {
+    try {
+      const selected = await invoke<string | null>('select_directory');
+      if (selected) {
+        setCloneParentDir(selected);
+      }
+    } catch (err) {
+      console.error('Failed to select clone parent folder:', err);
+    }
+  };
+
+  const handleToggleNewProjectForm = () => {
+    const willShow = !showNewProjectForm;
+    setShowNewProjectForm(willShow);
+    if (willShow) {
+      setCloneError(null);
+      if (!cloneParentDir) {
+        setCloneParentDir(getDefaultCloneParent(workspaces, activeWorkspace?.path));
+      }
+    }
+  };
+
   const handleCreateProject = async () => {
+    if (newProjectMode === 'clone') {
+      const url = cloneUrl.trim();
+      if (!url) {
+        setCloneError('Please enter a Git repository URL.');
+        return;
+      }
+      const parentDir = cloneParentDir.trim();
+      if (!parentDir) {
+        setCloneError('Please select or enter a directory to clone into.');
+        return;
+      }
+      const dirName = cloneDirName.trim();
+      if (!dirName) {
+        setCloneError('Please enter a directory name for the cloned repository.');
+        return;
+      }
+
+      const targetPath = buildCloneTargetPath(parentDir, dirName);
+      if (hasWorkspacePath(workspaces, targetPath)) {
+        setCloneError(`A project at '${targetPath}' is already in the project tree.`);
+        return;
+      }
+
+      const finalName = newProjectName.trim() || dirName || 'unnamed_project';
+      const id = 'project_' + Math.random().toString(36).substring(2, 11);
+
+      setIsCloning(true);
+      setCloneError(null);
+
+      try {
+        await invoke('git_clone', {
+          url,
+          targetDir: targetPath,
+        });
+
+        await invoke('create_workspace', {
+          id,
+          name: finalName,
+          path: targetPath,
+        });
+
+        setCloneUrl('');
+        setCloneDirName('');
+        setNewProjectName('');
+        setCloneError(null);
+        setShowNewProjectForm(false);
+        await loadWorkspaces();
+
+        const list = await invoke<any[]>('list_workspaces');
+        const newlyCreated = list.find((w) => w.id === id);
+        if (newlyCreated) {
+          handleSelectProject(newlyCreated);
+          setActiveFatherTabId(id);
+          setExpandedProjects((prev) => ({ ...prev, [id]: true }));
+        }
+      } catch (error) {
+        console.error('Failed to clone repository:', error);
+        setCloneError(String(error));
+      } finally {
+        setIsCloning(false);
+      }
+      return;
+    }
+
+    // Local Directory Mode
     const projectPath = newProjectPath.trim();
     if (!projectPath) {
       alert('Please enter or select a directory path.');
@@ -703,7 +798,7 @@ function App() {
                       <Trash2 size={13} />
                     </button>
                     <button
-                      onClick={() => setShowNewProjectForm(!showNewProjectForm)}
+                      onClick={handleToggleNewProjectForm}
                       className="text-zinc-500 hover:text-brand-light p-1 transition cursor-pointer"
                       title="Create New Project"
                     >
@@ -715,53 +810,205 @@ function App() {
                 {/* Create Project Form */}
                 {showNewProjectForm && (
                   <div className="p-3.5 bg-surface border border-surface-3 rounded-lg space-y-3 text-xs shadow-md">
-                    <div>
-                      <label className="block text-[10px] text-zinc-500 font-semibold font-mono mb-1">LOCAL PATH</label>
-                      <div className="flex space-x-1">
-                        <input
-                          type="text"
-                          placeholder="e.g. /Users/ray/my-project"
-                          value={newProjectPath}
-                          onChange={(e) => {
-                            const path = e.target.value;
-                            setNewProjectPath(path);
-                            // Auto-extract last path segment as the default project name
-                            const parts = path.split(/[/\\]/).filter(Boolean);
-                            if (parts.length > 0) {
-                              setNewProjectName(parts[parts.length - 1]);
-                            }
-                          }}
-                          className="flex-1 min-w-0 bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-brand/70 font-mono"
-                        />
-                        <button
-                          onClick={handleSelectDirectory}
-                          title="Select Local Directory"
-                          className="px-2.5 bg-surface-3 border border-surface-3 rounded hover:bg-surface-2 hover:text-brand-light text-zinc-400 transition cursor-pointer flex items-center justify-center shrink-0"
-                        >
-                          <FolderOpen size={14} />
-                        </button>
-                      </div>
+                    {/* Mode switcher tabs */}
+                    <div className="flex bg-surface-2 p-0.5 rounded border border-surface-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewProjectMode('local');
+                          setCloneError(null);
+                        }}
+                        className={`flex-1 flex items-center justify-center space-x-1.5 py-1 rounded text-[10px] font-mono transition cursor-pointer ${
+                          newProjectMode === 'local'
+                            ? 'bg-surface-3 text-zinc-100 font-semibold shadow-xs'
+                            : 'text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        <Folder size={12} />
+                        <span>Local Folder</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewProjectMode('clone');
+                          setCloneError(null);
+                          if (!cloneParentDir) {
+                            setCloneParentDir(getDefaultCloneParent(workspaces, activeWorkspace?.path));
+                          }
+                        }}
+                        className={`flex-1 flex items-center justify-center space-x-1.5 py-1 rounded text-[10px] font-mono transition cursor-pointer ${
+                          newProjectMode === 'clone'
+                            ? 'bg-surface-3 text-zinc-100 font-semibold shadow-xs'
+                            : 'text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        <GitBranch size={12} />
+                        <span>Git Clone</span>
+                      </button>
                     </div>
-                    <div>
-                      <label className="block text-[10px] text-zinc-500 font-semibold font-mono mb-1">PROJECT NAME</label>
-                      <input
-                        type="text"
-                        placeholder="Auto-detected base name"
-                        value={newProjectName}
-                        onChange={(e) => setNewProjectName(e.target.value)}
-                        className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-brand/70 font-mono"
-                      />
-                    </div>
+
+                    {newProjectMode === 'local' ? (
+                      <>
+                        <div>
+                          <label className="block text-[10px] text-zinc-500 font-semibold font-mono mb-1">LOCAL PATH</label>
+                          <div className="flex space-x-1">
+                            <input
+                              type="text"
+                              placeholder="e.g. /Users/ray/my-project"
+                              value={newProjectPath}
+                              onChange={(e) => {
+                                const path = e.target.value;
+                                setNewProjectPath(path);
+                                // Auto-extract last path segment as the default project name
+                                const parts = path.split(/[/\\]/).filter(Boolean);
+                                if (parts.length > 0) {
+                                  setNewProjectName(parts[parts.length - 1]);
+                                }
+                              }}
+                              className="flex-1 min-w-0 bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-brand/70 font-mono text-[11px]"
+                            />
+                            <button
+                              onClick={handleSelectDirectory}
+                              title="Select Local Directory"
+                              className="px-2.5 bg-surface-3 border border-surface-3 rounded hover:bg-surface-2 hover:text-brand-light text-zinc-400 transition cursor-pointer flex items-center justify-center shrink-0"
+                            >
+                              <FolderOpen size={14} />
+                            </button>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-zinc-500 font-semibold font-mono mb-1">PROJECT NAME</label>
+                          <input
+                            type="text"
+                            placeholder="Auto-detected base name"
+                            value={newProjectName}
+                            onChange={(e) => setNewProjectName(e.target.value)}
+                            className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-brand/70 font-mono text-[11px]"
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div>
+                          <label className="block text-[10px] text-zinc-500 font-semibold font-mono mb-1">REPOSITORY URL</label>
+                          <input
+                            type="text"
+                            placeholder="https://github.com/owner/repo.git or git@..."
+                            value={cloneUrl}
+                            onChange={(e) => {
+                              const url = e.target.value;
+                              const prevExtracted = extractRepoNameFromUrl(cloneUrl);
+                              setCloneUrl(url);
+                              const extracted = extractRepoNameFromUrl(url);
+                              if (extracted) {
+                                if (!cloneDirName || cloneDirName === prevExtracted) {
+                                  setCloneDirName(extracted);
+                                }
+                                if (!newProjectName || newProjectName === prevExtracted) {
+                                  setNewProjectName(extracted);
+                                }
+                              }
+                            }}
+                            disabled={isCloning}
+                            className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-brand/70 font-mono text-[11px]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] text-zinc-500 font-semibold font-mono mb-1">CLONE INTO FOLDER</label>
+                          <div className="flex space-x-1">
+                            <input
+                              type="text"
+                              placeholder="e.g. /Users/ray/projects"
+                              value={cloneParentDir}
+                              onChange={(e) => setCloneParentDir(e.target.value)}
+                              disabled={isCloning}
+                              className="flex-1 min-w-0 bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-brand/70 font-mono text-[11px]"
+                            />
+                            <button
+                              onClick={handleSelectCloneParent}
+                              disabled={isCloning}
+                              title="Select Parent Directory"
+                              className="px-2.5 bg-surface-3 border border-surface-3 rounded hover:bg-surface-2 hover:text-brand-light text-zinc-400 transition cursor-pointer flex items-center justify-center shrink-0 disabled:opacity-50"
+                            >
+                              <FolderOpen size={14} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="block text-[10px] text-zinc-500 font-semibold font-mono">DIRECTORY NAME</label>
+                            <span className="text-[9px] text-zinc-500 font-mono">Rename directory</span>
+                          </div>
+                          <input
+                            type="text"
+                            placeholder="e.g. repo-name"
+                            value={cloneDirName}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const prevDir = cloneDirName;
+                              setCloneDirName(val);
+                              if (!newProjectName || newProjectName === prevDir) {
+                                setNewProjectName(val);
+                              }
+                            }}
+                            disabled={isCloning}
+                            className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-brand/70 font-mono text-[11px]"
+                          />
+                        </div>
+
+                        {cloneParentDir && cloneDirName && (
+                          <div className="px-2.5 py-1.5 bg-surface-2/60 border border-surface-3 rounded text-[10px] font-mono text-zinc-400 break-all">
+                            <span className="text-zinc-500">Target: </span>
+                            <span className="text-brand-light">{buildCloneTargetPath(cloneParentDir, cloneDirName)}</span>
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="block text-[10px] text-zinc-500 font-semibold font-mono mb-1">PROJECT NAME</label>
+                          <input
+                            type="text"
+                            placeholder="Display name in sidebar"
+                            value={newProjectName}
+                            onChange={(e) => setNewProjectName(e.target.value)}
+                            disabled={isCloning}
+                            className="w-full bg-surface-2 border border-surface-3 rounded px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-brand/70 font-mono text-[11px]"
+                          />
+                        </div>
+
+                        {cloneError && (
+                          <div className="p-2 bg-red-950/40 border border-red-800/50 rounded text-red-400 text-[10px] font-mono whitespace-pre-wrap break-all">
+                            {cloneError}
+                          </div>
+                        )}
+                      </>
+                    )}
+
                     <div className="flex space-x-2 pt-1">
                       <button
                         onClick={handleCreateProject}
-                        className="flex-1 bg-brand text-white font-semibold py-1.5 rounded text-[11px] hover:bg-brand/90 cursor-pointer transition"
+                        disabled={isCloning}
+                        className="flex-1 bg-brand text-white font-semibold py-1.5 rounded text-[11px] hover:bg-brand/90 cursor-pointer transition flex items-center justify-center space-x-1.5 disabled:opacity-50"
                       >
-                        Save
+                        {isCloning ? (
+                          <>
+                            <Loader2 size={13} className="animate-spin" />
+                            <span>Cloning...</span>
+                          </>
+                        ) : newProjectMode === 'clone' ? (
+                          <span>Clone & Create</span>
+                        ) : (
+                          <span>Save</span>
+                        )}
                       </button>
                       <button
-                        onClick={() => setShowNewProjectForm(false)}
-                        className="flex-1 bg-surface-3 text-zinc-400 font-semibold py-1.5 rounded text-[11px] hover:bg-surface-2 cursor-pointer transition"
+                        onClick={() => {
+                          setShowNewProjectForm(false);
+                          setCloneError(null);
+                        }}
+                        disabled={isCloning}
+                        className="flex-1 bg-surface-3 text-zinc-400 font-semibold py-1.5 rounded text-[11px] hover:bg-surface-2 cursor-pointer transition disabled:opacity-50"
                       >
                         Cancel
                       </button>
