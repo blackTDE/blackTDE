@@ -27,7 +27,8 @@ import {
   Smartphone,
   AlertTriangle,
   HelpCircle,
-  Zap
+  Zap,
+  Copy
 } from 'lucide-react';
 import { ProviderVault } from './ProviderVault';
 import { AgentIcon } from './AgentIcon';
@@ -127,6 +128,12 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
   const [showLarkSecret, setShowLarkSecret] = useState(false);
   const [larkEnabled, setLarkEnabled] = useState(false);
   const [isSavingLark, setIsSavingLark] = useState(false);
+  const [larkEndpointType, setLarkEndpointType] = useState<'feishu' | 'lark' | 'custom'>('feishu');
+  const [larkBaseUrl, setLarkBaseUrl] = useState('https://open.feishu.cn');
+  const [larkWebhookPort, setLarkWebhookPort] = useState(19828);
+  const [isTestingLark, setIsTestingLark] = useState(false);
+  const [larkTestResult, setLarkTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [copiedWebhook, setCopiedWebhook] = useState(false);
 
   const [botStatuses, setBotStatuses] = useState<Record<string, BotRuntimeStatus>>({});
   const [pairings, setPairings] = useState<RemotePairing[]>([]);
@@ -290,6 +297,17 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
             const parsed = JSON.parse(cfg.credentials);
             if (parsed.app_id) setLarkAppId(parsed.app_id);
             if (parsed.app_secret) setLarkAppSecret(parsed.app_secret);
+            if (parsed.base_url) {
+              setLarkBaseUrl(parsed.base_url);
+              if (parsed.base_url.includes('larksuite.com')) {
+                setLarkEndpointType('lark');
+              } else if (parsed.base_url.includes('feishu.cn')) {
+                setLarkEndpointType('feishu');
+              } else {
+                setLarkEndpointType('custom');
+              }
+            }
+            if (parsed.webhook_port) setLarkWebhookPort(parsed.webhook_port);
           } catch (_) {}
         }
       }
@@ -311,6 +329,27 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
       setMessageLogs(logs);
     } catch (e) {
       console.error('Failed to load remote control data:', e);
+    }
+  };
+
+  const handleTestLark = async () => {
+    if (!larkAppId.trim() || !larkAppSecret.trim()) {
+      alert('Please enter App ID and App Secret first to test');
+      return;
+    }
+    setIsTestingLark(true);
+    setLarkTestResult(null);
+    try {
+      const msg = await invoke<string>('test_lark_credentials', {
+        appId: larkAppId.trim(),
+        appSecret: larkAppSecret.trim(),
+        baseUrl: larkBaseUrl.trim() || undefined,
+      });
+      setLarkTestResult({ ok: true, msg });
+    } catch (err) {
+      setLarkTestResult({ ok: false, msg: String(err) });
+    } finally {
+      setIsTestingLark(false);
     }
   };
 
@@ -349,11 +388,13 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
         credentials: JSON.stringify({
           app_id: larkAppId.trim(),
           app_secret: larkAppSecret.trim(),
+          base_url: larkBaseUrl.trim() || 'https://open.feishu.cn',
+          webhook_port: larkWebhookPort || 19828,
         }),
         enabled: larkEnabled,
       });
       await loadRemoteControlData();
-      alert('Lark bot configuration saved!');
+      alert('Lark/Feishu bot configuration saved!');
     } catch (err) {
       alert('Failed to save Lark config: ' + err);
     } finally {
@@ -1192,7 +1233,7 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
                       {botStatuses['lark']?.running ? (
                         <span className="flex items-center gap-1.5 text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                          Connected
+                          Listening & Active
                         </span>
                       ) : (
                         <span className="text-[10px] font-mono text-slate-500 bg-slate-800/40 px-2 py-0.5 rounded-full">
@@ -1203,11 +1244,72 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
                   </div>
 
                   {botStatuses['lark']?.error && (
-                    <div className="p-2 rounded bg-rose-500/10 border border-rose-500/20 text-rose-300 text-[10px] font-mono flex items-center gap-1.5">
-                      <AlertTriangle size={12} className="shrink-0" />
-                      <span className="truncate">{botStatuses['lark']?.error}</span>
+                    <div className="p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-300 text-[11px] font-mono flex items-start gap-1.5">
+                      <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                      <span className="break-all">{botStatuses['lark']?.error}</span>
                     </div>
                   )}
+
+                  {/* Endpoint / Platform Selection */}
+                  <div className="space-y-1.5">
+                    <label className="block text-slate-400 font-mono text-[9px] uppercase">
+                      Bot Base URL & Platform
+                    </label>
+                    <div className="grid grid-cols-3 gap-1 bg-[#202020] p-1 rounded-lg border border-slate-800 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLarkEndpointType('feishu');
+                          setLarkBaseUrl('https://open.feishu.cn');
+                        }}
+                        className={`py-1 px-1.5 rounded font-medium transition text-center ${
+                          larkEndpointType === 'feishu'
+                            ? 'bg-brand text-white shadow-sm'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        飞书 (Feishu CN)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLarkEndpointType('lark');
+                          setLarkBaseUrl('https://open.larksuite.com');
+                        }}
+                        className={`py-1 px-1.5 rounded font-medium transition text-center ${
+                          larkEndpointType === 'lark'
+                            ? 'bg-brand text-white shadow-sm'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Lark (Global)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLarkEndpointType('custom')}
+                        className={`py-1 px-1.5 rounded font-medium transition text-center ${
+                          larkEndpointType === 'custom'
+                            ? 'bg-brand text-white shadow-sm'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Custom URL
+                      </button>
+                    </div>
+
+                    <div className="pt-1">
+                      <input
+                        type="text"
+                        value={larkBaseUrl}
+                        onChange={(e) => setLarkBaseUrl(e.target.value)}
+                        readOnly={larkEndpointType !== 'custom'}
+                        placeholder="https://open.larksuite.com"
+                        className={`w-full bg-[#262626] border border-slate-700/60 rounded px-2.5 py-1.5 font-mono text-xs ${
+                          larkEndpointType !== 'custom' ? 'text-slate-400' : 'text-slate-200 focus:outline-none'
+                        }`}
+                      />
+                    </div>
+                  </div>
 
                   <form onSubmit={handleSaveLark} className="space-y-2.5 text-xs">
                     <div>
@@ -1232,7 +1334,7 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
                           type={showLarkSecret ? 'text' : 'password'}
                           value={larkAppSecret}
                           onChange={(e) => setLarkAppSecret(e.target.value)}
-                          placeholder="App Secret from Lark Open Platform..."
+                          placeholder="App Secret from Lark / Feishu Developer Console..."
                           className="w-full bg-[#262626] border border-slate-700/60 rounded px-2.5 py-1.5 pr-8 text-slate-200 focus:outline-none font-mono text-xs"
                         />
                         <button
@@ -1245,7 +1347,55 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between pt-1">
+                    {/* Local Webhook Ingress URL */}
+                    <div className="p-2.5 bg-[#1f1f1f] border border-slate-800/80 rounded-lg space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono text-slate-400 font-semibold uppercase">
+                          Local Webhook Event URL (Auto-verified)
+                        </span>
+                        <span className="text-[9px] text-slate-500 font-mono">Port: {larkWebhookPort}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <code className="flex-1 bg-[#141414] border border-slate-800 px-2 py-1 rounded text-[11px] font-mono text-brand-light truncate select-all">
+                          http://127.0.0.1:{larkWebhookPort}/api/lark/event
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(`http://127.0.0.1:${larkWebhookPort}/api/lark/event`);
+                            setCopiedWebhook(true);
+                            setTimeout(() => setCopiedWebhook(false), 2000);
+                          }}
+                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-mono flex items-center gap-1 transition shrink-0"
+                          title="Copy Webhook URL"
+                        >
+                          {copiedWebhook ? <CheckCircle2 size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                          <span>{copiedWebhook ? 'Copied' : 'Copy'}</span>
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-slate-400 pt-0.5 leading-relaxed">
+                        In Developer Console: <strong>Events & Callbacks</strong> &gt; Set Request URL to above (or public/tunnel URL). TDE automatically validates challenge tokens and receives messages.
+                      </p>
+                    </div>
+
+                    {larkTestResult && (
+                      <div
+                        className={`p-2 rounded text-[11px] font-mono flex items-start gap-1.5 ${
+                          larkTestResult.ok
+                            ? 'bg-emerald-500/10 border border-emerald-500/25 text-emerald-300'
+                            : 'bg-rose-500/10 border border-rose-500/25 text-rose-300'
+                        }`}
+                      >
+                        {larkTestResult.ok ? (
+                          <CheckCircle2 size={13} className="shrink-0 mt-0.5" />
+                        ) : (
+                          <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                        )}
+                        <span className="break-all">{larkTestResult.msg}</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-1 gap-2">
                       <label className="flex items-center gap-2 cursor-pointer text-slate-300 text-xs select-none">
                         <input
                           type="checkbox"
@@ -1253,23 +1403,37 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
                           onChange={(e) => setLarkEnabled(e.target.checked)}
                           className="rounded bg-slate-900 border-slate-700 text-brand focus:ring-transparent w-3.5 h-3.5"
                         />
-                        <span>Enable Lark Service</span>
+                        <span>Enable Service</span>
                       </label>
 
-                      <button
-                        type="submit"
-                        disabled={isSavingLark}
-                        className="px-3 py-1.5 rounded bg-brand hover:bg-brand/80 text-white font-semibold text-xs transition disabled:opacity-50"
-                      >
-                        {isSavingLark ? 'Saving...' : 'Save & Connect'}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleTestLark}
+                          disabled={isTestingLark || !larkAppId.trim() || !larkAppSecret.trim()}
+                          className="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs transition disabled:opacity-40"
+                        >
+                          {isTestingLark ? 'Testing...' : 'Test Auth'}
+                        </button>
+
+                        <button
+                          type="submit"
+                          disabled={isSavingLark}
+                          className="px-3 py-1.5 rounded bg-brand hover:bg-brand/80 text-white font-semibold text-xs transition disabled:opacity-50"
+                        >
+                          {isSavingLark ? 'Saving...' : 'Save & Listen'}
+                        </button>
+                      </div>
                     </div>
                   </form>
                 </div>
 
-                <p className="text-[10px] text-slate-500 font-mono border-t border-slate-800/40 pt-2">
-                  💡 Tip: Ensure bot permissions include <code className="text-slate-400">im:message</code> and <code className="text-slate-400">im:message:send_as_bot</code>.
-                </p>
+                <div className="text-[10px] text-slate-400 font-mono border-t border-slate-800/40 pt-2 space-y-1">
+                  <div className="font-semibold text-slate-300">Setup Checklist in Lark/Feishu Console:</div>
+                  <div>1. <strong>Events & Callbacks</strong>: Add event <code>im.message.receive_v1</code></div>
+                  <div>2. <strong>Permissions</strong>: Enable <code>im:message</code>, <code>im:message:send_as_bot</code></div>
+                  <div>3. <strong>App Features</strong>: Add <code>Bot (机器人)</code> and publish a version!</div>
+                </div>
               </div>
             </div>
 
