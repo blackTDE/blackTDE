@@ -67,28 +67,41 @@ pub fn init_output_streamer(pool: SqlitePool) {
                     loop {
                         tokio::time::sleep(Duration::from_millis(300)).await;
 
-                        let text_to_flush = {
+                        let ready_to_flush = {
                             let mut guard = buffers_for_task.lock().unwrap();
                             if let Some(buf) = guard.get_mut(&sid) {
-                                // Flush when stream settles (1000ms idle) or buffer is large (1500+ chars)
-                                if buf.last_append.elapsed() >= Duration::from_millis(1000)
-                                    || buf.content.len() >= 1500
-                                {
-                                    let content = std::mem::take(&mut buf.content);
-                                    buf.flushing = false;
-                                    guard.remove(&sid);
-                                    content
+                                let elapsed = buf.last_append.elapsed();
+                                let is_settled = elapsed >= Duration::from_millis(1800);
+                                let is_huge = buf.content.len() >= 16000;
+
+                                if is_settled || is_huge {
+                                    let cleaned = clean_terminal_output(&buf.content);
+                                    if cleaned.trim().is_empty() {
+                                        // Still only loading spinners / redraw artifacts in buffer.
+                                        // If idle for over 4 seconds, drop it quietly; otherwise keep waiting for real answer.
+                                        if elapsed >= Duration::from_millis(4000) {
+                                            buf.flushing = false;
+                                            guard.remove(&sid);
+                                            None
+                                        } else {
+                                            continue;
+                                        }
+                                    } else {
+                                        // Real content ready to send as one complete response!
+                                        buf.flushing = false;
+                                        guard.remove(&sid);
+                                        Some(cleaned)
+                                    }
                                 } else {
                                     continue;
                                 }
                             } else {
-                                break;
+                                None
                             }
                         };
 
-                        let cleaned = clean_terminal_output(&text_to_flush);
-                        if !cleaned.trim().is_empty() {
-                            flush_session_output_to_chats(&sid, &cleaned, &pool_for_task).await;
+                        if let Some(text) = ready_to_flush {
+                            flush_session_output_to_chats(&sid, &text, &pool_for_task).await;
                         }
                         break;
                     }
