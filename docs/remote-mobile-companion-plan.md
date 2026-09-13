@@ -3,6 +3,7 @@
 **Date:** 2026-09-02  
 **Scope:** Desktop Tauri Backend (Rust Server) + Mobile Companion PWA (React)  
 **Status:** Approved for Implementation  
+**Implementation plan:** [`mobile-multiplatform-implementation-plan.md`](./mobile-multiplatform-implementation-plan.md) (phases, API contract, platform decision, PR sequence)
 
 ---
 
