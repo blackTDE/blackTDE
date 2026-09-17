@@ -43,6 +43,15 @@ function OmpIcon({ size }: { size: number }) {
   );
 }
 
+function CursorIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+      <rect width="24" height="24" rx="5" fill="#171717" />
+      <path fill="#ffffff" d="M7 4.8 18.4 12l-6.4 1.5-2.2 5.7z" />
+    </svg>
+  );
+}
+
 function initials(name: string) {
   const clean = name.replace(/[^a-zA-Z0-9\s-]/g, '').trim();
   const parts = clean.split(/[\s-]+/);
@@ -58,6 +67,7 @@ export function AgentIcon({ name, size = 18, className = '', selected = false }:
     : kind === 'opencode' ? <OpenCodeIcon size={size} />
     : kind === 'pi' ? <PiIcon size={size} />
     : kind === 'omp' ? <OmpIcon size={size} />
+    : kind === 'cursor' ? <CursorIcon size={size} />
     : <span className="flex h-full w-full items-center justify-center rounded bg-slate-700 text-[7px] font-bold text-white">{initials(name)}</span>;
 
   const highlightClasses = selected
