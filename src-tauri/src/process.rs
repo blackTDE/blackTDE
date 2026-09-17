@@ -1,5 +1,6 @@
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::collections::HashMap;
+use std::io::Write;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{oneshot, Mutex as AsyncMutex, OwnedMutexGuard};
 use uuid::Uuid;
@@ -16,6 +17,45 @@ pub struct ActiveProcess {
 pub struct ProcessManager {
     pub active_sessions: Arc<Mutex<HashMap<String, ActiveProcess>>>,
     pub resume_locks: ResumeLocks,
+}
+
+impl ProcessManager {
+    pub fn write_bytes(&self, id: &str, data: &[u8]) -> Result<(), String> {
+        let active_sessions = self.active_sessions.lock().map_err(|e| e.to_string())?;
+        if let Some(proc) = active_sessions.get(id) {
+            let mut writer = proc.writer.lock().map_err(|e| e.to_string())?;
+            writer.write_all(data).map_err(|e| e.to_string())?;
+            writer.flush().map_err(|e| e.to_string())?;
+            Ok(())
+        } else {
+            Err(format!("Session {id} not found"))
+        }
+    }
+
+    pub fn is_active(&self, id: &str) -> bool {
+        self.active_sessions
+            .lock()
+            .map(|sessions| sessions.contains_key(id))
+            .unwrap_or(false)
+    }
+
+    pub fn resize(&self, id: &str, rows: u16, cols: u16) -> Result<(), String> {
+        let active_sessions = self.active_sessions.lock().map_err(|e| e.to_string())?;
+        if let Some(proc) = active_sessions.get(id) {
+            let master = proc.master.lock().map_err(|e| e.to_string())?;
+            master
+                .resize(portable_pty::PtySize {
+                    rows,
+                    cols,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        } else {
+            Err(format!("Session {id} not found"))
+        }
+    }
 }
 
 pub type ResumeLocks = Arc<AsyncMutex<HashMap<String, Arc<AsyncMutex<()>>>>>;

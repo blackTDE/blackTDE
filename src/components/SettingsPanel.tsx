@@ -31,6 +31,7 @@ import {
   Copy
 } from 'lucide-react';
 import { ProviderVault } from './ProviderVault';
+import { RemoteWebCard } from './RemoteWebCard';
 import { AgentIcon } from './AgentIcon';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import { normalizePairCode } from '../remoteUtils';
@@ -1132,7 +1133,7 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
                   Remote Control Terminal Hub (Lark / Telegram)
                 </h3>
                 <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
-                  Connect your Lark (Feishu) or Telegram bot to TDE. Securely authorize mobile/desktop chat sessions with a 6-digit pair code, switch target agent sessions via slash commands, and stream real-time terminal output directly to your chat box.
+                  Pair a browser from anywhere through the Cloudflare relay, or keep using Lark / Telegram bots with a 6-digit pair code.
                 </p>
               </div>
               <button
@@ -1144,6 +1145,8 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
                 <span>Refresh</span>
               </button>
             </div>
+
+            <RemoteWebCard />
 
             {/* Top Grid: Telegram & Lark Bot Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

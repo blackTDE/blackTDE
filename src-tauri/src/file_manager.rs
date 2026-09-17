@@ -91,7 +91,7 @@ fn is_cjk_char(c: char) -> bool {
     )
 }
 
-fn decode_text_buffer(buffer: &[u8]) -> (String, bool) {
+pub(crate) fn decode_text_buffer(buffer: &[u8]) -> (String, bool) {
     if buffer.is_empty() {
         return (String::new(), false);
     }

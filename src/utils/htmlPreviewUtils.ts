@@ -94,6 +94,8 @@ export function getMediaMimeType(ext: string): string {
       return 'video/x-matroska';
     case 'avi':
       return 'video/x-msvideo';
+    case 'pdf':
+      return 'application/pdf';
     case 'svg':
       return 'image/svg+xml';
     case 'jpg':

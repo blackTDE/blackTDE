@@ -143,6 +143,7 @@ pub fn start_stdout_reader(
 
                     // 3. Forward to remote control streamer (Lark / Telegram)
                     crate::remote_ctl::forward_session_output(&session_id_clone, &data_chunk);
+                    crate::relay::forward_session_output(&session_id_clone, &data_chunk);
 
                     // Start an async task on tokio runner to insert data
                     tauri::async_runtime::spawn(async move {

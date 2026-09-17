@@ -144,12 +144,12 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ filePath: propFilePath
   const isBinary = isBinaryFile(ext);
 
   useEffect(() => {
-    if (!base64Content || (!isVideoFile(ext) && !isAudioFile(ext))) {
+    if (!base64Content || (!isVideoFile(ext) && !isAudioFile(ext) && ext !== 'pdf')) {
       setMediaBlobUrl('');
       return;
     }
 
-    const mimeType = getMediaMimeType(ext);
+    const mimeType = ext === 'pdf' ? 'application/pdf' : getMediaMimeType(ext);
     let createdUrl = '';
     try {
       createdUrl = base64ToBlobUrl(base64Content, mimeType);
@@ -483,27 +483,25 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ filePath: propFilePath
           </div>
         );
       }
-      case 'pdf':
+      case 'pdf': {
+        const pdfSrc = mediaBlobUrl || convertFileSrc(activeFilePath);
         return (
-          <div className="h-full w-full flex flex-col items-center justify-center p-6 bg-surface-2/20 text-center font-mono">
-            <div className="p-8 bg-surface-1 rounded-xl border border-surface-2 shadow-lg max-w-md">
-              <FileText size={48} className="text-rose-400 mx-auto mb-4" />
-              <h3 className="text-sm font-bold text-zinc-200 truncate mb-1">{activeFilePath.split('/').pop()}</h3>
-              <p className="text-[10px] text-zinc-500 mb-6">Adobe PDF Document</p>
-              <div className="bg-surface p-3 rounded border border-surface-3/50 text-[10px] text-left text-zinc-400 mb-6 space-y-1">
-                <p>Location: <span className="text-zinc-300">{activeFilePath}</span></p>
-                <p>Format: PDF (Binary Document)</p>
-              </div>
-              <button
-                onClick={() => setIsEditMode(true)}
-                className="inline-flex items-center space-x-1.5 bg-surface-3 hover:bg-surface-2 text-zinc-200 border border-surface-3 px-3 py-1.5 rounded text-xs transition cursor-pointer"
-              >
-                <FileCode size={13} />
-                <span>Open in Code Viewer</span>
-              </button>
-            </div>
+          <div className="h-full w-full min-h-0 bg-surface-2/20">
+            <object
+              data={pdfSrc}
+              type="application/pdf"
+              className="w-full h-full border-0 bg-white"
+              aria-label={activeFilePath.split('/').pop() || 'PDF preview'}
+            >
+              <iframe
+                title={activeFilePath.split('/').pop() || 'PDF preview'}
+                src={pdfSrc}
+                className="w-full h-full border-0 bg-white"
+              />
+            </object>
           </div>
         );
+      }
       case 'docx':
       case 'doc':
       case 'pptx':
