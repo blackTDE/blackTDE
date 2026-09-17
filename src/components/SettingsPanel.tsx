@@ -224,7 +224,7 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
   const checkVersions = async () => {
     setIsVerifying(true);
     const newVersions: Record<string, string> = {};
-    for (const bin of ['claude', 'aider', 'git']) {
+    for (const bin of ['claude', 'aider', 'git', 'agent']) {
       try {
         const ver = await invoke<string>('check_cli_version', { binary: bin });
         newVersions[bin] = ver;
@@ -949,6 +949,7 @@ export const SettingsPanel: React.FC<{ initialTab?: string }> = ({ initialTab })
               {[
                 { name: 'Claude Code CLI', bin: 'claude', val: versions.claude },
                 { name: 'Aider Code Agent', bin: 'aider', val: versions.aider },
+                { name: 'Cursor Agent CLI', bin: 'agent', val: versions.agent },
                 { name: 'Git System CLI', bin: 'git', val: versions.git },
               ].map((item) => (
                 <div key={item.bin} className="p-3.5 flex items-center justify-between">
