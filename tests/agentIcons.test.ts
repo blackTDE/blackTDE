@@ -12,5 +12,8 @@ test('maps supported agent commands to their official icon', () => {
   assert.equal(getAgentIconKind('pi'), 'pi');
   assert.equal(getAgentIconKind('omp'), 'omp');
   assert.equal(getAgentIconKind('/usr/local/bin/oh-my-pi'), 'omp');
+  assert.equal(getAgentIconKind('agent'), 'cursor');
+  assert.equal(getAgentIconKind('/Users/ray/.local/bin/agent'), 'cursor');
+  assert.equal(getAgentIconKind('cursor-agent'), 'cursor');
   assert.equal(getAgentIconKind('custom-agent'), 'fallback');
 });
