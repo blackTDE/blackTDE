@@ -139,37 +139,58 @@ pub async fn get_mcp_servers(pool: State<'_, SqlitePool>) -> Result<Vec<McpServe
 
 #[tauri::command]
 pub fn check_cli_version(binary: String) -> Result<String, String> {
-    if binary != "claude" && binary != "aider" && binary != "git" {
-        return Err("Unsupported binary check".into());
-    }
+    let candidates: Vec<&str> = match binary.as_str() {
+        "claude" | "aider" | "git" => vec![binary.as_str()],
+        "agent" | "cursor-agent" => vec!["agent", "cursor-agent"],
+        _ => return Err("Unsupported binary check".into()),
+    };
 
-    let output = Command::new(&binary).arg("--version").output();
+    let enriched_path = crate::process::build_enriched_path();
+    let mut last_error = format!("Binary '{binary}' is not installed or not in PATH");
 
-    match output {
-        Ok(out) => {
-            if out.status.success() {
-                Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
-            } else {
-                Ok(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    for name in candidates {
+        let exec = crate::process::resolve_command_executable(name);
+        let output = Command::new(&exec)
+            .env("PATH", &enriched_path)
+            .arg("--version")
+            .output();
+
+        match output {
+            Ok(out) => {
+                let text = if out.status.success() {
+                    String::from_utf8_lossy(&out.stdout).trim().to_string()
+                } else {
+                    String::from_utf8_lossy(&out.stderr).trim().to_string()
+                };
+                if !text.is_empty() {
+                    return Ok(text);
+                }
             }
-        }
-        Err(_) => {
-            let out_v = Command::new(&binary).arg("-v").output();
-            match out_v {
-                Ok(out) => {
-                    if out.status.success() {
-                        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
-                    } else {
-                        Err(format!("Binary '{}' is not installed", binary))
+            Err(_) => {
+                let out_v = Command::new(&exec)
+                    .env("PATH", &enriched_path)
+                    .arg("-v")
+                    .output();
+                match out_v {
+                    Ok(out) => {
+                        if out.status.success() {
+                            let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                            if !text.is_empty() {
+                                return Ok(text);
+                            }
+                        } else {
+                            last_error = format!("Binary '{name}' is not installed");
+                        }
+                    }
+                    Err(_) => {
+                        last_error = format!("Binary '{name}' is not installed or not in PATH");
                     }
                 }
-                Err(_) => Err(format!(
-                    "Binary '{}' is not installed or not in PATH",
-                    binary
-                )),
             }
         }
     }
+
+    Err(last_error)
 }
 
 // ── Redesigned Proxy Providers CRUD ───────────────────────────────────────────

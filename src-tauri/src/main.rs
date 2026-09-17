@@ -12,10 +12,11 @@ mod skills_manager;
 mod ssh_sftp;
 mod web_preview;
 mod remote_ctl;
+mod relay;
 
 use sqlx::{Row, SqlitePool};
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use tauri::Manager;
@@ -231,6 +232,11 @@ async fn spawn_session(
             if !envs.iter().any(|(k, _)| k == "CLAUDE_MODEL") {
                 envs.push(("CLAUDE_MODEL".to_string(), m_override.clone()));
             }
+        } else if clean_cmd == "cursor" {
+            if !command_args.iter().any(|arg| arg == "--model") {
+                command_args.push("--model".to_string());
+                command_args.push(m_override.clone());
+            }
         }
     }
 
@@ -372,15 +378,7 @@ async fn write_to_session(
     data: Vec<u8>,
     manager: State<'_, process::ProcessManager>,
 ) -> Result<(), String> {
-    let active_sessions = manager.active_sessions.lock().map_err(|e| e.to_string())?;
-    if let Some(proc) = active_sessions.get(&id) {
-        let mut writer = proc.writer.lock().map_err(|e| e.to_string())?;
-        writer.write_all(&data).map_err(|e| e.to_string())?;
-        writer.flush().map_err(|e| e.to_string())?;
-    } else {
-        return Err(format!("Session {} not found", id));
-    }
-    Ok(())
+    manager.write_bytes(&id, &data)
 }
 
 #[tauri::command]
@@ -390,21 +388,7 @@ async fn resize_session(
     cols: u16,
     manager: State<'_, process::ProcessManager>,
 ) -> Result<(), String> {
-    let active_sessions = manager.active_sessions.lock().map_err(|e| e.to_string())?;
-    if let Some(proc) = active_sessions.get(&id) {
-        let master = proc.master.lock().map_err(|e| e.to_string())?;
-        master
-            .resize(portable_pty::PtySize {
-                rows,
-                cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|e| e.to_string())?;
-    } else {
-        return Err(format!("Session {} not found", id));
-    }
-    Ok(())
+    manager.resize(&id, rows, cols)
 }
 
 #[tauri::command]
@@ -483,7 +467,7 @@ async fn get_session_history(id: String, pool: State<'_, SqlitePool>) -> Result<
 async fn detect_available_clis() -> Result<Vec<String>, String> {
     let common_commands = vec![
         "zsh", "bash", "sh", "fish", "claude", "aider", "codex", "agy", "opencode", "gemini",
-        "goose", "pi", "omp", "oh-my-pi", "copilot", "cline", "devin", "cn", "auggie", "grok", "git", "gh", "node",
+        "goose", "pi", "omp", "oh-my-pi", "agent", "cursor-agent", "copilot", "cline", "devin", "cn", "auggie", "grok", "git", "gh", "node",
         "python3",
     ];
 
@@ -761,9 +745,10 @@ fn privileged_agent_args(command: &str, privileged: bool) -> Vec<String> {
         return Vec::new();
     }
 
-    match command {
+    match extract_agent_kind(command).as_str() {
         "codex" => vec!["--dangerously-bypass-approvals-and-sandbox".to_string()],
         "claude" | "agy" => vec!["--dangerously-skip-permissions".to_string()],
+        "cursor" => vec!["--force".to_string()],
         _ => Vec::new(),
     }
 }
@@ -823,6 +808,63 @@ fn resolve_codex_session_id(home: &Path, cwd: &str) -> Option<String> {
     latest.map(|(_, id)| id)
 }
 
+fn resolve_cursor_session_id(home: &Path, cwd: &str) -> Option<String> {
+    fn chat_meta(path: &Path, cwd: &str) -> Option<(u128, String)> {
+        let raw = fs::read_to_string(path).ok()?;
+        let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
+        let session_cwd = value
+            .get("cwd")
+            .or_else(|| value.get("workspacePath"))
+            .and_then(|value| value.as_str())?;
+        if session_cwd != cwd {
+            return None;
+        }
+        let updated = value
+            .get("updatedAtMs")
+            .or_else(|| value.get("updatedAt"))
+            .and_then(|value| value.as_u64())
+            .map(|value| value as u128)
+            .unwrap_or(0);
+        let id = path
+            .parent()
+            .and_then(|parent| parent.file_name())
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())?
+            .to_string();
+        Some((updated, id))
+    }
+
+    fn walk(dir: &Path, cwd: &str, depth: usize, latest: &mut Option<(u128, String)>) {
+        if depth > 3 {
+            return;
+        }
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, cwd, depth + 1, latest);
+                continue;
+            }
+            if path.file_name().and_then(|name| name.to_str()) != Some("meta.json") {
+                continue;
+            }
+            let Some((updated, id)) = chat_meta(&path, cwd) else {
+                continue;
+            };
+            if latest.as_ref().map_or(true, |(time, _)| updated > *time) {
+                *latest = Some((updated, id));
+            }
+        }
+    }
+
+    let mut latest = None;
+    walk(&home.join(".cursor/chats"), cwd, 0, &mut latest);
+    walk(&home.join(".config/cursor/chats"), cwd, 0, &mut latest);
+    latest.map(|(_, id)| id)
+}
+
 pub fn extract_agent_kind(command: &str) -> String {
     let first_word = command.split_whitespace().next().unwrap_or(command);
     let base = first_word
@@ -855,6 +897,9 @@ pub fn extract_agent_kind(command: &str) -> String {
     if base.contains("aider") {
         return "aider".to_string();
     }
+    if base == "agent" || base == "cursor-agent" {
+        return "cursor".to_string();
+    }
 
     let lower_full = command.to_lowercase();
     if lower_full.contains("antigravity") || lower_full.contains("agy") {
@@ -871,6 +916,9 @@ pub fn extract_agent_kind(command: &str) -> String {
     }
     if lower_full.contains("pi-coding") || lower_full.contains("pi-agent") {
         return "pi".to_string();
+    }
+    if lower_full.contains("cursor-agent") {
+        return "cursor".to_string();
     }
 
     base
@@ -899,15 +947,15 @@ fn agent_session_flags(command: &str) -> Option<(Option<&'static str>, &'static 
         "agy" => Some((None, "--conversation")),
         "opencode" | "pi" | "omp" => Some((Some("--session"), "--session")),
         "codex" => Some((None, "resume")),
-        "gemini" => Some((None, "--resume")),
+        "gemini" | "cursor" => Some((None, "--resume")),
         _ => None,
     }
 }
 
 fn is_supported_agent(command: &str) -> bool {
     matches!(
-        command,
-        "claude" | "codex" | "gemini" | "aider" | "agy" | "opencode" | "pi" | "omp"
+        extract_agent_kind(command).as_str(),
+        "claude" | "codex" | "gemini" | "aider" | "agy" | "opencode" | "pi" | "omp" | "cursor"
     )
 }
 
@@ -941,7 +989,8 @@ fn resume_args_for_session(
 mod session_resume_tests {
     use super::{
         agent_new_session_args, agent_resume_args, extract_agent_kind, privileged_agent_args,
-        requested_resume_args, resolve_codex_session_id, resume_args_for_session,
+        requested_resume_args, resolve_codex_session_id, resolve_cursor_session_id,
+        resume_args_for_session,
     };
     use std::fs;
 
@@ -965,6 +1014,7 @@ mod session_resume_tests {
             Some(vec!["--session".into(), "omp-uuid-1111".into()])
         );
         assert_eq!(agent_new_session_args("zsh", "ignored"), None);
+        assert_eq!(agent_new_session_args("agent", "cursor-uuid-2222"), None);
     }
 
     #[test]
@@ -1001,6 +1051,14 @@ mod session_resume_tests {
             agent_resume_args("gemini", "session-5"),
             Some(vec!["--resume".into(), "session-5".into()])
         );
+        assert_eq!(
+            agent_resume_args("agent", "cursor-chat-1"),
+            Some(vec!["--resume".into(), "cursor-chat-1".into()])
+        );
+        assert_eq!(
+            agent_resume_args("/Users/ray/.local/bin/agent", "cursor-chat-2"),
+            Some(vec!["--resume".into(), "cursor-chat-2".into()])
+        );
         assert_eq!(agent_resume_args("agy", " "), None);
         assert_eq!(agent_resume_args("zsh", "ignored"), None);
     }
@@ -1015,6 +1073,14 @@ mod session_resume_tests {
             extract_agent_kind("npx @anthropic-ai/claude-code"),
             "claude"
         );
+        assert_eq!(extract_agent_kind("agent"), "cursor");
+        assert_eq!(
+            extract_agent_kind("/Users/ray/.local/bin/agent"),
+            "cursor"
+        );
+        assert_eq!(extract_agent_kind("cursor-agent"), "cursor");
+        assert_eq!(extract_agent_kind("pi-agent"), "pi");
+        assert_eq!(extract_agent_kind("custom-agent"), "custom-agent");
         assert_eq!(
             requested_resume_args("/opt/homebrew/bin/opencode", "session-1").unwrap(),
             vec!["--session", "session-1"]
@@ -1038,6 +1104,49 @@ mod session_resume_tests {
             vec!["--dangerously-bypass-approvals-and-sandbox"]
         );
         assert!(privileged_agent_args("codex", false).is_empty());
+        assert_eq!(
+            privileged_agent_args("cursor", true),
+            vec!["--force"]
+        );
+        assert!(privileged_agent_args("cursor", false).is_empty());
+    }
+
+    #[test]
+    fn resolves_cursor_chat_id_for_the_exact_workspace() {
+        let home = std::env::temp_dir().join(format!("tde-cursor-test-{}", uuid::Uuid::new_v4()));
+        let hashed = home.join(".cursor/chats/workspace-hash");
+        let config_hashed = home.join(".config/cursor/chats/other-hash");
+        fs::create_dir_all(hashed.join("older-chat")).unwrap();
+        fs::create_dir_all(hashed.join("newer-chat")).unwrap();
+        fs::create_dir_all(hashed.join("other-chat")).unwrap();
+        fs::create_dir_all(config_hashed.join("stale-chat")).unwrap();
+        fs::write(
+            hashed.join("older-chat/meta.json"),
+            r#"{"cwd":"/repo/one","updatedAtMs":100}"#,
+        )
+        .unwrap();
+        fs::write(
+            hashed.join("newer-chat/meta.json"),
+            r#"{"cwd":"/repo/one","title":"latest","updatedAtMs":300}"#,
+        )
+        .unwrap();
+        fs::write(
+            hashed.join("other-chat/meta.json"),
+            r#"{"cwd":"/repo/two","updatedAtMs":999}"#,
+        )
+        .unwrap();
+        fs::write(
+            config_hashed.join("stale-chat/meta.json"),
+            r#"{"cwd":"/repo/one","updatedAtMs":200}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            resolve_cursor_session_id(&home, "/repo/one"),
+            Some("newer-chat".into())
+        );
+        assert_eq!(resolve_cursor_session_id(&home, "/repo/missing"), None);
+        fs::remove_dir_all(home).unwrap();
     }
 
     #[test]
@@ -1074,6 +1183,8 @@ mod session_resume_tests {
         );
         let error = resume_args_for_session("codex", None, "local-2").unwrap_err();
         assert!(error.contains("No provider session ID"));
+        let cursor_error = resume_args_for_session("agent", None, "local-cursor").unwrap_err();
+        assert!(cursor_error.contains("No provider session ID"));
         assert_eq!(
             resume_args_for_session("zsh", None, "local-3").unwrap(),
             None
@@ -1151,6 +1262,16 @@ async fn get_remote_session_id(
                     .map_err(|e| e.to_string())?;
                 return Ok(Some(resolved));
             }
+        } else if clean_cmd == "cursor" {
+            if let Some(resolved) = resolve_cursor_session_id(&home_path, &cwd) {
+                sqlx::query("UPDATE sessions SET remote_session_id = $1 WHERE id = $2")
+                    .bind(&resolved)
+                    .bind(&id)
+                    .execute(&*pool)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                return Ok(Some(resolved));
+            }
         } else if clean_cmd == "opencode" || clean_cmd == "open-code" {
             let opencode_dir = home_path
                 .join(".local")
@@ -1211,6 +1332,17 @@ async fn resume_terminated_session(
     manager: State<'_, process::ProcessManager>,
     app_handle: tauri::AppHandle,
 ) -> Result<ResumeOutcome, String> {
+    resume_session_core(id, rows, cols, &*pool, &*manager, app_handle).await
+}
+
+pub(crate) async fn resume_session_core(
+    id: String,
+    rows: Option<u16>,
+    cols: Option<u16>,
+    pool: &SqlitePool,
+    manager: &process::ProcessManager,
+    app_handle: tauri::AppHandle,
+) -> Result<ResumeOutcome, String> {
     // 1. Check if the session is already active in process manager
     {
         let active_sessions = manager.active_sessions.lock().map_err(|e| e.to_string())?;
@@ -1265,6 +1397,24 @@ async fn resume_terminated_session(
     {
         if let Some(home) = std::env::var("HOME").ok().map(PathBuf::from) {
             remote_session_id = resolve_codex_session_id(&home, &cwd);
+            if let Some(ref resolved) = remote_session_id {
+                let _ = sqlx::query("UPDATE sessions SET remote_session_id = $1 WHERE id = $2")
+                    .bind(resolved)
+                    .bind(&id)
+                    .execute(&*pool)
+                    .await;
+            }
+        }
+    }
+
+    if clean_cmd == "cursor"
+        && ssh_host.is_none()
+        && remote_session_id
+            .as_deref()
+            .map_or(true, |remote_id| remote_id.trim().is_empty())
+    {
+        if let Some(home) = std::env::var("HOME").ok().map(PathBuf::from) {
+            remote_session_id = resolve_cursor_session_id(&home, &cwd);
             if let Some(ref resolved) = remote_session_id {
                 let _ = sqlx::query("UPDATE sessions SET remote_session_id = $1 WHERE id = $2")
                     .bind(resolved)
@@ -1458,7 +1608,7 @@ async fn resume_terminated_session(
     // 4. Construct CLI arguments
     let mut command_args = Vec::new();
     if let Some(ref m_override) = model_override {
-        if clean_cmd == "aider" {
+        if clean_cmd == "aider" || clean_cmd == "cursor" {
             command_args.push("--model".to_string());
             command_args.push(m_override.clone());
         } else if clean_cmd == "claude" {
@@ -1568,7 +1718,7 @@ async fn resume_terminated_session(
         master_clone,
         process_instance_id,
         manager.active_sessions.clone(),
-        pool.inner().clone(),
+        pool.clone(),
         app_handle,
         agy_log_path,
     );
@@ -1577,8 +1727,8 @@ async fn resume_terminated_session(
 }
 
 #[derive(serde::Serialize)]
-struct ResumeOutcome {
-    kind: &'static str,
+pub(crate) struct ResumeOutcome {
+    pub kind: &'static str,
 }
 
 fn main() {
@@ -1593,12 +1743,18 @@ fn main() {
             // Initialize process manager state
             let process_manager = process::ProcessManager::default();
             let proc_mgr_clone = process_manager.clone();
+            let proc_for_relay = process_manager.clone();
             app.manage(process_manager);
 
             // Initialize remote control manager state
             let remote_manager = remote_ctl::RemoteControlManager::default();
             let remote_mgr_clone = remote_manager.clone();
             app.manage(remote_manager);
+
+            let relay_manager = relay::RelayManager::default();
+            relay::init_relay_forwarder(relay_manager.clone());
+            let relay_for_restore = relay_manager.clone();
+            app.manage(relay_manager);
 
             // Initialize database synchronously on startup using Tauri's async runtime executor
             tauri::async_runtime::block_on(async move {
@@ -1609,6 +1765,7 @@ fn main() {
                     agy_session::heal_agy_sessions(&pool, &home).await;
                 }
                 remote_ctl::init_remote_control(pool.clone(), proc_mgr_clone, remote_mgr_clone, app_handle.clone()).await;
+                relay::restore_and_start(pool.clone(), proc_for_relay, relay_for_restore, app_handle.clone()).await;
                 app_handle.manage(pool);
             });
 
@@ -1711,7 +1868,11 @@ fn main() {
             remote_ctl::simulate_remote_message,
             remote_ctl::test_lark_credentials,
             remote_ctl::test_lark_ws_endpoint,
-            remote_ctl::get_lark_webhook_info
+            remote_ctl::get_lark_webhook_info,
+            relay::start_web_relay,
+            relay::stop_web_relay,
+            relay::revoke_web_relay,
+            relay::get_web_relay_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
