@@ -559,6 +559,8 @@ async fn handle_session_input(
         return Ok(());
     }
 
+    crate::remote_ctl::streamer::close_lark_live_messages_for_session(bound_session_id);
+
     // Forward to active session writer
     // In raw terminal PTY mode (Antigravity CLI / Ink / readline), Carriage Return '\r' (ASCII 13)
     // is the Enter key that submits the prompt. '\n' only inserts a newline without submitting!

@@ -1,5 +1,8 @@
 use crate::remote_ctl::ansi::clean_terminal_output;
-use crate::remote_ctl::lark::send_lark_message;
+use crate::remote_ctl::lark::{
+    next_lark_outbound, send_lark_message, update_lark_message, LarkLiveMessage, LarkOutbound,
+    LARK_MESSAGE_MAX_CHARS, LARK_MESSAGE_MAX_EDITS,
+};
 use crate::remote_ctl::telegram::send_telegram_message;
 use crate::remote_ctl::types::{LarkCredentials, TelegramCredentials};
 use sqlx::SqlitePool;
@@ -21,6 +24,43 @@ pub struct OutputDebouncer {
 }
 
 static STREAMER_INSTANCE: Mutex<Option<Arc<OutputDebouncer>>> = Mutex::new(None);
+static LARK_LIVE_MESSAGES: Mutex<Option<HashMap<String, LarkLiveMessage>>> = Mutex::new(None);
+
+fn lark_live_key(session_id: &str, chat_id: &str) -> String {
+    format!("{session_id}\n{chat_id}")
+}
+
+pub fn close_lark_live_messages_for_session(session_id: &str) {
+    if let Ok(mut guard) = LARK_LIVE_MESSAGES.lock() {
+        if let Some(map) = guard.as_mut() {
+            let prefix = format!("{session_id}\n");
+            map.retain(|key, _| !key.starts_with(&prefix));
+        }
+    }
+}
+
+fn take_lark_live(session_id: &str, chat_id: &str) -> Option<LarkLiveMessage> {
+    let key = lark_live_key(session_id, chat_id);
+    let Ok(mut guard) = LARK_LIVE_MESSAGES.lock() else {
+        return None;
+    };
+    guard.as_mut().and_then(|map| map.get(&key).cloned())
+}
+
+fn store_lark_live(session_id: &str, chat_id: &str, live: LarkLiveMessage) {
+    if let Ok(mut guard) = LARK_LIVE_MESSAGES.lock() {
+        let map = guard.get_or_insert_with(HashMap::new);
+        map.insert(lark_live_key(session_id, chat_id), live);
+    }
+}
+
+fn clear_lark_live(session_id: &str, chat_id: &str) {
+    if let Ok(mut guard) = LARK_LIVE_MESSAGES.lock() {
+        if let Some(map) = guard.as_mut() {
+            map.remove(&lark_live_key(session_id, chat_id));
+        }
+    }
+}
 
 pub fn init_output_streamer(pool: SqlitePool) {
     let (tx, mut rx) = mpsc::unbounded_channel::<(String, String)>();
@@ -160,7 +200,22 @@ async fn flush_session_output_to_chats(session_id: &str, content: &str, pool: &S
         let platform: String = row.get("platform");
         let chat_id: String = row.get("chat_id");
 
-        let _ = send_to_remote_chat(&platform, &chat_id, &formatted_msg, pool).await;
+        let outgoing = if platform == "lark" {
+            match send_or_edit_lark_stream(session_id, &chat_id, &display_title, content, pool).await
+            {
+                Ok(text) => text,
+                Err(e) => {
+                    eprintln!(
+                        "[remote_ctl] Lark stream send failed for {}: {}",
+                        session_id, e
+                    );
+                    formatted_msg.clone()
+                }
+            }
+        } else {
+            let _ = send_to_remote_chat(&platform, &chat_id, &formatted_msg, pool).await;
+            formatted_msg.clone()
+        };
 
         // Log outgoing message
         let _ = sqlx::query(
@@ -168,10 +223,117 @@ async fn flush_session_output_to_chats(session_id: &str, content: &str, pool: &S
         )
         .bind(&platform)
         .bind(&chat_id)
-        .bind(&formatted_msg)
+        .bind(&outgoing)
         .execute(pool)
         .await;
     }
+}
+
+async fn send_or_edit_lark_stream(
+    session_id: &str,
+    chat_id: &str,
+    title: &str,
+    content: &str,
+    pool: &SqlitePool,
+) -> Result<String, String> {
+    let cred_json: Option<String> = sqlx::query_scalar(
+        "SELECT credentials FROM remote_bot_configs WHERE platform = 'lark' AND enabled = 1",
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let cred_str = cred_json.ok_or("Lark bot is not enabled or credentials missing")?;
+    let creds: LarkCredentials =
+        serde_json::from_str(&cred_str).map_err(|e| format!("Invalid Lark config: {}", e))?;
+
+    let live = take_lark_live(session_id, chat_id);
+    let action = next_lark_outbound(
+        live.as_ref(),
+        content,
+        title,
+        LARK_MESSAGE_MAX_CHARS,
+        LARK_MESSAGE_MAX_EDITS,
+    );
+
+    match action {
+        LarkOutbound::Edit { message_id, text } => {
+            match update_lark_message(
+                &creds.base_url,
+                &creds.app_id,
+                &creds.app_secret,
+                &message_id,
+                &text,
+            )
+            .await
+            {
+                Ok(()) => {
+                    store_lark_live(
+                        session_id,
+                        chat_id,
+                        LarkLiveMessage {
+                            message_id,
+                            text: text.clone(),
+                            edit_count: live.map(|item| item.edit_count + 1).unwrap_or(1),
+                        },
+                    );
+                    Ok(text)
+                }
+                Err(err) => {
+                    eprintln!(
+                        "[remote_ctl] Lark edit failed, sending a new message: {}",
+                        err
+                    );
+                    clear_lark_live(session_id, chat_id);
+                    send_new_lark_stream(&creds, session_id, chat_id, title, content).await
+                }
+            }
+        }
+        LarkOutbound::Send { text } => {
+            send_new_lark_stream_text(&creds, session_id, chat_id, text).await
+        }
+    }
+}
+
+async fn send_new_lark_stream(
+    creds: &LarkCredentials,
+    session_id: &str,
+    chat_id: &str,
+    title: &str,
+    content: &str,
+) -> Result<String, String> {
+    let text = crate::remote_ctl::lark::format_lark_stream_message(title, content);
+    send_new_lark_stream_text(creds, session_id, chat_id, text).await
+}
+
+async fn send_new_lark_stream_text(
+    creds: &LarkCredentials,
+    session_id: &str,
+    chat_id: &str,
+    text: String,
+) -> Result<String, String> {
+    let message_id = send_lark_message(
+        &creds.base_url,
+        &creds.app_id,
+        &creds.app_secret,
+        chat_id,
+        &text,
+    )
+    .await?;
+    if message_id.trim().is_empty() {
+        clear_lark_live(session_id, chat_id);
+    } else {
+        store_lark_live(
+            session_id,
+            chat_id,
+            LarkLiveMessage {
+                message_id,
+                text: text.clone(),
+                edit_count: 0,
+            },
+        );
+    }
+    Ok(text)
 }
 
 pub async fn send_to_remote_chat(
@@ -207,7 +369,9 @@ pub async fn send_to_remote_chat(
             let creds: LarkCredentials = serde_json::from_str(&cred_str)
                 .map_err(|e| format!("Invalid Lark config: {}", e))?;
 
-            send_lark_message(&creds.base_url, &creds.app_id, &creds.app_secret, chat_id, text).await
+            send_lark_message(&creds.base_url, &creds.app_id, &creds.app_secret, chat_id, text)
+                .await
+                .map(|_| ())
         }
         _ => Err(format!("Unsupported platform: {}", platform)),
     }
